@@ -7,7 +7,7 @@ import { buildZones, type Zones } from '../field/zones';
 import { fieldCentric } from '../robot/mecanum';
 import type { Alliance } from '../robot/robotConfig';
 import { DEFAULT_ROBOT_ID, robotById } from '../robot/robots';
-import { BallSim } from './BallSim';
+import { BALL_RESTITUTION, BallSim } from './BallSim';
 import type { ColliderPart } from './colliders';
 import { HiveSim } from './HiveSim';
 import { Match, type MatchEvents } from './Match';
@@ -70,11 +70,11 @@ export class Simulation {
   private buildField(colliders: ColliderPart[]): void {
     const ground = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     for (const part of colliders) {
-      if (part.kind === 'static') this.world.createCollider(RAPIER.ColliderDesc.trimesh(part.vertices, part.indices).setFriction(0.5), ground);
+      if (part.kind === 'static') this.world.createCollider(RAPIER.ColliderDesc.trimesh(part.vertices, part.indices).setFriction(0.5).setRestitution(0.3), ground);
     }
-    // Floor and perimeter walls as simple boxes (robust and fast).
+    // Floor (soft foam tiles) and perimeter walls (polycarbonate) as simple boxes.
     const half = this.zones.wall;
-    this.world.createCollider(RAPIER.ColliderDesc.cuboid(8, 0.05, 8).setTranslation(0, -0.05, 0).setFriction(0.9), ground);
+    this.world.createCollider(RAPIER.ColliderDesc.cuboid(8, 0.05, 8).setTranslation(0, -0.05, 0).setFriction(0.9).setRestitution(BALL_RESTITUTION), ground);
     const wallLen = half + WALL_THICKNESS * 2;
     for (const [x, z, sx, sz] of [
       [half + WALL_THICKNESS / 2, 0, WALL_THICKNESS / 2, wallLen],
@@ -83,7 +83,7 @@ export class Simulation {
       [0, -half - WALL_THICKNESS / 2, wallLen, WALL_THICKNESS / 2],
     ]) {
       this.world.createCollider(
-        RAPIER.ColliderDesc.cuboid(sx, WALL_HEIGHT / 2, sz).setTranslation(x, WALL_HEIGHT / 2, z).setFriction(0.2).setRestitution(0.3),
+        RAPIER.ColliderDesc.cuboid(sx, WALL_HEIGHT / 2, sz).setTranslation(x, WALL_HEIGHT / 2, z).setFriction(0.2).setRestitution(0.4),
         ground,
       );
     }

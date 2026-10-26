@@ -170,3 +170,30 @@ describe('G408: opponent NECTAR', () => {
     expect(toasts.some(t => t.includes('G408'))).toBe(true);
   });
 });
+
+describe('plastic balls', () => {
+  beforeAll(() => initPhysics());
+
+  it('barely bounce on the foam tiles and roll to a stop', () => {
+    for (const kind of ['pollen', 'nectar'] as const) {
+      const { sim } = makeSim();
+      sim.start('practice');
+      const b = sim.balls.all.find(x => x.kind === kind && x.state === 'field')!;
+      sim.balls.release(b, [0.9, 1.0, -1.0], [0, 0, 0]);
+      let landed = false;
+      let bounce = 0;
+      for (let i = 0; i < 240; i++) {
+        sim.step();
+        const y = sim.balls.position(b)[1] - b.radius;
+        if (y < 0.005) landed = true;
+        if (landed) bounce = Math.max(bounce, y);
+      }
+      expect(bounce).toBeLessThan(0.08);
+      // Pushed at 1 m/s along the floor it stops within about a metre.
+      sim.balls.release(b, [-1.0, b.radius, -1.2], [1, 0, 0]);
+      run(sim, 6);
+      expect(sim.balls.position(b)[0] + 1.0).toBeLessThan(1.4);
+      expect(b.body.linvel().x).toBeLessThan(0.05);
+    }
+  });
+});

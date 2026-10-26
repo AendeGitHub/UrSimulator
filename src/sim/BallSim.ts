@@ -30,7 +30,14 @@ export interface Ball extends BallSpec {
 /** Pre-loaded POLLEN per robot (manual 10.3.4). */
 export const PRELOAD = 4;
 
-const MASS = { pollen: 0.04, nectar: 0.065 };
+/** Hollow polyethylene balls (Gopher ResisDent); NECTAR weighs as much as 2 POLLEN. */
+const MASS = { pollen: 0.045, nectar: 0.09 };
+/**
+ * Plastic balls barely bounce: combined with the foam tiles (same value) a 1 m drop bounces
+ * about 5 cm, off walls and other balls a little more.
+ */
+export const BALL_RESTITUTION = 0.22;
+const BALL_FRICTION = 0.55;
 /** Balls fly almost freely but roll to a stop on the foam tiles. */
 const AIR_DAMPING = 0.02;
 const FLOOR_DAMPING = 0.6;
@@ -64,7 +71,7 @@ export class BallSim {
       const body = world.createRigidBody(
         RAPIER.RigidBodyDesc.dynamic().setTranslation(...spec.pos).setLinearDamping(AIR_DAMPING).setAngularDamping(0.9).setCcdEnabled(true),
       );
-      world.createCollider(RAPIER.ColliderDesc.ball(spec.radius).setMass(MASS[spec.kind]).setRestitution(0.45).setFriction(0.7), body);
+      world.createCollider(RAPIER.ColliderDesc.ball(spec.radius).setMass(MASS[spec.kind]).setRestitution(BALL_RESTITUTION).setFriction(BALL_FRICTION), body);
       return { ...spec, id, body, state: spec.homeState };
     });
     this.reset();
