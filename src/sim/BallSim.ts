@@ -25,6 +25,8 @@ export interface Ball extends BallSpec {
   readonly id: number;
   readonly body: RAPIER.RigidBody;
   state: BallState;
+  /** NECTAR handed back to the drive team after leaving the field (re-entered any time, G427) */
+  returned: boolean;
 }
 
 /** Pre-loaded POLLEN per robot (manual 10.3.4). */
@@ -72,7 +74,7 @@ export class BallSim {
         RAPIER.RigidBodyDesc.dynamic().setTranslation(...spec.pos).setLinearDamping(AIR_DAMPING).setAngularDamping(0.9).setCcdEnabled(true),
       );
       world.createCollider(RAPIER.ColliderDesc.ball(spec.radius).setMass(MASS[spec.kind]).setRestitution(BALL_RESTITUTION).setFriction(BALL_FRICTION), body);
-      return { ...spec, id, body, state: spec.homeState };
+      return { ...spec, id, body, state: spec.homeState, returned: false };
     });
     this.reset();
   }
@@ -81,6 +83,7 @@ export class BallSim {
   reset(): void {
     for (const b of this.all) {
       b.state = b.homeState;
+      b.returned = false;
       b.body.setEnabled(b.state === 'field');
       b.body.setTranslation({ x: b.pos[0], y: b.pos[1], z: b.pos[2] }, false);
       b.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
@@ -115,11 +118,22 @@ export class BallSim {
   /** Puts a ball into play at `pos` with velocity `vel`. */
   release(b: Ball, pos: Vec3, vel: Vec3): void {
     b.state = 'field';
+    b.returned = false;
     b.body.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, true);
     b.body.setLinvel({ x: vel[0], y: vel[1], z: vel[2] }, true);
     b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     b.body.setEnabled(true);
     b.body.wakeUp();
+  }
+
+  /** NECTAR given back to the human player: it waits at `pos` in the alliance area. */
+  giveBack(b: Ball, pos: Vec3): void {
+    b.state = 'staged';
+    b.returned = true;
+    b.body.setEnabled(false);
+    b.body.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, false);
+    b.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
+    b.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
   }
 
   /** Rolling resistance on the floor only, so it does not slow shots in the air. */

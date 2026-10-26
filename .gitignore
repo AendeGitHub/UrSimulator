@@ -10,3 +10,6 @@ Manual/*.pdf
 Robot/**/*.stp
 Robot/**/*.step
 Robot/**/*.f3d
+
+# High scores saved by a local server (npm run server).
+data/

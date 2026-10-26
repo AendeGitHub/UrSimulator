@@ -197,3 +197,91 @@ describe('plastic balls', () => {
     }
   });
 });
+
+describe('balls that leave the field (manual 10.8.2)', () => {
+  beforeAll(() => initPhysics());
+
+  it('POLLEN comes back inside the nearest wall after 5 s', () => {
+    const { sim } = makeSim();
+    sim.start('practice');
+    const b = sim.balls.all.find(x => x.kind === 'pollen' && x.state === 'field')!;
+    const wall = sim.zones.wall;
+    sim.balls.release(b, [0.4, b.radius, wall + 0.6], [0, 0, 0]);
+    run(sim, 4.5);
+    expect(sim.balls.position(b)[2]).toBeGreaterThan(wall);
+    run(sim, 1);
+    const [x, , z] = sim.balls.position(b);
+    expect(b.state).toBe('field');
+    expect(Math.abs(z)).toBeLessThan(wall);
+    expect(z).toBeGreaterThan(wall - 0.3);
+    expect(Math.abs(x - 0.4)).toBeLessThan(0.7);
+  });
+
+  it('NECTAR goes back to its human player, who may enter it again right away (G427)', () => {
+    const { sim } = makeSim();
+    sim.addRobot('blue1', 'test');
+    sim.start('match');
+    const b = sim.balls.all.find(x => x.kind === 'nectar' && x.color === 'red' && x.state === 'field')!;
+    sim.balls.release(b, [-sim.zones.wall - 0.5, b.radius, 0.3], [0, 0, 0]);
+    run(sim, 5.2);
+    expect(b.state).toBe('staged');
+    expect(b.returned).toBe(true);
+    // No hive has tipped, so fresh NECTAR may not be entered yet — but the returned one may.
+    run(sim, 2);
+    expect(b.state).toBe('field');
+    const fresh = sim.balls.all.filter(x => x.kind === 'nectar' && x.color === 'red' && x.homeState === 'staged');
+    expect(fresh.every(x => x.state === 'staged')).toBe(true);
+  });
+});
+
+describe('turret wiring and battery', () => {
+  beforeAll(() => initPhysics());
+
+  it('turns at most half a turn either way and unwinds instead of spinning through the back', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test');
+    sim.start('practice');
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    let max = 0;
+    let swings = 0;
+    let last = p.mech.turretYaw;
+    // Spin the robot on the spot for several turns; the turret has to keep tracking the hive.
+    for (let i = 0; i < Math.round(8 / PHYSICS_DT); i++) {
+      sim.setInput('red1', { ...idleInput(), rx: 0.5 });
+      sim.step();
+      max = Math.max(max, Math.abs(p.mech.turretYaw));
+      if (Math.abs(p.mech.turretYaw - last) > 0.03) swings++;
+      last = p.mech.turretYaw;
+    }
+    expect(max).toBeLessThanOrEqual(Math.PI + 1e-6);
+    expect(max).toBeGreaterThan(2.5);
+    // Unwinding shows up as steps at full turret speed against the robot's turn.
+    expect(swings).toBeGreaterThan(0);
+  });
+
+  it('starts at 14 V; a flywheel left running drains it and the robot gets slower', () => {
+    const top = (drain: boolean) => {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test');
+      sim.start('practice');
+      expect(p.robot.battery.voltage).toBeCloseTo(14, 5);
+      if (drain) sim.setInput('red1', { ...idleInput(), shooterOn: true });
+      run(sim, 90);
+      sim.setInput('red1', { ...idleInput(), shooterOff: true });
+      run(sim, 3);
+      p.robot.setPose({ x: -1.4, z: 0, yaw: 0 });
+      sim.setInput('red1', { ...idleInput(), ly: -1 });
+      let best = 0;
+      for (let i = 0; i < Math.round(0.9 / PHYSICS_DT); i++) {
+        sim.step();
+        best = Math.max(best, p.robot.speed);
+      }
+      return { best, volts: p.robot.battery.minVoltage };
+    };
+    const fresh = top(false);
+    const tired = top(true);
+    expect(fresh.volts).toBeGreaterThan(13);
+    expect(tired.volts).toBeLessThan(13);
+    expect(tired.best).toBeLessThan(fresh.best * 0.95);
+  });
+});

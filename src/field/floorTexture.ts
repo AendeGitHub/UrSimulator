@@ -46,6 +46,7 @@ export function createTileTexture(tiles = 6, pxPerTile = 340): THREE.CanvasTextu
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  // Sharp tiles at the low angle a driver sees them (WebGL clamps this to what the GPU supports).
+  tex.anisotropy = 16;
   return tex;
 }

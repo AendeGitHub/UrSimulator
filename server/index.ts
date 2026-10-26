@@ -14,6 +14,7 @@ import { DEFAULT_PORT, type ClientMessage } from '../src/net/protocol';
 import { parseColliders } from '../src/sim/colliders';
 import { initPhysics } from '../src/sim/Simulation';
 import { Lobby } from './Lobby';
+import { MAX_SCORE, Records, createRecords } from './Records';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
@@ -25,6 +26,10 @@ const MAX_CONNECTIONS = 200;
 const MAX_MESSAGES_PER_SECOND = 150;
 /** Hosting proxies drop silent connections, and ping/pong also finds dead ones. */
 const HEARTBEAT_MS = 25_000;
+/** A record submission is a tiny JSON object. */
+const MAX_BODY_BYTES = 1024;
+/** One player finishes a match every 2.5 minutes; this leaves room for a shared address. */
+const RECORD_POSTS_PER_MINUTE = 12;
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -35,6 +40,7 @@ const MIME: Record<string, string> = {
   '.glb': 'model/gltf-binary',
   '.bin': 'application/octet-stream',
   '.png': 'image/png',
+  '.webp': 'image/webp',
 };
 
 /** Field data from the built game if present, otherwise from the source assets. */
@@ -46,6 +52,72 @@ function assetPath(name: string): string {
 function sendText(res: http.ServerResponse, status: number, text: string, type = 'text/plain; charset=utf-8'): void {
   res.writeHead(status, { 'content-type': type });
   res.end(text);
+}
+
+function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
+  // The dev game runs on another port than the server, so the records API allows any origin.
+  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' });
+  res.end(JSON.stringify(body));
+}
+
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > MAX_BODY_BYTES) {
+        reject(new Error('too large'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+const recordPosts = new Map<string, { start: number; count: number }>();
+
+function clientAddress(req: http.IncomingMessage): string {
+  // Render and similar hosts put the player's address first in X-Forwarded-For.
+  const forwarded = req.headers['x-forwarded-for'];
+  return (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0].trim() || req.socket.remoteAddress || '?';
+}
+
+function allowRecordPost(req: http.IncomingMessage): boolean {
+  const now = Date.now();
+  const ip = clientAddress(req);
+  const entry = recordPosts.get(ip);
+  if (!entry || now - entry.start > 60_000) {
+    recordPosts.set(ip, { start: now, count: 1 });
+    return true;
+  }
+  return ++entry.count <= RECORD_POSTS_PER_MINUTE;
+}
+
+/** GET /api/records?robot=id → the top 100 · POST /api/records {robot, name, score} → place. */
+async function handleRecords(req: http.IncomingMessage, res: http.ServerResponse, url: URL, records: Records): Promise<void> {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST', 'access-control-allow-headers': 'content-type' });
+    return void res.end();
+  }
+  if (req.method === 'GET') {
+    const robot = url.searchParams.get('robot');
+    if (!Records.isRobot(robot)) return sendJson(res, 400, { error: 'unknown robot' });
+    return sendJson(res, 200, { robot, entries: await records.top(robot) });
+  }
+  if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+  if (!allowRecordPost(req)) return sendJson(res, 429, { error: 'too many requests' });
+  let body: { robot?: unknown; name?: unknown; score?: unknown };
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    return sendJson(res, 400, { error: 'bad request' });
+  }
+  const { robot, name, score } = body;
+  if (!Records.isRobot(robot) || typeof name !== 'string' || !name.trim()) return sendJson(res, 400, { error: 'bad request' });
+  if (typeof score !== 'number' || !Number.isInteger(score) || score < 0 || score > MAX_SCORE) return sendJson(res, 400, { error: 'bad score' });
+  return sendJson(res, 200, await records.submit(robot, name, score));
 }
 
 function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, health: () => object): void {
@@ -87,10 +159,26 @@ async function main(): Promise<void> {
   const bin = fs.readFileSync(assetPath('field-colliders.bin'));
   const colliders = parseColliders(bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer);
   const lobby = new Lobby(layout, colliders);
+  const { records, storage } = createRecords(ROOT);
+  console.log(`High scores: ${storage}`);
 
   const started = Date.now();
-  const server = http.createServer((req, res) =>
-    serveStatic(req, res, () => ({ ok: true, rooms: lobby.roomCount, players: wss.clients.size, uptime: Math.round((Date.now() - started) / 1000) })));
+  const server = http.createServer((req, res) => {
+    let url: URL;
+    try {
+      url = new URL(req.url ?? '/', 'http://localhost');
+    } catch {
+      return sendText(res, 400, 'Bad request');
+    }
+    if (url.pathname === '/api/records') {
+      handleRecords(req, res, url, records).catch(err => {
+        console.error('records:', err);
+        if (!res.headersSent) sendJson(res, 503, { error: 'records unavailable' });
+      });
+      return;
+    }
+    serveStatic(req, res, () => ({ ok: true, rooms: lobby.roomCount, players: wss.clients.size, uptime: Math.round((Date.now() - started) / 1000) }));
+  });
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
   const alive = new WeakMap<WebSocket, boolean>();
   wss.on('connection', (ws: WebSocket) => {
@@ -121,6 +209,8 @@ async function main(): Promise<void> {
   });
 
   setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of recordPosts) if (now - entry.start > 60_000) recordPosts.delete(ip);
     for (const ws of wss.clients) {
       if (!alive.get(ws)) {
         ws.terminate();

@@ -1,22 +1,25 @@
-// Camera views: driver station, top-down, chase, free orbit.
+// Camera views, picked before the match: driver station, audience stands, or following the robot.
+// Only the follow camera changes during play: R3 turns it to look forward or back.
 
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { Alliance } from '../robot/robotConfig';
 
-export type CameraMode = 'driver' | 'top' | 'chase' | 'free';
+export type CameraMode = 'driver' | 'audience' | 'follow';
 
-export const CAMERA_MODES: CameraMode[] = ['driver', 'top', 'chase', 'free'];
+export const CAMERA_MODES: CameraMode[] = ['driver', 'audience', 'follow'];
 
 export const CAMERA_NAMES: Record<CameraMode, string> = {
   driver: 'Вид водителя',
-  top: 'Сверху',
-  chase: 'За роботом',
-  free: 'Свободная (мышь)',
+  audience: 'Вид зрителей',
+  follow: 'За роботом',
 };
 
 /** Eye height of a standing driver, m */
 const DRIVER_EYE = 1.7;
+/** A seat in the stands on the audience side (+Z), looking across the field. */
+const AUDIENCE_SEAT = new THREE.Vector3(0, 3.1, 4.3);
+/** Follow camera: distance behind the robot and height, m */
+const FOLLOW = { back: 1.35, height: 1.05, ahead: 0.7 };
 
 export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
@@ -24,35 +27,27 @@ export class CameraRig {
   alliance: Alliance = 'red';
   /** Where the driver stands along the alliance wall (world z), m */
   driverZ = 0.6;
+  /** Follow camera looks back toward its own drivers instead of across the field. */
+  lookingBack = false;
 
-  private readonly controls: OrbitControls;
   private readonly lookAt = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
   private snap = true;
 
-  constructor(dom: HTMLElement) {
+  constructor() {
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.05, 80);
-    this.controls = new OrbitControls(this.camera, dom);
-    this.controls.enableDamping = true;
-    this.controls.maxPolarAngle = Math.PI / 2 - 0.05;
-    this.controls.enabled = false;
   }
 
   setMode(mode: CameraMode): void {
     this.mode = mode;
-    this.controls.enabled = mode === 'free';
+    this.lookingBack = false;
     this.camera.up.set(0, 1, 0);
     this.snap = true;
-    if (mode === 'free') {
-      this.camera.position.set(0, 3.6, 4.6);
-      this.controls.target.set(0, 0.3, 0);
-    }
   }
 
-  next(): CameraMode {
-    const mode = CAMERA_MODES[(CAMERA_MODES.indexOf(this.mode) + 1) % CAMERA_MODES.length];
-    this.setMode(mode);
-    return mode;
+  /** Follow camera only: look the other way. */
+  flip(): void {
+    this.lookingBack = !this.lookingBack;
   }
 
   /** Direction the driver faces (unit X/Z): red looks toward +X, blue toward -X. */
@@ -68,11 +63,11 @@ export class CameraRig {
   }
 
   /** `robot` is null when watching without a robot. */
-  update(robot: { x: number; z: number; yaw: number } | null, dt: number): void {
+  update(robot: { x: number; z: number } | null, dt: number): void {
     const robotPos = robot ?? { x: 0, z: 0 };
-    const robotYaw = robot?.yaw ?? 0;
     const k = this.snap ? 1 : 1 - Math.exp(-dt * 6);
     const s = this.driverForward;
+    this.camera.up.set(0, 1, 0);
     switch (this.mode) {
       case 'driver': {
         this.camera.position.set(-s * 2.75, DRIVER_EYE, this.driverZ);
@@ -82,25 +77,24 @@ export class CameraRig {
         this.camera.lookAt(this.lookAt);
         break;
       }
-      case 'top': {
-        // Driver's forward points up on screen.
-        this.camera.position.set(0, 5.4, 0.0001);
-        this.camera.up.set(s, 0, 0);
-        this.camera.lookAt(0, 0, 0);
+      case 'audience': {
+        this.camera.position.copy(AUDIENCE_SEAT);
+        // Like a person in the stands: the head turns a little with the play.
+        this.tmp.set(robotPos.x * 0.3, 0, -0.25);
+        this.lookAt.lerp(this.tmp, this.snap ? 1 : 1 - Math.exp(-dt * 2));
+        this.camera.lookAt(this.lookAt);
         break;
       }
-      case 'chase': {
-        const back = 1.25;
-        this.tmp.set(robotPos.x - Math.cos(robotYaw) * back, 0.95, robotPos.z + Math.sin(robotYaw) * back);
+      case 'follow': {
+        // Fixed direction (does not turn with the robot): across the field, or back with R3.
+        const dir = this.lookingBack ? -s : s;
+        this.tmp.set(robotPos.x - dir * FOLLOW.back, FOLLOW.height, robotPos.z);
         this.camera.position.lerp(this.tmp, k);
-        this.tmp.set(robotPos.x + Math.cos(robotYaw) * 0.6, 0.2, robotPos.z - Math.sin(robotYaw) * 0.6);
+        this.tmp.set(robotPos.x + dir * FOLLOW.ahead, 0.15, robotPos.z);
         this.lookAt.lerp(this.tmp, k);
         this.camera.lookAt(this.lookAt);
         break;
       }
-      case 'free':
-        this.controls.update();
-        break;
     }
     this.snap = false;
   }

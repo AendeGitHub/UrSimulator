@@ -4,6 +4,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import type { Vec3 } from '../field/layout';
 import { chassisSpeeds, forwardVector, mecanumPowers, rightVector, wrapAngle, type WheelPowers } from '../robot/mecanum';
 import type { Alliance, RobotConfig } from '../robot/robotConfig';
+import { Battery } from './Battery';
 import { slotAlliance, type Slot } from './types';
 
 export interface Pose {
@@ -20,6 +21,7 @@ export class RobotSim {
   /** Yaw the simulated IMU reports as zero (set at init and by "reset heading"). */
   private imuZero = 0;
   powers: WheelPowers = { fl: 0, fr: 0, bl: 0, br: 0 };
+  readonly battery = new Battery();
 
   constructor(private readonly world: RAPIER.World, readonly slot: Slot, readonly cfg: RobotConfig, pose: Pose) {
     this.alliance = slotAlliance(slot);
@@ -89,7 +91,8 @@ export class RobotSim {
   /** Called every physics step with FTC-style inputs in -1..1 (turn > 0 = clockwise). */
   drive(forward: number, strafe: number, turn: number, dt: number): void {
     this.powers = mecanumPowers(forward, strafe, turn);
-    const target = chassisSpeeds(this.powers, this.cfg.drive);
+    // Motors run at a speed proportional to the battery voltage.
+    const target = chassisSpeeds(this.powers, { ...this.cfg.drive, maxWheelSpeed: this.cfg.drive.maxWheelSpeed * this.battery.speedScale });
     const yaw = this.yaw;
     const [fx, fz] = forwardVector(yaw);
     const [rx, rz] = rightVector(yaw);

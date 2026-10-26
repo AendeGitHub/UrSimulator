@@ -44,6 +44,7 @@ export class FieldView {
     // Hives rotate around their pivot axle; wrap them so rotation.x tips them.
     for (const alliance of ['red', 'blue'] as const) {
       const node = cad.getObjectByName(`hive_${alliance}`);
+      if (node) clearPanels(node);
       const pivot = this.hivePivots[alliance];
       pivot.position.fromArray(this.layout.hives[alliance].pivot);
       this.root.add(pivot);
@@ -61,4 +62,18 @@ export class FieldView {
     this.root.add(tiles);
 
   }
+}
+
+/** The hive cells' white panels are clear polycarbonate, so you can see the balls inside. */
+function clearPanels(hive: THREE.Object3D): void {
+  hive.traverse(obj => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    const mat = obj.material as THREE.MeshStandardMaterial;
+    const { r, g, b } = mat.color;
+    if (Math.min(r, g, b) < 0.55 || Math.max(r, g, b) - Math.min(r, g, b) > 0.08) return;
+    obj.material = new THREE.MeshStandardMaterial({
+      color: '#eef4ff', transparent: true, opacity: 0.22, roughness: 0.08, metalness: 0, depthWrite: false, side: THREE.DoubleSide,
+    });
+    obj.castShadow = false;
+  });
 }

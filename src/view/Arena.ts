@@ -1,5 +1,6 @@
 // The venue around the field: carpet, sided hall walls, two sets of bleachers with aisles,
-// steel ceiling trusses with light rows, driver stations and big logo banners.
+// steel ceiling trusses with light rows and big logo banners. FTC drivers stand on the floor in
+// the alliance area, so there are no FRC-style driver station walls.
 // Field center is the origin; red drivers stand at -X, blue at +X, the audience side is +Z.
 
 import * as THREE from 'three';
@@ -18,7 +19,7 @@ function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D)
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(...repeat);
   }
-  tex.anisotropy = 8;
+  tex.anisotropy = 16;
   return tex;
 }
 
@@ -86,8 +87,6 @@ export class Arena {
     this.buildWalls();
     this.buildBleachers(5.2, 1);
     this.buildBleachers(-5.2, -1);
-    this.buildDriverStation('red');
-    this.buildDriverStation('blue');
     this.buildCeiling();
     this.buildBanners();
     scene.add(this.root);
@@ -194,19 +193,6 @@ export class Arena {
     }
     // Back railing along the top row.
     this.box([length, 0.05, 0.05], this.metal, [0, rise * rows + 1.0 + FLOOR_Y, z0 + side * (rows - 0.5) * depth]);
-  }
-
-  /** Alliance driver station wall with a shelf, behind the alliance area. */
-  private buildDriverStation(alliance: 'red' | 'blue'): void {
-    const sx = alliance === 'red' ? -1 : 1;
-    const color = alliance === 'red' ? '#c62828' : '#1f4fd1';
-    const x = sx * 3.55;
-    const wallMat = new THREE.MeshStandardMaterial({ color, roughness: 0.55 });
-    const glassMat = new THREE.MeshStandardMaterial({ color: '#cfe3ff', transparent: true, opacity: 0.18, roughness: 0.1, depthWrite: false });
-    this.box([0.08, 0.9, 3.6], wallMat, [x, 0.45 + FLOOR_Y, 0]);
-    this.box([0.03, 0.9, 3.6], glassMat, [x, 1.35 + FLOOR_Y, 0]);
-    this.box([0.6, 0.04, 3.4], new THREE.MeshStandardMaterial({ color: '#2b2f36', roughness: 0.6 }), [x - sx * 0.3, 0.92 + FLOOR_Y, 0]);
-    for (const z of [-1.8, 1.8]) this.box([0.06, 1.8, 0.06], this.metal, [x, 0.9 + FLOOR_Y, z]);
   }
 
   private buildCeiling(): void {

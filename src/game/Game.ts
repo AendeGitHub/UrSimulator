@@ -2,16 +2,16 @@
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { CAMERA_MODES, CAMERA_NAMES, CameraRig, type CameraMode } from '../camera/CameraRig';
+import { CAMERA_MODES, CameraRig, type CameraMode } from '../camera/CameraRig';
 import type { FieldLayout } from '../field/layout';
 import { MODEL_NAMES } from '../input/gamepad';
 import { InputManager } from '../input/InputManager';
 import { NetSession, defaultServerUrl } from '../net/NetSession';
 import { cleanName, type RoomInfo } from '../net/protocol';
+import { submitRecord } from '../net/records';
 import type { Alliance } from '../robot/robotConfig';
 import { DEFAULT_ROBOT_ID, robotById } from '../robot/robots';
 import { parseColliders, type ColliderPart } from '../sim/colliders';
-import { CAPACITY, shotRange } from '../sim/Mechanisms';
 import { matchClock } from '../sim/Match';
 import { initPhysics } from '../sim/Simulation';
 import type { WorldState } from '../sim/state';
@@ -20,13 +20,15 @@ import { GamepadScreen } from '../ui/GamepadScreen';
 import { Hud } from '../ui/Hud';
 import { HelpScreen, MainMenu, PauseMenu, type Screen } from '../ui/menus';
 import { ConnectScreen, LobbyScreen } from '../ui/online';
+import { RecordsScreen } from '../ui/RecordsScreen';
 import { RobotSelectScreen, type SelectPurpose, type SelectSettings } from '../ui/RobotSelect';
 import { ResultsScreen, type ResultsTeam } from '../ui/ResultsScreen';
 import { Arena } from '../view/Arena';
 import { asset } from '../view/assets';
-import { BallsView } from '../view/BallsView';
+import { BallsView, loadBallShapes } from '../view/BallsView';
 import { FieldView } from '../view/FieldView';
 import { RobotView } from '../view/RobotView';
+import { ScreenEffects } from '../view/ScreenEffects';
 import { total, type AllianceScore } from './scoring';
 import { LocalSession, type Session, type SessionEvents } from './Session';
 
@@ -60,11 +62,29 @@ function loadSettings(): Settings {
   }
 }
 
+/** World positions of the balls inside each robot, so you can see how many it holds. */
+function heldBallPositions(world: WorldState): Map<number, [number, number, number]> {
+  const held = new Map<number, [number, number, number]>();
+  for (const r of world.robots) {
+    const { first, step } = robotById(r.robot).storage;
+    const cos = Math.cos(r.yaw);
+    const sin = Math.sin(r.yaw);
+    r.stored.forEach((id, i) => {
+      const [fx, y, rz] = [first[0] + step[0] * i, first[1] + step[1] * i, first[2] + step[2] * i];
+      // Same rotation as the robot model (about +Y by yaw).
+      held.set(id, [r.x + fx * cos + rz * sin, y, r.z - fx * sin + rz * cos]);
+    });
+  }
+  return held;
+}
+
 /** Driver stations: "1" stands closest to the audience (+Z). */
 const DRIVER_Z: Record<Slot, number> = { red1: 0.6, red2: -0.6, blue1: 0.6, blue2: -0.6 };
 
 export class Game {
   private readonly renderer: THREE.WebGLRenderer;
+  /** Ambient occlusion and black outlines on top of the rendered scene */
+  private readonly effects: ScreenEffects;
   private readonly scene = new THREE.Scene();
   private readonly rig: CameraRig;
   private readonly input = new InputManager();
@@ -85,17 +105,18 @@ export class Game {
   private state: State = 'menu';
   private screen: Screen | null = null;
   private readonly screens: {
-    main: MainMenu; select: RobotSelectScreen; pause: PauseMenu; help: HelpScreen; pads: GamepadScreen; results: ResultsScreen; connect: ConnectScreen; lobby: LobbyScreen;
+    main: MainMenu; select: RobotSelectScreen; pause: PauseMenu; help: HelpScreen; pads: GamepadScreen; results: ResultsScreen; connect: ConnectScreen; lobby: LobbyScreen; records: RecordsScreen;
   };
   private returnTo: Screen | null = null;
 
   private lastTime = 0;
-  private fps = 60;
   private menuOrbit = 0;
   private resetKeyWasDown = false;
   private lastPad1 = '';
   private slowMode = false;
   private lastSoloMode: GameMode = 'practice';
+  /** Matches finished since the page opened, for the results title */
+  private matchNumber = 0;
 
   private constructor(private readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -103,11 +124,12 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.append(this.renderer.domElement);
 
-    this.rig = new CameraRig(this.renderer.domElement);
+    this.rig = new CameraRig();
+    this.effects = new ScreenEffects(this.renderer, this.scene, this.rig.camera);
     this.overlay = document.createElement('div');
     this.overlay.className = 'overlay';
     container.append(this.hud.el, this.overlay);
@@ -119,6 +141,10 @@ export class Game {
         match: () => this.openSelect('match'),
         practice: () => this.openSelect('practice'),
         online: () => this.openSelect('online'),
+        records: () => {
+          this.screens.records.open(this.settings.robot);
+          this.openSub(this.screens.records);
+        },
         gamepads: () => this.openSub(this.screens.pads),
         help: () => this.openSub(this.screens.help),
       }),
@@ -146,6 +172,15 @@ export class Game {
         join: (name, server, code) => this.connect(name, server, net => net.join(code)),
         back: () => this.show(this.screens.main),
       }),
+      records: new RecordsScreen({
+        server: () => this.settings.server || defaultServerUrl(),
+        name: () => this.settings.name,
+        rename: name => {
+          this.settings.name = name;
+          this.saveSettings();
+        },
+        back,
+      }),
       lobby: new LobbyScreen({
         takeSlot: slot => this.net?.takeSlot(slot),
         start: mode => this.net?.start(mode),
@@ -172,7 +207,7 @@ export class Game {
     game.layout = layout;
     game.colliders = parseColliders(colliderData);
     game.field = await FieldView.load(layout, game.scene, onProgress);
-    game.ballsView = new BallsView(layout, game.scene);
+    game.ballsView = new BallsView(layout, game.scene, await loadBallShapes());
     game.showHomeField();
     game.show(game.screens.main);
     requestAnimationFrame(t => game.frame(t));
@@ -182,29 +217,26 @@ export class Game {
   private setupLighting(): void {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.55;
-    this.scene.background = new THREE.Color('#3a4150');
+    this.scene.environmentIntensity = 0.32;
+    this.scene.background = new THREE.Color('#1c2028');
     new Arena(this.scene);
 
-    // Gym lighting from the ceiling; a strong key light gives the field crisp shadows.
-    this.scene.add(new THREE.HemisphereLight('#f2f5ff', '#5a6070', 0.95));
-    const sun = new THREE.DirectionalLight('#ffffff', 3.2);
-    sun.position.set(3.5, 7, 4.5);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -3.4;
-    sun.shadow.camera.right = 3.4;
-    sun.shadow.camera.top = 3.4;
-    sun.shadow.camera.bottom = -3.4;
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 16;
-    sun.shadow.bias = -0.0004;
-    sun.shadow.normalBias = 0.02;
-    this.scene.add(sun);
+    // Event lighting: a bright spotlight on the field, the hall and stands left in soft dimness.
+    this.scene.add(new THREE.HemisphereLight('#f2f5ff', '#5a6070', 0.38));
+    const spot = new THREE.SpotLight('#ffffff', 4.4, 0, Math.atan(3.3 / 8.5), 0.55, 0);
+    spot.position.set(0.6, 8.5, 1.2);
+    spot.target.position.set(0, 0, 0);
+    spot.castShadow = true;
+    spot.shadow.mapSize.set(2048, 2048);
+    spot.shadow.camera.near = 4;
+    spot.shadow.camera.far = 14;
+    spot.shadow.bias = -0.0004;
+    spot.shadow.normalBias = 0.02;
+    this.scene.add(spot, spot.target);
 
     // Alliance colors glow onto the floor and walls at each end of the field.
     for (const [color, x] of [['#ff2b2b', -2.6], ['#2b5bff', 2.6]] as const) {
-      const glow = new THREE.PointLight(color, 10, 5.5, 1.5);
+      const glow = new THREE.PointLight(color, 6, 5.5, 1.5);
       glow.position.set(x, 1.4, 0);
       this.scene.add(glow);
     }
@@ -219,8 +251,8 @@ export class Game {
   }
 
   private selectSettings(): SelectSettings {
-    const { robot, alliance, camera, fieldCentric } = this.settings;
-    return { robot, alliance, camera, fieldCentric };
+    const { robot, alliance, camera, fieldCentric, name } = this.settings;
+    return { robot, alliance, camera, fieldCentric, name };
   }
 
   private openSelect(purpose: SelectPurpose): void {
@@ -258,7 +290,9 @@ export class Game {
   // ---- sessions --------------------------------------------------------------
 
   private readonly sessionEvents: SessionEvents = {
-    toast: text => this.hud.toast(text),
+    // Drivers get no pop-ups about game events (tips, periods, cards): the field timer, the
+    // scores and the battery are all they see, as at a real match.
+    toast: () => {},
     finished: score => this.showResults(score),
   };
 
@@ -277,7 +311,6 @@ export class Game {
     const slot: Slot = this.settings.alliance === 'red' ? 'red1' : 'blue1';
     this.session = new LocalSession(this.layout, this.colliders, slot, this.settings.robot, mode, this.sessionEvents);
     this.enterPlay();
-    if (mode === 'match') this.hud.toast('АВТОНОМ: 30 секунд. Автонома пока нет — потренируй маршрут вручную');
   }
 
   private connect(name: string, server: string, action: (net: NetSession) => void): void {
@@ -333,7 +366,7 @@ export class Game {
     const alliance = slot ? slotAlliance(slot) : 'red';
     this.rig.alliance = alliance;
     this.rig.driverZ = slot ? DRIVER_Z[slot] : 0.6;
-    this.rig.setMode(slot ? this.settings.camera : 'top');
+    this.rig.setMode(slot ? this.settings.camera : 'audience');
     this.slowMode = false;
     this.resume();
   }
@@ -347,6 +380,8 @@ export class Game {
     if (screen) {
       screen.onShow?.();
       screen.nav.focusFirst();
+    } else {
+      document.body.classList.remove('pad-nav');
     }
   }
 
@@ -370,8 +405,8 @@ export class Game {
 
   private showResults(score: Record<Alliance, AllianceScore>): void {
     this.state = 'results';
+    this.matchNumber++;
     const slot = this.session?.localSlot ?? null;
-    const mine = slot ? slotAlliance(slot) : null;
     const names = this.session?.names() ?? {};
     const teams: Record<Alliance, ResultsTeam[]> = { red: [], blue: [] };
     // Online the room knows every driver even if the last snapshot is already gone.
@@ -380,24 +415,43 @@ export class Game {
       const def = robotById(r.robot);
       teams[slotAlliance(r.slot)].push({ name: names[r.slot] ?? def.team, logo: def.teamLogo });
     }
-    // Personal best for solo matches, kept in this browser.
-    let highScore = false;
-    if (mine && !this.net) {
-      const points = total(score[mine]);
-      const key = `ursim.best.${this.settings.robot}`;
-      try {
-        const best = Number(localStorage.getItem(key) ?? 0);
-        if (points > best) {
-          localStorage.setItem(key, String(points));
-          highScore = best > 0 || points > 0;
-        }
-      } catch {
-        // No storage: no record keeping.
-      }
-    }
-    const title = this.net?.room ? `Онлайн-матч · комната ${this.net.room.code}` : 'Матч';
-    this.screens.results.show({ score, mine, teams, title, online: !!this.net, highScore });
+    const room = this.net?.room;
+    this.screens.results.show({
+      score,
+      teams,
+      title: room ? `Онлайн-матч ${this.matchNumber}` : `Матч ${this.matchNumber}`,
+      event: room ? `UrSim Онлайн · комната ${room.code}` : 'UrSim · одиночная игра',
+      online: !!this.net,
+    });
     this.show(this.screens.results);
+    if (slot && !this.net) this.saveRecord(slotAlliance(slot), total(score[slotAlliance(slot)]));
+  }
+
+  /** Solo match: into the robot's high score table (and a personal best kept in this browser). */
+  private saveRecord(alliance: Alliance, points: number): void {
+    const robot = this.settings.robot;
+    const key = `ursim.best.${robot}`;
+    let localBest = 0;
+    try {
+      localBest = Number(localStorage.getItem(key) ?? 0);
+      if (points > localBest) localStorage.setItem(key, String(points));
+    } catch {
+      // No storage: only the server keeps records.
+    }
+    const name = this.settings.name;
+    // Without a name the match only counts as a personal best in this browser.
+    if (!name) {
+      if (points > localBest && points > 0) this.screens.results.setRecord(alliance, 'Личный рекорд');
+      return;
+    }
+    submitRecord(this.settings.server || defaultServerUrl(), robot, name, points)
+      .then(r => {
+        if (this.state !== 'results' || !r.improved) return;
+        this.screens.results.setRecord(alliance, r.rank === 1 ? 'Рекорд UrSim' : r.rank ? `Рекорд · место ${r.rank}` : 'Личный рекорд');
+      })
+      .catch(() => {
+        if (this.state === 'results' && points > localBest && points > 0) this.screens.results.setRecord(alliance, 'Личный рекорд');
+      });
   }
 
   private toMenu(): void {
@@ -426,6 +480,7 @@ export class Game {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     this.renderer.setSize(w, h);
+    this.effects.setSize(w, h, this.renderer.getPixelRatio());
     this.rig.resize(w, h);
   }
 
@@ -433,7 +488,6 @@ export class Game {
     requestAnimationFrame(t => this.frame(t));
     const dt = Math.min(0.1, this.lastTime ? (time - this.lastTime) / 1000 : 1 / 60);
     this.lastTime = time;
-    this.fps += (1 / Math.max(dt, 1e-3) - this.fps) * 0.05;
     this.tick(dt);
   }
 
@@ -460,16 +514,17 @@ export class Game {
     const world = this.session?.state() ?? null;
     if (world) this.draw(world, this.state === 'paused' && !this.session?.online ? 0 : dt);
     const mine = world?.robots.find(r => r.slot === this.session?.localSlot) ?? null;
+    if (this.state !== 'select' && this.rig.camera.view?.enabled) this.rig.camera.clearViewOffset();
     if (this.state === 'menu') this.updateMenuCamera(dt);
     else if (this.state === 'select') this.updatePreviewCamera(dt);
     else this.rig.update(mine, dt);
     if (world && (this.state === 'playing' || this.state === 'paused')) this.updateHud(world);
-    this.renderer.render(this.scene, this.rig.camera);
+    this.effects.render(dt);
   }
 
   private draw(world: WorldState, dt: number): void {
     this.field.setHiveAngles(world.hiveAngles);
-    this.ballsView.update(world.balls);
+    this.ballsView.update(world.balls, heldBallPositions(world));
     const names = this.session?.names() ?? {};
     const present = new Set(world.robots.map(r => r.slot));
     for (const [slot, view] of this.robotViews) {
@@ -499,50 +554,29 @@ export class Game {
     const slot = this.session?.localSlot ?? null;
     const mine = world.robots.find(r => r.slot === slot);
     this.hud.update({
-      spectator: !mine,
-      model: this.input.model1,
-      gamepad2: this.input.slotInfo(1)?.model ?? null,
-      fieldCentric: this.settings.fieldCentric,
-      slow: this.slowMode,
-      headingDeg: ((mine?.heading ?? 0) * 180) / Math.PI,
-      speed: mine?.speed ?? 0,
-      camera: CAMERA_NAMES[this.rig.mode],
       alliance: slot ? slotAlliance(slot) : 'red',
-      fps: this.fps,
       clock: matchClock(world.period, world.periodTime),
       score: { red: total(world.score.red), blue: total(world.score.blue) },
       cards: {
         red: world.score.red.redCards ? 'red' : world.score.red.yellowCards ? 'yellow' : 'none',
         blue: world.score.blue.redCards ? 'red' : world.score.blue.yellowCards ? 'yellow' : 'none',
       },
-      tips: world.tips,
-      stored: (mine?.stored ?? []).map(id => this.ballsView.specs[id].color),
-      capacity: CAPACITY,
-      shooter: mine?.status ?? 'off',
-      shotSpeed: mine?.shotSpeed ?? 0,
-      targetDistance: mine?.shotDistance ?? 0,
-      range: shotRange(mine?.shotDistance ?? 0, robotById(mine?.robot).shooter),
+      battery: mine ? { voltage: mine.voltage, min: mine.minVoltage } : null,
     });
   }
 
   private handleGameplayButtons(): void {
     const input = this.input;
     if (input.pressed(1, 'guide')) return this.pause();
-    if (input.pressed(1, 'right_stick_button') || input.pressed(1, 'touchpad')) {
-      this.settings.camera = this.rig.next();
-      this.saveSettings();
-      this.hud.toast(`Камера: ${CAMERA_NAMES[this.rig.mode]}`);
+    // The camera is picked before the match; only the follow camera turns around during play.
+    if ((input.pressed(1, 'right_stick_button') || input.pressed(1, 'touchpad')) && this.rig.mode === 'follow') {
+      this.rig.flip();
     }
     if (input.pressed(1, 'back')) {
       this.settings.fieldCentric = !this.settings.fieldCentric;
       this.saveSettings();
-      this.hud.toast(this.settings.fieldCentric ? 'Field-centric: «вверх» — от водителя' : 'Robot-centric: «вверх» — вперёд робота');
     }
-    if (input.pressed(1, 'start')) this.hud.toast('Курс сброшен: «вперёд» = куда сейчас смотрит робот');
-    if (input.pressed(1, 'left_stick_button')) {
-      this.slowMode = !this.slowMode;
-      this.hud.toast(this.slowMode ? 'Медленный режим' : 'Обычная скорость');
-    }
+    if (input.pressed(1, 'left_stick_button')) this.slowMode = !this.slowMode;
     const resetDown = input.keyboard.isDown('KeyR');
     if (resetDown && !this.resetKeyWasDown && !this.session?.online) this.startSolo(this.lastSoloMode);
     this.resetKeyWasDown = resetDown;
@@ -562,8 +596,9 @@ export class Game {
       intake: g1.left_bumper || g2.left_bumper,
       eject: g1.dpad_down || g2.dpad_down,
       transfer: g1.right_bumper || g2.right_bumper,
-      shooterOn: input.triggerPressed(1, 'right_trigger') || input.triggerPressed(2, 'right_trigger'),
-      shooterOff: input.triggerPressed(1, 'left_trigger') || input.triggerPressed(2, 'left_trigger'),
+      // L2 starts the flywheel, R2 stops it.
+      shooterOn: input.triggerPressed(1, 'left_trigger') || input.triggerPressed(2, 'left_trigger'),
+      shooterOff: input.triggerPressed(1, 'right_trigger') || input.triggerPressed(2, 'right_trigger'),
       imuReset: input.pressed(1, 'start'),
     };
   }
@@ -573,9 +608,14 @@ export class Game {
     const cam = this.rig.camera;
     const [x, z] = PREVIEW_SPOT;
     cam.up.set(0, 1, 0);
-    // Looking slightly above the robot places it low-center, between the panels and the cards.
-    cam.position.set(x + Math.cos(this.menuOrbit) * 1.25, 0.75, z + Math.sin(this.menuOrbit) * 1.25);
-    cam.lookAt(x, 0.28, z);
+    // Close enough to see the mechanisms.
+    cam.position.set(x + Math.cos(this.menuOrbit) * 0.82, 0.52, z + Math.sin(this.menuOrbit) * 0.82);
+    cam.lookAt(x, 0.16, z);
+    // Shift the picture so the robot sits in the open area left of the settings and above the
+    // robot cards (MoSim layout), not hidden behind them.
+    const { width, height } = this.renderer.domElement;
+    const wide = width / height > 1.2;
+    cam.setViewOffset(width, height, wide ? width * 0.19 : 0, wide ? height * 0.12 : 0, width, height);
   }
 
   private updateMenuCamera(dt: number): void {

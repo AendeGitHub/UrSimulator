@@ -29,6 +29,9 @@ export interface RobotState {
   powers: WheelPowers;
   /** Ball ids in the hopper, next to shoot first */
   stored: number[];
+  /** Battery under load and the lowest it has been, V */
+  voltage: number;
+  minVoltage: number;
 }
 
 export interface WorldState {
@@ -50,7 +53,7 @@ export interface WorldState {
 const STATUSES: ShooterStatus[] = ['off', 'spinning', 'ready', 'tooFar'];
 const SCORE_FIELDS = ['leave', 'autoPark', 'autoTips', 'teleopTips', 'teleopPark', 'warnings', 'yellowCards', 'redCards'] as const;
 const FIELD_FIELDS = ['cellElements', 'flowerBottom', 'ownedFlowerElements', 'gardenElements'] as const;
-const VERSION = 4;
+const VERSION = 5;
 
 /** Little binary writer/reader so snapshots stay ~1 KB instead of ~10 KB of JSON. */
 class Writer {
@@ -108,6 +111,9 @@ export function encodeState(s: WorldState): ArrayBuffer {
     for (const v of [r.powers.fl, r.powers.fr, r.powers.bl, r.powers.br]) w.i8(Math.round(v * 127));
     w.u8(r.stored.length);
     for (const id of r.stored) w.u8(id);
+    // Centivolts, like the Driver Station's two decimals.
+    w.u16(Math.round(r.voltage * 100));
+    w.u16(Math.round(r.minVoltage * 100));
   }
   const n = s.balls.states.length;
   w.u16(n);
@@ -147,7 +153,9 @@ export function decodeState(buf: ArrayBuffer): WorldState {
     const status = STATUSES[r.u8()];
     const [fl, fr, bl, br] = Array.from({ length: 4 }, () => r.i8() / 127);
     const stored = Array.from({ length: r.u8() }, () => r.u8());
-    robots.push({ slot, robot, x, z, yaw, heading, speed, turretYaw, pitch, flywheel, intakeDir, transfer, status, shotSpeed, shotDistance, powers: { fl, fr, bl, br }, stored });
+    const voltage = r.u16() / 100;
+    const minVoltage = r.u16() / 100;
+    robots.push({ slot, robot, x, z, yaw, heading, speed, turretYaw, pitch, flywheel, intakeDir, transfer, status, shotSpeed, shotDistance, powers: { fl, fr, bl, br }, stored, voltage, minVoltage });
   }
   const n = r.u16();
   const states = new Uint8Array(n);

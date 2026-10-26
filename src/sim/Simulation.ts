@@ -121,6 +121,7 @@ export class Simulation {
     this.hives.blue.reset();
     for (const [slot, p] of this.robots) {
       p.robot.setPose(this.startPose(slot, p.robot.cfg.length));
+      p.robot.battery.reset();
       p.mech.reset(this.balls.preloads(slot));
       p.input = idleInput();
     }
@@ -153,6 +154,8 @@ export class Simulation {
         robot.drive(0, 0, 0, dt);
       }
       mech.step(dt, input, enabled);
+      const { fl, fr, bl, br } = robot.powers;
+      robot.battery.step(dt, mech.flywheel, (Math.abs(fl) + Math.abs(fr) + Math.abs(bl) + Math.abs(br)) / 4);
       input.shooterOn = input.shooterOff = input.imuReset = false;
     }
     this.hives.red.step(dt, this.balls);
@@ -202,6 +205,8 @@ export class Simulation {
           shotDistance: mech.shot?.distance ?? 0,
           powers: { ...robot.powers },
           stored: mech.stored.map(b => b.id),
+          voltage: robot.battery.voltage,
+          minVoltage: robot.battery.minVoltage,
         };
       }),
       balls: { states, transforms },

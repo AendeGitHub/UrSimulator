@@ -28,6 +28,11 @@ export interface RobotDefinition {
   model: string;
   config: RobotConfig;
   shooter: ShooterSpec;
+  /**
+   * Where held balls sit in the model (robot frame: forward, up, right; m): `first` is the ball
+   * next to be shot, each further ball is `step` closer to the intake.
+   */
+  storage: { first: [number, number, number]; step: [number, number, number] };
 }
 
 /** Wheel surface speed: motor RPM / 60 · π · wheel diameter. */
@@ -57,6 +62,8 @@ export const URAN_V1: RobotDefinition = {
   // hood on the flywheel side, which faces the back of the robot in the CAD. From the opening side
   // of a cell the field allows at most ~2.3 m, so the accuracy scale fits that.
   shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: Math.PI },
+  // A row under the transfer rollers, from the turret forward to the intake.
+  storage: { first: [-0.075, 0.1, 0], step: [0.072, 0, 0] },
 };
 
 export const ROBOTS: RobotDefinition[] = [URAN_V1];

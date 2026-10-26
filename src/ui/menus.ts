@@ -21,6 +21,7 @@ export interface MainMenuActions {
   match(): void;
   practice(): void;
   online(): void;
+  records(): void;
   gamepads(): void;
   help(): void;
 }
@@ -56,7 +57,7 @@ export class MainMenu implements Screen {
     this.page = page;
     const a = this.actions;
     this.list.replaceChildren(...(page === 'root'
-      ? [item('Играть', () => this.open('play')), item('Онлайн 2 на 2', a.online), item('Геймпады', a.gamepads), item('Управление', a.help)]
+      ? [item('Играть', () => this.open('play')), item('Онлайн 2 на 2', a.online), item('Рекорды', a.records), item('Геймпады', a.gamepads), item('Управление', a.help)]
       : [h('div', { class: 'menu-heading' }, 'Играть'), item('Матч 2:30', a.match), item('Тренировка', a.practice), item('Назад', () => this.open('root'))]));
     this.nav.focusFirst();
   }
@@ -127,13 +128,13 @@ const CONTROLS: [ControlId, string][] = [
   ['right_stick_x', 'Поворот (правый стик)'],
   ['left_bumper', 'Захват: забрать мячи спереди (держать, до 4)'],
   ['dpad_down', 'Выкинуть мячи обратно (держать)'],
-  ['right_trigger', 'Шутер включить'],
-  ['left_trigger', 'Шутер выключить'],
+  ['left_trigger', 'Шутер включить'],
+  ['right_trigger', 'Шутер выключить (маховик садит аккумулятор)'],
   ['right_bumper', 'Трансфер: подать мячи в шутер (держать)'],
   ['left_stick_button', 'Медленный режим вкл / выкл'],
   ['back', 'Field-centric ↔ Robot-centric'],
   ['start', 'Сброс курса (IMU) для field-centric'],
-  ['right_stick_button', 'Сменить камеру'],
+  ['right_stick_button', 'Камера «За роботом»: смотреть вперёд / назад'],
   ['guide', 'Пауза'],
 ];
 

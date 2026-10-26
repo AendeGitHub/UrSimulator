@@ -1,8 +1,10 @@
 {
   "comment": "URAN V1 (Jedi92.stp). Coordinates are in the CAD frame (meters, Y up, front = +Z). Parts are matched in order: the first rule that fits a CAD part wins.",
   "forward": "+z",
-  "triangles": 340000,
+  "triangles": 150000,
+  "error": 0.005,
   "dropSmallerThan": 0.008,
+  "fixed": ["belt"],
   "parts": [
     { "name": "flywheel", "parent": "turret", "ancestor": "Flywheel:1", "pivot": [0, 0.234, -0.084], "axis": "x" },
     { "name": "turret", "ancestor": "Shooter:1", "pivot": [0, 0.189, -0.031], "axis": "y" },

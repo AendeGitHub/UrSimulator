@@ -101,7 +101,11 @@ export class RobotView {
         const axis = node.userData.spin as Axis | undefined;
         if (!axis) return;
         const spinner = { node, axis };
-        if (node.name === 'turret') this.turret = node;
+        if (node.name === 'turret') {
+          this.turret = node;
+          // Shooter facing forward until the robot starts aiming.
+          node.rotation.y = def.shooter.modelYaw;
+        }
         else if (node.name === 'flywheel') this.flywheel = spinner;
         else if (node.name.startsWith('wheel_')) this.wheels.set(node.name.slice(6) as keyof WheelPowers, spinner);
         else if (node.name.startsWith('intake')) this.intake.push(spinner);

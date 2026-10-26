@@ -23,6 +23,10 @@ export const SHOOTER = {
   feedInterval: 0.28,
   turretRate: 7,
   aimTolerance: 0.035,
+  /** Cables let the turret turn half a turn each way from straight ahead, rad */
+  turretLimit: Math.PI,
+  /** A target this far past the stop is not worth swinging round for yet, rad */
+  unwindMargin: 0.2,
 };
 
 const INTAKE = { reach: 0.09, inside: 0.06, halfWidth: 0.17, maxHeight: 0.16, interval: 0.12 };
@@ -70,7 +74,7 @@ export class Mechanisms {
   shooterOn = false;
   /** Flywheel speed as a fraction of maximum */
   flywheel = 0;
-  /** Turret angle relative to the robot, CCW positive */
+  /** Turret angle relative to the robot, CCW positive, within ±SHOOTER.turretLimit */
   turretYaw = 0;
   /** -1 ejecting, 0 idle, 1 intaking — for the roller animation */
   intakeDir = 0;
@@ -187,10 +191,17 @@ export class Mechanisms {
   private aim(dt: number): void {
     const launch = this.launchPoint();
     this.shot = solveShot(launch, this.target(), SHOOTER.descent, this.robot.velocity);
-    const desired = wrapAngle(this.shot.yaw - this.robot.yaw);
-    const err = wrapAngle(desired - this.turretYaw);
+    // The turret cannot spin round and round (its wires would wind up): it turns at most
+    // turretLimit either way, so a target that moves past the back is reached the long way round.
+    const target = wrapAngle(this.shot.yaw - this.robot.yaw);
+    let desired = target;
+    const acrossStop = Math.abs(target - this.turretYaw) > Math.PI;
+    // Just past the stop: wait there instead of swinging all the way round for a few degrees.
+    if (acrossStop && SHOOTER.turretLimit - Math.abs(target) < SHOOTER.unwindMargin) desired = Math.sign(this.turretYaw) * SHOOTER.turretLimit;
     const maxStep = SHOOTER.turretRate * dt;
-    this.turretYaw = wrapAngle(this.turretYaw + Math.max(-maxStep, Math.min(maxStep, err)));
+    const step = Math.max(-maxStep, Math.min(maxStep, desired - this.turretYaw));
+    this.turretYaw = Math.max(-SHOOTER.turretLimit, Math.min(SHOOTER.turretLimit, this.turretYaw + step));
+    const err = wrapAngle(target - this.turretYaw);
 
     // Auto speed: the flywheel targets exactly the speed this distance needs.
     const needed = this.shot.speed / SHOOTER.maxSpeed;

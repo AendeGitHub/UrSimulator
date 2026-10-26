@@ -50,6 +50,10 @@ function ancestors(node) {
 /** First part whose rule matches this CAD node, or "body". */
 function classify(node, center) {
   const names = ancestors(node);
+  // "fixed": parts that never turn even inside a moving part's zone, e.g. a drive belt that
+  // wraps around a wheel's pulley.
+  const lower = names.map(n => n.toLowerCase());
+  if ((spec.fixed ?? []).some(f => lower.some(n => n.includes(f.toLowerCase())))) return 'body';
   for (const part of spec.parts) {
     if (part.ancestor && !names.includes(part.ancestor)) continue;
     if (part.ancestorPrefix && !names.some(n => n.startsWith(part.ancestorPrefix))) continue;
@@ -165,7 +169,7 @@ async function main() {
 
   await MeshoptSimplifier.ready;
   const ratio = Math.min(1, spec.triangles / (total - dropped));
-  await doc.transform(weld({ tolerance: 0.00005 }), simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.004, lockBorder: false }), prune({ keepLeaves: true }), quantize());
+  await doc.transform(weld({ tolerance: 0.00005 }), simplify({ simplifier: MeshoptSimplifier, ratio, error: spec.error ?? 0.004, lockBorder: false }), prune({ keepLeaves: true }), quantize());
   const after = doc.getRoot().listMeshes().reduce((t, m) => t + m.listPrimitives().reduce((u, p) => u + p.getIndices().getCount() / 3, 0), 0);
 
   fs.mkdirSync(path.dirname(output), { recursive: true });

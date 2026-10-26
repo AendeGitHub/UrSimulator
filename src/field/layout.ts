@@ -14,5 +14,6 @@ export interface FieldLayout {
 }
 
 export const TILE_SIZE = 24 * 0.0254;
-export const POLLEN_RADIUS = 0.071 / 2;
-export const NECTAR_RADIUS = 0.091 / 2;
+// Diameters from the official game element CAD (Field/am-5851, am-5852).
+export const POLLEN_RADIUS = 0.0711 / 2;
+export const NECTAR_RADIUS = 0.0919 / 2;
