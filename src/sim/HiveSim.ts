@@ -11,10 +11,10 @@ import type { ColliderPart } from './colliders';
 export const NECTAR_WEIGHT = 2;
 export const TIP_LOAD = 10;
 /**
- * A full cell does not drop at once: the dampers hold it for a while, and teams can keep
- * launching into it. Exactly the tip weight takes 5 s, anything heavier 3 s.
+ * A full cell does not drop at once: the dampers hold it for 3 s, and teams can keep launching
+ * into it meanwhile.
  */
-export const TIP_DELAY = { exact: 5, overloaded: 3 };
+export const TIP_DELAY = 3;
 /** How far the hive sags toward the tip while the dampers give way. */
 const SAG = (6 * Math.PI) / 180;
 const TIP_DURATION = 0.7;
@@ -70,7 +70,7 @@ export class HiveSim {
 
   /** 0..1 progress toward a tip while the cell holds the tip weight. */
   get tipPending(): number {
-    return this.tipping === null ? Math.min(1, this.loaded / TIP_DELAY.exact) : 0;
+    return this.tipping === null ? Math.min(1, this.loaded / TIP_DELAY) : 0;
   }
 
   step(dt: number, balls: BallSim): void {
@@ -80,9 +80,8 @@ export class HiveSim {
       const toward = Math.sign(stateAngle(this.alliance, this.state === 'A' ? 'B' : 'A') - rest);
       if (load >= TIP_LOAD) {
         this.loaded += dt;
-        const delay = load > TIP_LOAD ? TIP_DELAY.overloaded : TIP_DELAY.exact;
-        this.setAngle(rest + toward * SAG * Math.min(1, this.loaded / delay), false);
-        if (this.loaded >= delay) {
+        this.setAngle(rest + toward * SAG * Math.min(1, this.loaded / TIP_DELAY), false);
+        if (this.loaded >= TIP_DELAY) {
           this.loaded = 0;
           this.tipping = 0;
           this.from = this.angle;
@@ -91,7 +90,7 @@ export class HiveSim {
       } else if (this.loaded > 0) {
         // Balls bounced out: the dampers push the hive back.
         this.loaded = Math.max(0, this.loaded - dt * 2);
-        this.setAngle(rest + toward * SAG * Math.min(1, this.loaded / TIP_DELAY.exact), false);
+        this.setAngle(rest + toward * SAG * Math.min(1, this.loaded / TIP_DELAY), false);
       }
       return;
     }

@@ -10,8 +10,8 @@ import type { RobotSim } from './RobotSim';
 export type Period = 'practice' | 'auto' | 'transition' | 'teleop' | 'post';
 export const PERIODS: Period[] = ['practice', 'auto', 'transition', 'teleop', 'post'];
 
-/** Seconds (manual 10.4) */
-export const DURATION = { auto: 30, transition: 8, teleop: 120 };
+/** Seconds (manual 10.4, but a 3 s break after AUTO instead of 8 s keeps solo play moving) */
+export const DURATION = { auto: 30, transition: 3, teleop: 120 };
 /** With this much TELEOP left, flowers open and all NECTAR may be entered (G410, G426). */
 export const ENDGAME = 60;
 const FINAL_WARNING = 20;

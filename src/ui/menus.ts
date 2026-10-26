@@ -130,7 +130,7 @@ const CONTROLS: [ControlId, string][] = [
   ['dpad_down', 'Выкинуть мячи обратно (держать)'],
   ['left_trigger', 'Шутер включить'],
   ['right_trigger', 'Шутер выключить (маховик садит аккумулятор)'],
-  ['right_bumper', 'Трансфер: подать мячи в шутер (держать)'],
+  ['right_bumper', 'Трансфер: мячи в шутер (держать); интейк тоже крутится и подбирает мячи прямо в шутер'],
   ['left_stick_button', 'Медленный режим вкл / выкл'],
   ['back', 'Field-centric ↔ Robot-centric'],
   ['start', 'Сброс курса (IMU) для field-centric'],

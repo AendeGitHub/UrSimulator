@@ -123,24 +123,56 @@ describe('hive tipping delay', () => {
     });
   }
 
-  it('with exactly the tip weight (3 NECTAR + 4 POLLEN = 10) it holds about 5 s', () => {
+  /** Takes the 3 staged NECTAR out of the red cell so it starts empty. */
+  function emptyRedCell(sim: Simulation) {
+    sim.hives.red.ballsInUpCell(sim.balls).forEach((b, i) => sim.balls.release(b, [-1.2 + i * 0.15, b.radius, -1.4], [0, 0, 0]));
+  }
+
+  /** Drops balls of one kind into the upward red cell in a loose grid. */
+  function dropIntoRedCell(sim: Simulation, kind: 'pollen' | 'nectar', n: number) {
+    const hive = sim.hives.red;
+    const f = cellFrame('red', 'pos', hive.pivot, hive.angle);
+    const balls = sim.balls.all.filter(b => b.kind === kind && b.state !== 'held' && (kind === 'pollen' || b.color === 'red') && !hive.ballsInUpCell(sim.balls).includes(b)).slice(0, n);
+    expect(balls).toHaveLength(n);
+    // Slots inside the cell volume: 4 across, 2 deep (along the opening), 2 high (below the roof).
+    balls.forEach((b, i) => {
+      const [x, u, w] = [-0.18 + (i % 4) * 0.12, Math.floor(i / 4) % 2 ? 0.07 : -0.07, Math.floor(i / 8) ? 0.02 : -0.09];
+      const p: [number, number, number] = [0, 1, 2].map(k => f.center[k] + (k === 0 ? x : 0) + f.u[k] * u + f.w[k] * w) as [number, number, number];
+      sim.balls.release(b, p, [0, 0, 0]);
+    });
+  }
+
+  it('starts with 3 NECTAR in the cell (weight 6): 4 POLLEN make 10 and it tips 3 s later', () => {
     const { sim } = makeSim();
     sim.start('practice');
     fillRedCell(sim, 4);
-    run(sim, 4);
+    run(sim, 2.4);
     expect(sim.hives.red.tips).toBe(0);
-    expect(sim.hives.red.tipPending).toBeGreaterThan(0.6);
-    run(sim, 2.5);
+    expect(sim.hives.red.tipPending).toBeGreaterThan(0.5);
+    run(sim, 1.6);
     expect(sim.hives.red.tips).toBe(1);
   });
 
-  it('heavier than that it tips after about 3 s', () => {
+  it('an empty cell tips with 10 POLLEN but not with 9', () => {
+    for (const [n, tips] of [[9, 0], [10, 1]] as const) {
+      const { sim } = makeSim();
+      sim.start('practice');
+      emptyRedCell(sim);
+      dropIntoRedCell(sim, 'pollen', n);
+      run(sim, 2);
+      // All of them landed in the cell and count; NECTAR would count double.
+      expect(sim.hives.red.ballsInUpCell(sim.balls)).toHaveLength(n);
+      run(sim, 2);
+      expect(sim.hives.red.tips).toBe(tips);
+    }
+  });
+
+  it('5 NECTAR weigh as much as 10 POLLEN and tip it', () => {
     const { sim } = makeSim();
     sim.start('practice');
-    fillRedCell(sim, 6);
-    run(sim, 2.4);
-    expect(sim.hives.red.tips).toBe(0);
-    run(sim, 1.6);
+    // 3 NECTAR are already in the cell; 2 more make 5.
+    dropIntoRedCell(sim, 'nectar', 2);
+    run(sim, 5);
     expect(sim.hives.red.tips).toBe(1);
   });
 });
@@ -283,5 +315,33 @@ describe('turret wiring and battery', () => {
     expect(fresh.volts).toBeGreaterThan(13);
     expect(tired.volts).toBeLessThan(13);
     expect(tired.best).toBeLessThan(fresh.best * 0.95);
+  });
+});
+
+describe('transfer', () => {
+  beforeAll(() => initPhysics());
+
+  it('also runs the intake: a ball picked up while feeding goes straight out of the shooter', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test');
+    sim.start('practice');
+    p.robot.setPose({ x: -0.9, z: -1.2, yaw: 0 });
+    p.mech.reset([]);
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    run(sim, 1.5);
+    // A ball right at the front rollers once the flywheel is up to speed.
+    const b = sim.balls.all.find(x => x.kind === 'pollen' && x.state === 'field')!;
+    const [x, , z] = p.robot.position;
+    sim.balls.release(b, [x + p.robot.cfg.length / 2 + 0.04, b.radius, z], [0, 0, 0]);
+    // Picked up and fed in the same step: the ball goes straight out of the shooter.
+    let flew = false;
+    for (let i = 0; i < Math.round(2 / PHYSICS_DT); i++) {
+      sim.setInput('red1', { ...idleInput(), transfer: true });
+      sim.step();
+      if (sim.balls.position(b)[1] > 0.3) flew = true;
+    }
+    expect(flew).toBe(true);
+    expect(p.mech.stored).toHaveLength(0);
+    expect(p.mech.intakeDir).toBe(1);
   });
 });

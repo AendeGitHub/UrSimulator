@@ -140,7 +140,8 @@ export class Mechanisms {
     if (input.shooterOn) this.shooterOn = true;
     if (input.shooterOff) this.shooterOn = false;
 
-    this.intakeDir = input.eject ? -1 : input.intake ? 1 : 0;
+    // The transfer runs the intake too, so balls picked up while feeding go straight to the shooter.
+    this.intakeDir = input.eject ? -1 : input.intake || input.transfer ? 1 : 0;
     if (this.intakeDir === 1) this.runIntake(dt);
     if (this.intakeDir === -1) this.runEject(dt);
 

@@ -1,4 +1,4 @@
-// The venue around the field: carpet, sided hall walls, two sets of bleachers with aisles,
+// The venue around the field: carpet, sided hall walls, two arena stands with seats and fans,
 // steel ceiling trusses with light rows and big logo banners. FTC drivers stand on the floor in
 // the alliance area, so there are no FRC-style driver station walls.
 // Field center is the origin; red drivers stand at -X, blue at +X, the audience side is +Z.
@@ -180,8 +180,10 @@ export class Arena {
   }
 
   /**
-   * Bleachers along one long side. `side` = +1 faces the field from +Z, -1 from -Z.
-   * Wooden risers, blue bench seats with backs, aisle stairs with black handrails.
+   * Arena stand along one long side. `side` = +1 faces the field from +Z, -1 from -Z.
+   * Concrete steps, single plastic seats on pedestals, a glass front barrier with a rail and an
+   * LED strip, aisle stairs with handrails, and a scattering of spectators. Everything repeated
+   * is instanced, so a stand costs a handful of draw calls.
    */
   private buildBleachers(z0: number, side: 1 | -1): void {
     const rows = 10;
@@ -189,47 +191,98 @@ export class Arena {
     const depth = 0.75;
     const rise = 0.4;
     const aisles = [-7.5, 0, 7.5];
-    const sections = [[-length / 2, aisles[0] - 0.6], [aisles[0] + 0.6, aisles[1] - 0.6], [aisles[1] + 0.6, aisles[2] - 0.6], [aisles[2] + 0.6, length / 2]];
+    const aisleWidth = 1.2;
+    const seatPitch = 0.52;
+    const sections = [[-length / 2, aisles[0]], [aisles[0], aisles[1]], [aisles[1], aisles[2]], [aisles[2], length / 2]]
+      .map(([a, b]) => [a + (a === -length / 2 ? 0.2 : aisleWidth / 2), b - (b === length / 2 ? 0.2 : aisleWidth / 2)]);
+    // Seats face the field: -Z for the stand at +Z. Facing angle about Y for the instances.
+    const facing = side > 0 ? 0 : Math.PI;
 
-    const riserMat = new THREE.MeshStandardMaterial({ color: '#c49a63', roughness: 0.7 });
-    const frontMat = new THREE.MeshStandardMaterial({ color: '#8c6a40', roughness: 0.8 });
-    const seatMat = new THREE.MeshStandardMaterial({ color: '#1f45d6', roughness: 0.45, metalness: 0.1 });
-    const unit = new THREE.BoxGeometry(1, 1, 1);
-    const count = rows * sections.length;
-    const risers = new THREE.InstancedMesh(unit, riserMat, rows);
-    const fronts = new THREE.InstancedMesh(unit, frontMat, rows);
-    const seats = new THREE.InstancedMesh(unit, seatMat, count);
-    const backs = new THREE.InstancedMesh(unit, seatMat, count);
     const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), facing);
     const v = new THREE.Vector3();
-    const s = new THREE.Vector3();
-    let k = 0;
+    const s = new THREE.Vector3(1, 1, 1);
+
+    // Concrete steps (each a solid block from the floor so the stand looks solid from the ends)
+    // with a darker nosing on every step edge.
+    const unit = new THREE.BoxGeometry(1, 1, 1);
+    const steps = new THREE.InstancedMesh(unit, new THREE.MeshStandardMaterial({ color: '#8d9099', roughness: 0.9 }), rows);
+    const nosing = new THREE.InstancedMesh(unit, new THREE.MeshStandardMaterial({ color: '#3a3d44', roughness: 0.7 }), rows);
     for (let i = 0; i < rows; i++) {
       const top = rise * (i + 1);
       const z = z0 + side * i * depth;
-      // Each step is a solid block from the floor so the stand looks solid from the ends.
-      risers.setMatrixAt(i, m.compose(v.set(0, top / 2 + FLOOR_Y, z), q, s.set(length, top, depth)));
-      fronts.setMatrixAt(i, m.compose(v.set(0, top - 0.06 + FLOOR_Y, z - side * (depth / 2 - 0.01)), q, s.set(length, 0.12, 0.02)));
+      steps.setMatrixAt(i, m.compose(v.set(0, top / 2 + FLOOR_Y, z), q.identity(), s.set(length, top, depth)));
+      nosing.setMatrixAt(i, m.compose(v.set(0, top - 0.02 + FLOOR_Y, z - side * (depth / 2 - 0.02)), q, s.set(length, 0.04, 0.05)));
+    }
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), facing);
+
+    // One stadium seat: pan and slightly reclined back in plastic, a dark pedestal under it.
+    const pan = new THREE.BoxGeometry(0.44, 0.05, 0.38).translate(0, 0.42, -0.02);
+    const back = new THREE.BoxGeometry(0.44, 0.4, 0.05).rotateX(-0.12).translate(0, 0.66, 0.19);
+    const seatGeo = mergeGeometries([pan, back])!;
+    const pedestalGeo = new THREE.BoxGeometry(0.08, 0.4, 0.26).translate(0, 0.2, 0.04);
+    // A seated spectator: body (shirt colour) and head (skin tone).
+    const torso = new THREE.CapsuleGeometry(0.15, 0.3, 3, 8).translate(0, 0.78, 0.08);
+    const thighs = new THREE.BoxGeometry(0.32, 0.14, 0.42).translate(0, 0.52, -0.14);
+    const shins = new THREE.BoxGeometry(0.28, 0.44, 0.12).translate(0, 0.24, -0.34);
+    const bodyGeo = mergeGeometries([torso.toNonIndexed(), thighs.toNonIndexed(), shins.toNonIndexed()])!;
+    const headGeo = new THREE.SphereGeometry(0.1, 10, 8).translate(0, 1.13, 0.06);
+
+    const spots: THREE.Vector3[] = [];
+    for (let i = 0; i < rows; i++) {
+      const z = z0 + side * i * depth;
+      const y = rise * (i + 1) + FLOOR_Y;
       for (const [a, b] of sections) {
-        const cx = (a + b) / 2;
-        const w = b - a;
-        seats.setMatrixAt(k, m.compose(v.set(cx, top + 0.05 + FLOOR_Y, z - side * 0.12), q, s.set(w, 0.07, 0.34)));
-        backs.setMatrixAt(k, m.compose(v.set(cx, top + 0.22 + FLOOR_Y, z + side * 0.06), q, s.set(w, 0.3, 0.05)));
-        k++;
+        const n = Math.floor((b - a) / seatPitch);
+        for (let k = 0; k < n; k++) spots.push(new THREE.Vector3(a + (k + 0.5) * ((b - a) / n), y, z + side * 0.06));
       }
     }
-    for (const mesh of [risers, fronts, seats, backs]) {
+    const seatMat = new THREE.MeshStandardMaterial({ color: '#1f45d6', roughness: 0.45 });
+    const seats = new THREE.InstancedMesh(seatGeo, seatMat, spots.length);
+    const pedestals = new THREE.InstancedMesh(pedestalGeo, this.metal, spots.length);
+    spots.forEach((p, i) => {
+      m.compose(p, q, s.set(1, 1, 1));
+      seats.setMatrixAt(i, m);
+      pedestals.setMatrixAt(i, m);
+    });
+
+    // About a third of the seats are taken (deterministic, so the crowd is the same every run).
+    let seed = side > 0 ? 7 : 11;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const taken = spots.filter(() => rand() < 0.33);
+    const shirts = ['#c62828', '#1f4fd1', '#f5c518', '#2e7d32', '#eeeeee', '#222222', '#ff7043', '#6a1b9a'];
+    const skins = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
+    const bodies = new THREE.InstancedMesh(bodyGeo, new THREE.MeshStandardMaterial({ roughness: 0.8 }), taken.length);
+    const heads = new THREE.InstancedMesh(headGeo, new THREE.MeshStandardMaterial({ roughness: 0.6 }), taken.length);
+    const color = new THREE.Color();
+    taken.forEach((p, i) => {
+      // People lean and turn a little; nobody sits perfectly still.
+      const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), facing + (rand() - 0.5) * 0.5);
+      m.compose(p, turn, s.set(1, 0.9 + rand() * 0.2, 1));
+      bodies.setMatrixAt(i, m);
+      heads.setMatrixAt(i, m);
+      bodies.setColorAt(i, color.set(shirts[Math.floor(rand() * shirts.length)]));
+      heads.setColorAt(i, color.set(skins[Math.floor(rand() * skins.length)]));
+    });
+
+    for (const mesh of [steps, nosing, seats, pedestals, bodies, heads]) {
       mesh.receiveShadow = true;
       this.root.add(mesh);
     }
 
+    // Front of the stand: dark fascia with a glowing LED strip, glass barrier and top rail.
+    const front = z0 - side * (depth / 2 + 0.02);
+    this.box([length, 0.5, 0.04], new THREE.MeshStandardMaterial({ color: '#16181d', roughness: 0.6 }), [0, 0.25 + FLOOR_Y, front]);
+    this.box([length, 0.04, 0.02], new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#7fb2ff', emissiveIntensity: 1.6 }), [0, 0.44 + FLOOR_Y, front - side * 0.015]);
+    this.box([length, 0.9, 0.015], new THREE.MeshStandardMaterial({ color: '#cfe3ff', transparent: true, opacity: 0.12, roughness: 0.05, depthWrite: false }), [0, 0.95 + FLOOR_Y, front]);
+    this.box([length, 0.05, 0.06], this.metal, [0, 1.42 + FLOOR_Y, front]);
+
     // Aisle stairs (half steps) with handrails down the middle.
-    const stairMat = new THREE.MeshStandardMaterial({ color: '#d7b27c', roughness: 0.7 });
+    const stairMat = new THREE.MeshStandardMaterial({ color: '#6f737c', roughness: 0.9 });
     for (const x of aisles) {
       for (let i = 0; i < rows; i++) {
         const z = z0 + side * i * depth;
-        this.box([1.1, 0.04, depth / 2], stairMat, [x, rise * i + rise / 2 + FLOOR_Y + 0.02, z - side * depth / 4]);
+        this.box([aisleWidth - 0.1, 0.04, depth / 2], stairMat, [x, rise * i + rise / 2 + FLOOR_Y + 0.02, z - side * depth / 4]);
       }
       const railLen = Math.hypot(rows * depth, rows * rise);
       const rail = this.box([0.05, 0.05, railLen], this.metal, [x, (rows * rise) / 2 + 0.95 + FLOOR_Y, z0 + side * (rows - 1) * depth / 2]);
@@ -238,8 +291,10 @@ export class Arena {
         this.box([0.04, 0.95, 0.04], this.metal, [x, rise * (i + 1) + 0.47 + FLOOR_Y, z0 + side * i * depth]);
       }
     }
-    // Back railing along the top row.
-    this.box([length, 0.05, 0.05], this.metal, [0, rise * rows + 1.0 + FLOOR_Y, z0 + side * (rows - 0.5) * depth]);
+    // Back wall and railing behind the top row.
+    const backZ = z0 + side * (rows - 0.5) * depth;
+    this.box([length, 1.2, 0.08], new THREE.MeshStandardMaterial({ color: '#2a2d34', roughness: 0.8 }), [0, rise * rows + 0.6 + FLOOR_Y, backZ + side * 0.04]);
+    this.box([length, 0.05, 0.05], this.metal, [0, rise * rows + 1.0 + FLOOR_Y, backZ]);
   }
 
   private buildCeiling(): void {
