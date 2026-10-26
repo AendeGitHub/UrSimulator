@@ -1,4 +1,6 @@
 // A robot on the field: the team's CAD model (see tools/convert-robot.mjs) with alliance robot signs.
+// Moving parts of the model turn with the robot's state: turret toward the target, mecanum wheels
+// with their motor powers, intake and transfer rollers when running, flywheel with its speed.
 // Robot frame: forward = +X, right = +Z, origin on the floor at the footprint center.
 
 import * as THREE from 'three';
@@ -6,11 +8,21 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Alliance } from '../robot/robotConfig';
 import type { RobotDefinition } from '../robot/robots';
+import type { WheelPowers } from '../robot/mecanum';
 import type { RobotState } from '../sim/state';
 
 const ALLIANCE_COLORS: Record<Alliance, string> = { red: '#d42a2a', blue: '#1f5fd6' };
 /** Edges sharper than this stay sharp when normals are rebuilt. */
-const CREASE_ANGLE = (35 * Math.PI) / 180;
+const CREASE_ANGLE = (32 * Math.PI) / 180;
+/** Roller and flywheel speeds for the animation, rad/s */
+const SPIN = { intake: 28, transfer: 22, flywheel: 260 };
+
+type Axis = 'x' | 'y' | 'z';
+
+interface Spinner {
+  node: THREE.Object3D;
+  axis: Axis;
+}
 
 const models = new Map<string, Promise<THREE.Group>>();
 
@@ -55,6 +67,11 @@ export class RobotView {
   private alliance: Alliance;
   private name: string;
   private disposed = false;
+  private turret: THREE.Object3D | null = null;
+  private flywheel: Spinner | null = null;
+  private readonly wheels = new Map<keyof WheelPowers, Spinner>();
+  private readonly intake: Spinner[] = [];
+  private readonly transfer: Spinner[] = [];
 
   constructor(readonly def: RobotDefinition, alliance: Alliance, name: string) {
     this.alliance = alliance;
@@ -72,7 +89,19 @@ export class RobotView {
     this.paintSigns();
 
     loadModel(def.model).then(model => {
-      if (!this.disposed) this.root.add(model.clone());
+      if (this.disposed) return;
+      const robot = model.clone();
+      this.root.add(robot);
+      robot.traverse(node => {
+        const axis = node.userData.spin as Axis | undefined;
+        if (!axis) return;
+        const spinner = { node, axis };
+        if (node.name === 'turret') this.turret = node;
+        else if (node.name === 'flywheel') this.flywheel = spinner;
+        else if (node.name.startsWith('wheel_')) this.wheels.set(node.name.slice(6) as keyof WheelPowers, spinner);
+        else if (node.name.startsWith('intake')) this.intake.push(spinner);
+        else if (node.name.startsWith('transfer')) this.transfer.push(spinner);
+      });
     });
   }
 
@@ -102,8 +131,19 @@ export class RobotView {
     }
   }
 
-  apply(s: RobotState): void {
+  apply(s: RobotState, dt: number): void {
     this.root.position.set(s.x, 0.002, s.z);
     this.root.rotation.set(0, s.yaw, 0);
+    if (this.turret) this.turret.rotation.y = s.turretYaw;
+    // Driving forward turns the wheels backward about the side axis (right-hand rule).
+    const wheelRate = this.def.config.drive.maxWheelSpeed / this.def.config.wheelRadius;
+    for (const [k, w] of this.wheels) spin(w, -s.powers[k] * wheelRate * dt);
+    for (const r of this.intake) spin(r, -s.intakeDir * SPIN.intake * dt);
+    if (s.transfer) for (const r of this.transfer) spin(r, -SPIN.transfer * dt);
+    if (this.flywheel) spin(this.flywheel, -s.flywheel * SPIN.flywheel * dt);
   }
+}
+
+function spin({ node, axis }: Spinner, angle: number): void {
+  node.rotation[axis] = (node.rotation[axis] + angle) % (Math.PI * 2);
 }

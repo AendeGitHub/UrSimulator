@@ -12,6 +12,14 @@ export interface ResultsActions {
   menu(): void;
 }
 
+function penalties(s: AllianceScore): HTMLElement | string {
+  const lines: string[] = [];
+  if (s.redCards) lines.push('🟥 Красная карточка — дисквалификация: 0 очков');
+  if (s.yellowCards) lines.push(`🟨 Жёлтых карточек: ${s.yellowCards}`);
+  if (s.warnings) lines.push(`⚠️ Предупреждений: ${s.warnings} (G408 — NECTAR соперника)`);
+  return lines.length ? h('div', { class: 'penalties' }, ...lines.map(l => h('p', { class: 'warn' }, l))) : '';
+}
+
 export class ResultsScreen implements Screen {
   readonly el = h('div', { class: 'screen menu-results' });
   readonly nav: MenuNav;
@@ -38,6 +46,7 @@ export class ResultsScreen implements Screen {
         rows.length
           ? h('table', { class: 'controls' }, ...rows.map(r => h('tr', {}, h('td', {}, r.label), h('td', { class: 'num' }, `×${r.count}`), h('td', { class: 'num' }, `+${r.points}`))))
           : h('p', { class: 'muted' }, 'Очков нет — попробуй перевернуть улей!'),
+        penalties(score[mine]),
         h('div', { class: 'row rp' },
           chip(rp.pollinator1, `POLLINATOR 1 (${RP_THRESHOLDS.pollinator1} переворота)`),
           chip(rp.pollinator2, `POLLINATOR 2 (${RP_THRESHOLDS.pollinator2} переворотов)`),

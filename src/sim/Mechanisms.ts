@@ -22,8 +22,6 @@ export const SHOOTER = {
   shotDrop: 0.9,
   feedInterval: 0.28,
   turretRate: 7,
-  /** Balls leave this far from the turret axis */
-  exitOffset: 0.06,
   aimTolerance: 0.035,
 };
 
@@ -78,6 +76,8 @@ export class Mechanisms {
   intakeDir = 0;
   shot: ShotSolution | null = null;
   status: ShooterStatus = 'off';
+  /** Called when the robot breaks a rule (e.g. picks up the opponent's NECTAR). */
+  onViolation?: (rule: 'G408') => void;
   private intakeTimer = 0;
   private ejectTimer = 0;
   private feedTimer = 0;
@@ -118,9 +118,9 @@ export class Mechanisms {
     const [tf, tr] = this.spec.at;
     const aim = yaw + this.turretYaw;
     return [
-      px + fx * tf + rx * tr + Math.cos(aim) * SHOOTER.exitOffset,
+      px + fx * tf + rx * tr + Math.cos(aim) * this.spec.exit,
       this.spec.height,
-      pz + fz * tf + rz * tr - Math.sin(aim) * SHOOTER.exitOffset,
+      pz + fz * tf + rz * tr - Math.sin(aim) * this.spec.exit,
     ];
   }
 
@@ -154,8 +154,6 @@ export class Mechanisms {
     const front = this.robot.cfg.length / 2;
     for (const b of this.balls.all) {
       if (b.state !== 'field') continue;
-      // G408: the intake sorts out the opponent's NECTAR.
-      if (b.kind === 'nectar' && b.color !== this.robot.alliance) continue;
       const [x, y, z] = this.balls.position(b);
       if (y < FLOWER_TUBE.height && this.flowers.some(([fx, fz]) => Math.hypot(x - fx, z - fz) < FLOWER_TUBE.radius)) continue;
       const dx = x - px;
@@ -166,6 +164,8 @@ export class Mechanisms {
         this.balls.hold(b);
         this.stored.push(b);
         this.intakeTimer = INTAKE.interval;
+        // G408: a robot may not control the opponent's NECTAR.
+        if (b.kind === 'nectar' && b.color !== this.robot.alliance) this.onViolation?.('G408');
         return;
       }
     }

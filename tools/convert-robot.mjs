@@ -1,112 +1,181 @@
-// Turns a robot CAD export into a light game model.
+// Turns a robot CAD export into a game model with moving parts.
 //
 // Step 1 (STEP → GLB, native OpenCASCADE; needs `pip install cascadio==0.1.1 numpy`):
-//   python3 -c "import cascadio; cascadio.step_to_glb('Robot/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.4, tol_angular=0.6, include_materials=True)"
-// Step 2 (this script):
-//   node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb --forward=+z
+//   python3 -c "import cascadio; cascadio.step_to_glb('Robot/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.8, tol_angular=0.45, include_materials=True)"
+// Step 2 (this script, with the robot's part list):
+//   node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb tools/robots/uran-v1.json
 //
-// The output faces +X (game "forward"), stands on y = 0, is centered on its footprint,
-// has one mesh per color and is simplified for real-time rendering. It has no normals:
-// CAD normals split every face into its own island, which blocks simplification, so the
-// game computes creased normals when it loads the model.
+// The output faces +X (game "forward"), stands on y = 0 and is centered on its footprint.
+// Moving parts (turret, flywheel, wheels, rollers) become separate nodes whose origin is their
+// pivot; `extras.spin` names the game axis they turn around. Everything else is one "body" node.
+// Meshes carry no normals: CAD normals split every face into its own island, which blocks
+// simplification, so the game computes creased normals when it loads the model.
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { Document, NodeIO } from '@gltf-transform/core';
+import { Document, NodeIO, getBounds } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { prune, quantize, simplify, weld } from '@gltf-transform/functions';
 import { MeshoptSimplifier } from 'meshoptimizer';
 
-const [input, output, ...flags] = process.argv.slice(2);
-if (!input || !output) {
-  console.error('Usage: node tools/convert-robot.mjs <raw.glb> <out.glb> [--forward=+z|-z|+x|-x] [--triangles=150000]');
+const [input, output, specPath] = process.argv.slice(2);
+if (!input || !output || !specPath) {
+  console.error('Usage: node tools/convert-robot.mjs <raw.glb> <out.glb> <robot-spec.json>');
   process.exit(1);
 }
-const option = (name, fallback) => flags.find(f => f.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
-const forward = option('forward', '+z');
-const targetTriangles = Number(option('triangles', 150000));
+const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
 
 /** Yaw that turns the CAD's forward axis onto +X. */
-const YAW = { '+z': Math.PI / 2, '-z': -Math.PI / 2, '+x': 0, '-x': Math.PI }[forward];
-if (YAW === undefined) throw new Error(`--forward must be +z, -z, +x or -x`);
-
-function mul(a, b) {
-  const o = new Array(16).fill(0);
-  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k];
-  return o;
+const YAW = { '+z': Math.PI / 2, '-z': -Math.PI / 2, '+x': 0, '-x': Math.PI }[spec.forward];
+if (YAW === undefined) throw new Error('"forward" must be +z, -z, +x or -x');
+const cosY = Math.cos(YAW);
+const sinY = Math.sin(YAW);
+/** CAD → game rotation (about +Y). */
+const rot = ([x, y, z]) => [cosY * x + sinY * z, y, -sinY * x + cosY * z];
+/** A CAD axis name expressed as a game axis name (the rotation is a multiple of 90°). */
+function gameAxis(axis) {
+  if (axis === 'y') return 'y';
+  const v = rot(axis === 'x' ? [1, 0, 0] : [0, 0, 1]);
+  return Math.abs(v[0]) > 0.5 ? 'x' : 'z';
 }
-const apply = (m, [x, y, z], w = 1) => [
-  m[0] * x + m[4] * y + m[8] * z + m[12] * w,
-  m[1] * x + m[5] * y + m[9] * z + m[13] * w,
-  m[2] * x + m[6] * y + m[10] * z + m[14] * w,
-];
+
+const apply = (m, [x, y, z]) => [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
+
+function ancestors(node) {
+  const names = [];
+  for (let n = node; n; n = n.getParentNode()) names.push(n.getName());
+  return names;
+}
+
+/** First part whose rule matches this CAD node, or "body". */
+function classify(node, center) {
+  const names = ancestors(node);
+  for (const part of spec.parts) {
+    if (part.ancestor && !names.includes(part.ancestor)) continue;
+    if (part.ancestorPrefix && !names.some(n => n.startsWith(part.ancestorPrefix))) continue;
+    if (part.within && !Object.entries(part.within).every(([axis, [lo, hi]]) => {
+      const v = center['xyz'.indexOf(axis)];
+      return v >= lo && v <= hi;
+    })) continue;
+    if (part.cylinder) {
+      const [cx, cy, cz] = part.cylinder.center;
+      if (Math.abs(center[0] - cx) > part.cylinder.halfWidth || Math.hypot(center[1] - cy, center[2] - cz) > part.cylinder.radius) continue;
+    }
+    return part.name;
+  }
+  return 'body';
+}
+
+/** Plastics, aluminium and rubber read better with simple material guesses from their CAD color. */
+function surface([r, g, b]) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max < 0.12) return { metal: 0.1, rough: 0.55 };
+  if (max - min < 0.06 && max > 0.3) return { metal: 0.75, rough: 0.32 };
+  return { metal: 0.05, rough: 0.5 };
+}
 
 async function main() {
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
   const src = await io.read(input);
-  const yawM = [Math.cos(YAW), 0, -Math.sin(YAW), 0, 0, 1, 0, 0, Math.sin(YAW), 0, Math.cos(YAW), 0, 0, 0, 0, 1];
 
-  // Gather every triangle in world space, grouped by color.
+  // Collect triangles per (part, color) in CAD coordinates.
   const groups = new Map();
-  const min = [Infinity, Infinity, Infinity];
-  const max = [-Infinity, -Infinity, -Infinity];
+  let dropped = 0;
+  let total = 0;
   for (const node of src.getRoot().listNodes()) {
     const mesh = node.getMesh();
     if (!mesh) continue;
-    const m = mul(yawM, node.getWorldMatrix());
+    const b = getBounds(node);
+    const size = Math.max(...b.max.map((v, i) => v - b.min[i]));
+    const tris = mesh.listPrimitives().reduce((t, p) => t + (p.getIndices()?.getCount() ?? 0) / 3, 0);
+    total += tris;
+    // Screws, nuts and pins add triangles but nothing visible at game distance.
+    if (size < spec.dropSmallerThan) {
+      dropped += tris;
+      continue;
+    }
+    const center = b.min.map((v, i) => (v + b.max[i]) / 2);
+    const part = classify(node, center);
+    const m = node.getWorldMatrix();
     for (const prim of mesh.listPrimitives()) {
       const mat = prim.getMaterial();
       const color = mat ? mat.getBaseColorFactor() : [0.6, 0.6, 0.6, 1];
-      const metal = mat ? mat.getMetallicFactor() : 0;
-      const rough = mat ? mat.getRoughnessFactor() : 0.6;
-      const key = [...color, metal, rough].map(v => v.toFixed(3)).join(',');
-      if (!groups.has(key)) groups.set(key, { color, metal, rough, pos: [], idx: [] });
+      const key = `${part}|${color.map(v => v.toFixed(3)).join(',')}`;
+      if (!groups.has(key)) groups.set(key, { part, color, pos: [], idx: [] });
       const g = groups.get(key);
       const pos = prim.getAttribute('POSITION');
       const base = g.pos.length / 3;
       const el = [];
-      for (let i = 0; i < pos.getCount(); i++) {
-        const p = apply(m, pos.getElement(i, el));
-        g.pos.push(...p);
-        for (let k = 0; k < 3; k++) {
-          min[k] = Math.min(min[k], p[k]);
-          max[k] = Math.max(max[k], p[k]);
-        }
-      }
+      for (let i = 0; i < pos.getCount(); i++) g.pos.push(...apply(m, pos.getElement(i, el)));
       const ind = prim.getIndices();
       if (ind) for (let i = 0; i < ind.getCount(); i++) g.idx.push(base + ind.getScalar(i));
-      else for (let i = 0; i < pos.getCount(); i++) g.idx.push(base + i);
     }
   }
-  // Footprint center to the origin, wheels on the floor.
+
+  // Footprint center to the origin, wheels on the floor (computed in game orientation).
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (const g of groups.values()) {
+    for (let i = 0; i < g.pos.length; i += 3) {
+      const p = rot([g.pos[i], g.pos[i + 1], g.pos[i + 2]]);
+      for (let k = 0; k < 3; k++) {
+        min[k] = Math.min(min[k], p[k]);
+        max[k] = Math.max(max[k], p[k]);
+      }
+    }
+  }
   const offset = [-(min[0] + max[0]) / 2, -min[1], -(min[2] + max[2]) / 2];
+  const toGame = p => rot(p).map((v, k) => v + offset[k]);
 
   const doc = new Document();
   const buffer = doc.createBuffer();
-  const scene = doc.createScene('robot');
   const root = doc.createNode('robot');
-  scene.addChild(root);
-  let triangles = 0;
+  doc.createScene('robot').addChild(root);
+  const pivots = { body: [0, 0, 0] };
+  const nodes = { body: doc.createNode('body') };
+  root.addChild(nodes.body);
+  for (const part of spec.parts) {
+    pivots[part.name] = toGame(part.pivot);
+    nodes[part.name] = doc.createNode(part.name).setExtras({ spin: gameAxis(part.axis) });
+  }
+  for (const part of spec.parts) {
+    const parent = part.parent ?? 'body';
+    // Node origin = pivot, expressed relative to the parent's pivot.
+    nodes[part.name].setTranslation(pivots[part.name].map((v, k) => v - pivots[parent][k]));
+    (parent === 'body' ? root : nodes[parent]).addChild(nodes[part.name]);
+  }
+
   for (const g of groups.values()) {
-    for (let i = 0; i < g.pos.length; i += 3) for (let k = 0; k < 3; k++) g.pos[i + k] += offset[k];
+    const pivot = pivots[g.part];
+    const P = new Float32Array(g.pos.length);
+    for (let i = 0; i < g.pos.length; i += 3) {
+      const p = toGame([g.pos[i], g.pos[i + 1], g.pos[i + 2]]);
+      P[i] = p[0] - pivot[0];
+      P[i + 1] = p[1] - pivot[1];
+      P[i + 2] = p[2] - pivot[2];
+    }
+    const { metal, rough } = surface(g.color);
     const prim = doc.createPrimitive()
-      .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(new Float32Array(g.pos)).setBuffer(buffer))
+      .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(P).setBuffer(buffer))
       .setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint32Array(g.idx)).setBuffer(buffer))
-      .setMaterial(doc.createMaterial().setBaseColorFactor(g.color).setMetallicFactor(g.metal).setRoughnessFactor(g.rough));
-    root.addChild(doc.createNode().setMesh(doc.createMesh().addPrimitive(prim)));
-    triangles += g.idx.length / 3;
+      .setMaterial(doc.createMaterial().setBaseColorFactor(g.color).setMetallicFactor(metal).setRoughnessFactor(rough));
+    nodes[g.part].addChild(doc.createNode().setMesh(doc.createMesh().addPrimitive(prim)));
   }
 
   await MeshoptSimplifier.ready;
-  const ratio = Math.min(1, targetTriangles / triangles);
-  await doc.transform(weld({ tolerance: 0.0001 }), simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.01, lockBorder: false }), prune(), quantize());
-  const after = doc.getRoot().listMeshes().reduce((s, m) => s + m.listPrimitives().reduce((t, p) => t + p.getIndices().getCount() / 3, 0), 0);
+  const ratio = Math.min(1, spec.triangles / (total - dropped));
+  await doc.transform(weld({ tolerance: 0.00005 }), simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.004, lockBorder: false }), prune({ keepLeaves: true }), quantize());
+  const after = doc.getRoot().listMeshes().reduce((t, m) => t + m.listPrimitives().reduce((u, p) => u + p.getIndices().getCount() / 3, 0), 0);
 
   fs.mkdirSync(path.dirname(output), { recursive: true });
   await io.write(output, doc);
-  const size = max.map((v, k) => v - min[k]);
-  console.log(`${triangles} → ${after} triangles, ${groups.size} colors, ${(fs.statSync(output).size / 1e6).toFixed(1)} MB`);
-  console.log(`size (forward × height × side): ${size[0].toFixed(3)} × ${size[1].toFixed(3)} × ${size[2].toFixed(3)} m`);
+  console.log(`${total} triangles (${dropped} in tiny parts dropped) → ${after}, ${(fs.statSync(output).size / 1e6).toFixed(1)} MB`);
+  console.log(`size (forward × height × side): ${max.map((v, k) => (v - min[k]).toFixed(3)).join(' × ')} m`);
+  for (const part of spec.parts) {
+    const n = [...groups.values()].filter(g => g.part === part.name).reduce((t, g) => t + g.idx.length / 3, 0);
+    console.log(`  ${part.name.padEnd(15)} pivot ${pivots[part.name].map(v => v.toFixed(3)).join(', ')}  spin ${gameAxis(part.axis)}  ${n} source triangles`);
+  }
 }
 
 main().catch(err => {

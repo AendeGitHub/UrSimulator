@@ -827,12 +827,24 @@ table.controls td.num {
 /* ---- robot selection ---- */
 
 .menu-select {
-  width: min(980px, 100%);
+  width: min(1100px, 100%);
   align-items: stretch;
   text-align: left;
-  /* The robot preview shows through the middle of the screen. */
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 12px;
   min-height: calc(100vh - 32px);
+  margin: 0 auto;
+}
+
+/* The robot preview shows through this gap in the middle of the screen. */
+.select-stage {
+  flex: 1;
+  min-height: 34vh;
+}
+
+.overlay:has(.menu-select) {
+  align-items: flex-start;
+  background: linear-gradient(to bottom, rgba(10, 12, 16, 0.75), rgba(10, 12, 16, 0) 38%, rgba(10, 12, 16, 0) 72%, rgba(10, 12, 16, 0.75));
 }
 
 .select-top {
@@ -843,7 +855,8 @@ table.controls td.num {
 
 .select-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  grid-template-columns: minmax(0, 560px) minmax(260px, 340px);
+  justify-content: space-between;
   gap: 14px;
   align-items: start;
 }
@@ -855,8 +868,8 @@ table.controls td.num {
 }
 
 .team-logo-big {
-  width: 120px;
-  height: 96px;
+  width: 104px;
+  height: 84px;
   object-fit: contain;
   background: #fff;
   border-radius: 10px;
@@ -974,8 +987,8 @@ table.specs td {
   .select-main {
     grid-template-columns: 1fr;
   }
-  .menu-select {
-    min-height: 0;
+  .select-stage {
+    min-height: 26vh;
   }
 }
 
@@ -990,4 +1003,30 @@ table.specs td {
 
 .range-far {
   background: var(--red);
+}
+
+/* Card indicator on the scoreboard (FTC audience display style). */
+.score {
+  position: relative;
+}
+
+.score[data-card='yellow']::after,
+.score[data-card='red']::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 14px;
+  border-radius: 2px;
+  background: #ffd23f;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+.score[data-card='red']::after {
+  background: #ff3b30;
+}
+
+.penalties p {
+  margin: 6px 0 0;
 }

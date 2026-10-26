@@ -5,6 +5,8 @@ import { parseColliders } from '../src/sim/colliders';
 import { PHYSICS_DT, Simulation, initPhysics } from '../src/sim/Simulation';
 import { decodeState, encodeState } from '../src/sim/state';
 import { idleInput } from '../src/sim/types';
+import { cellFrame } from '../src/field/hiveGeometry';
+import { total } from '../src/game/scoring';
 
 const layout: FieldLayout = JSON.parse(fs.readFileSync('public/assets/field-layout.json', 'utf8'));
 const bin = fs.readFileSync('public/assets/field-colliders.bin');
@@ -43,7 +45,7 @@ describe('headless simulation', () => {
     sim.setInput('red1', { ...idleInput(), transfer: true });
     run(sim, 1.5);
     sim.setInput('red1', idleInput());
-    run(sim, 2);
+    run(sim, 6.5); // a full cell takes up to 5 s to drop
     expect(sim.hives.red.tips).toBe(1);
     expect(toasts.some(t => t.includes('улей перевернулся'))).toBe(true);
   });
@@ -104,5 +106,67 @@ describe('URAN V1 rules', () => {
     sim.setInput('red1', { ...idleInput(), ly: -1, fieldCentric: false });
     run(sim, 0.6);
     expect(p.robot.speed).toBeGreaterThan(2.0);
+  });
+});
+
+describe('hive tipping delay', () => {
+  beforeAll(() => initPhysics());
+
+  /** Drops `n` POLLEN straight into the upward red cell (3 NECTAR already there = weight 6). */
+  function fillRedCell(sim: Simulation, n: number) {
+    const hive = sim.hives.red;
+    const f = cellFrame('red', 'pos', hive.pivot, hive.angle);
+    const pollen = sim.balls.all.filter(b => b.kind === 'pollen' && b.state === 'field').slice(0, n);
+    pollen.forEach((b, i) => {
+      const p: [number, number, number] = [f.center[0] - 0.15 + (i % 4) * 0.08, f.center[1] + 0.05 + Math.floor(i / 4) * 0.08, f.center[2]];
+      sim.balls.release(b, p, [0, 0, 0]);
+    });
+  }
+
+  it('with exactly the tip weight (3 NECTAR + 4 POLLEN = 10) it holds about 5 s', () => {
+    const { sim } = makeSim();
+    sim.start('practice');
+    fillRedCell(sim, 4);
+    run(sim, 4);
+    expect(sim.hives.red.tips).toBe(0);
+    expect(sim.hives.red.tipPending).toBeGreaterThan(0.6);
+    run(sim, 2.5);
+    expect(sim.hives.red.tips).toBe(1);
+  });
+
+  it('heavier than that it tips after about 3 s', () => {
+    const { sim } = makeSim();
+    sim.start('practice');
+    fillRedCell(sim, 6);
+    run(sim, 2.4);
+    expect(sim.hives.red.tips).toBe(0);
+    run(sim, 1.6);
+    expect(sim.hives.red.tips).toBe(1);
+  });
+});
+
+describe('G408: opponent NECTAR', () => {
+  beforeAll(() => initPhysics());
+
+  it('warns, then a yellow card, then a red card that zeroes the score', () => {
+    const { sim, toasts } = makeSim();
+    const p = sim.addRobot('red1', 'test');
+    sim.start('match');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    const blue = sim.balls.all.filter(b => b.kind === 'nectar' && b.color === 'blue' && b.state === 'staged').slice(0, 3);
+    const score = sim.match.score.red;
+    for (const [i, b] of blue.entries()) {
+      p.robot.setPose({ x: -1.0, z: -0.8 + i * 0.5, yaw: 0 });
+      sim.balls.release(b, [-1.0 + 0.3, 0.05, -0.8 + i * 0.5], [0, 0, 0]);
+      sim.setInput('red1', { ...idleInput(), intake: true });
+      run(sim, 0.3);
+      expect(p.mech.stored).toContain(b);
+    }
+    expect(score.warnings).toBe(1);
+    expect(score.yellowCards).toBe(1);
+    expect(score.redCards).toBe(1);
+    score.leave = 1;
+    expect(total(score)).toBe(0);
+    expect(toasts.some(t => t.includes('G408'))).toBe(true);
   });
 });

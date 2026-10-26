@@ -59,6 +59,8 @@ export class Match {
   private settle = 0;
   private finished = false;
   private readonly humanTimer: Record<Alliance, number> = { red: 0, blue: 0 };
+  /** G408 violations per robot this match */
+  private readonly violations = new Map<string, number>();
   private scoreTimer = 0;
 
   constructor(
@@ -87,6 +89,7 @@ export class Match {
       Object.assign(this.score[a], emptyScore());
       this.humanTimer[a] = 0;
     }
+    this.violations.clear();
     this.updateFieldScore();
   }
 
@@ -144,6 +147,28 @@ export class Match {
     if (this.scoreTimer <= 0) {
       this.scoreTimer = 0.25;
       this.updateFieldScore();
+    }
+  }
+
+  /**
+   * G408 (opponent's NECTAR): the manual gives a verbal warning, and a yellow card when it is
+   * repeated. A third time in one match is treated as strategic: red card, disqualification.
+   */
+  recordViolation(robot: RobotSim, rule: 'G408'): void {
+    if (this.finished) return;
+    const n = (this.violations.get(robot.slot) ?? 0) + 1;
+    this.violations.set(robot.slot, n);
+    const s = this.score[robot.alliance];
+    const who = robot.slot.replace('red', 'Red ').replace('blue', 'Blue ');
+    if (n === 1) {
+      s.warnings++;
+      this.events.toast(`⚠️ ${who}: предупреждение — нельзя брать NECTAR соперника (${rule})`);
+    } else if (n === 2) {
+      s.yellowCards++;
+      this.events.toast(`🟨 ${who}: жёлтая карточка — снова NECTAR соперника (${rule})`);
+    } else if (n === 3) {
+      s.redCards++;
+      this.events.toast(`🟥 ${who}: красная карточка — дисквалификация, 0 очков (${rule})`);
     }
   }
 

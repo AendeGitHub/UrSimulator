@@ -64,10 +64,16 @@ export interface AllianceScore {
   autoTips: number;
   teleopTips: number;
   teleopPark: number;
+  /** Rule violations (manual 10.6): a red card disqualifies — 0 match points */
+  warnings: number;
+  yellowCards: number;
+  redCards: number;
   field: FieldScore;
 }
 
-export const emptyScore = (): AllianceScore => ({ leave: 0, autoPark: 0, autoTips: 0, teleopTips: 0, teleopPark: 0, field: emptyField() });
+export const emptyScore = (): AllianceScore => ({
+  leave: 0, autoPark: 0, autoTips: 0, teleopTips: 0, teleopPark: 0, warnings: 0, yellowCards: 0, redCards: 0, field: emptyField(),
+});
 
 /** Point breakdown for one alliance. */
 export function breakdown(s: AllianceScore): { label: string; count: number; points: number }[] {
@@ -85,6 +91,7 @@ export function breakdown(s: AllianceScore): { label: string; count: number; poi
 }
 
 export function total(s: AllianceScore): number {
+  if (s.redCards > 0) return 0;
   return breakdown(s).reduce((sum, row) => sum + row.points, 0);
 }
 

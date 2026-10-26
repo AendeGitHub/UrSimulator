@@ -81,6 +81,8 @@ export class RobotSelectScreen implements Screen {
           option('Камера', CAMERA_NAMES[s.camera], () => this.set({ camera: nextCamera })),
           option('Управление', s.fieldCentric ? 'Field-centric' : 'Robot-centric', () => this.set({ fieldCentric: !s.fieldCentric })),
           h('button', { class: 'btn btn-primary btn-start', onclick: () => this.actions.start(this.purpose) }, this.purpose === 'online' ? 'Дальше' : 'Старт'))),
+      // Open space: the selected robot turns on the field here.
+      h('div', { class: 'select-stage' }),
       h('div', { class: 'panel robot-cards' },
         h('h3', {}, 'Роботы'),
         h('div', { class: 'cards' },

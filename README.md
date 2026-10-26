@@ -16,18 +16,20 @@ npm run dev
 Перед матчем, тренировкой или онлайном открывается выбор робота: команда, характеристики, альянс, камера и режим управления.
 
 - **URAN V1** (команда URAN92): модель из CAD команды, mecanum на моторах 518 RPM с колёсами 82 мм (≈2,2 м/с), 9 кг, 44 × 32 см.
+- Турель сама поворачивается к цели; колёса, интейк, трансфер и маховик крутятся как на настоящем роботе.
 - Точность шутера зависит от расстояния до ячейки: до 1 м — почти всегда попадает, к 2,2 м — сильный разброс. HUD подсказывает: «точно / средне / далеко».
 - Захват URAN V1 не достаёт мячи из цветов.
+- Взять NECTAR соперника (G408): 1-й раз — предупреждение, 2-й — жёлтая карточка, 3-й — красная карточка и 0 очков.
 
 Как добавить робота из CAD (STEP):
 
 ```bash
 pip install cascadio==0.1.1 numpy
-python3 -c "import cascadio; cascadio.step_to_glb('Robot/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.4, tol_angular=0.6, include_materials=True)"
-node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb --forward=+z
+python3 -c "import cascadio; cascadio.step_to_glb('Robot/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.8, tol_angular=0.45, include_materials=True)"
+node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb tools/robots/uran-v1.json
 ```
 
-`--forward` — ось, куда смотрит перед робота в CAD (сторона захвата). Потом добавь робота в `src/robot/robots.ts`: размеры, мотор, колёса, вес, шутер.
+В `tools/robots/uran-v1.json` описаны подвижные части робота: какие детали CAD — турель, маховик, валы интейка и трансфера, колёса, и вокруг какой оси они крутятся. Для нового робота скопируй этот файл и поправь узлы и оси под его CAD, потом добавь робота в `src/robot/robots.ts`: размеры, мотор, колёса, вес, шутер.
 
 ## Режимы
 
@@ -98,7 +100,7 @@ npm run build && npm run build:server && PORT=8787 npm start
 
 ## Что можно подстроить
 
-- `TIP_LOAD` и `NECTAR_WEIGHT` в `src/sim/HiveSim.ts` — улей переворачивается от веса 10 POLLEN, NECTAR весит как 2 POLLEN.
+- `TIP_LOAD`, `NECTAR_WEIGHT` и `TIP_DELAY` в `src/sim/HiveSim.ts` — улей переворачивается от веса 10 POLLEN (NECTAR весит как 2 POLLEN): ровно 10 держится 5 с, больше — 3 с.
 - `SHOOTER` в `src/sim/Mechanisms.ts` — скорость маховика, темп стрельбы, угол подлёта.
 - `shooter.sweetSpot` / `shooter.maxRange` в `src/robot/robots.ts` — дальность точного броска робота.
 

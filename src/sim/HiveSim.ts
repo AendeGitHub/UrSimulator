@@ -10,6 +10,13 @@ import type { ColliderPart } from './colliders';
 /** NECTAR weighs as much as 2 POLLEN; a cell tips with the weight of 10 POLLEN (5 NECTAR). */
 export const NECTAR_WEIGHT = 2;
 export const TIP_LOAD = 10;
+/**
+ * A full cell does not drop at once: the dampers hold it for a while, and teams can keep
+ * launching into it. Exactly the tip weight takes 5 s, anything heavier 3 s.
+ */
+export const TIP_DELAY = { exact: 5, overloaded: 3 };
+/** How far the hive sags toward the tip while the dampers give way. */
+const SAG = (6 * Math.PI) / 180;
 const TIP_DURATION = 0.7;
 
 export class HiveSim {
@@ -18,6 +25,8 @@ export class HiveSim {
   tips = 0;
   /** Seconds since the current tip started, or null when resting. */
   private tipping: number | null = null;
+  /** Seconds the upward cell has held the tip weight */
+  private loaded = 0;
   private from = 0;
   private readonly body: RAPIER.RigidBody;
 
@@ -44,6 +53,7 @@ export class HiveSim {
     this.state = 'A';
     this.tips = 0;
     this.tipping = null;
+    this.loaded = 0;
     this.setAngle(stateAngle(this.alliance, 'A'), true);
   }
 
@@ -58,13 +68,30 @@ export class HiveSim {
     return aimPoint(this.alliance, upCell(this.state), this.pivot, this.angle);
   }
 
+  /** 0..1 progress toward a tip while the cell holds the tip weight. */
+  get tipPending(): number {
+    return this.tipping === null ? Math.min(1, this.loaded / TIP_DELAY.exact) : 0;
+  }
+
   step(dt: number, balls: BallSim): void {
     if (this.tipping === null) {
       const load = this.ballsInUpCell(balls).reduce((s, b) => s + (b.kind === 'nectar' ? NECTAR_WEIGHT : 1), 0);
+      const rest = stateAngle(this.alliance, this.state);
+      const toward = Math.sign(stateAngle(this.alliance, this.state === 'A' ? 'B' : 'A') - rest);
       if (load >= TIP_LOAD) {
-        this.tipping = 0;
-        this.from = this.angle;
-        this.state = this.state === 'A' ? 'B' : 'A';
+        this.loaded += dt;
+        const delay = load > TIP_LOAD ? TIP_DELAY.overloaded : TIP_DELAY.exact;
+        this.setAngle(rest + toward * SAG * Math.min(1, this.loaded / delay), false);
+        if (this.loaded >= delay) {
+          this.loaded = 0;
+          this.tipping = 0;
+          this.from = this.angle;
+          this.state = this.state === 'A' ? 'B' : 'A';
+        }
+      } else if (this.loaded > 0) {
+        // Balls bounced out: the dampers push the hive back.
+        this.loaded = Math.max(0, this.loaded - dt * 2);
+        this.setAngle(rest + toward * SAG * Math.min(1, this.loaded / TIP_DELAY.exact), false);
       }
       return;
     }

@@ -21,6 +21,8 @@ export interface HudState {
   fps: number;
   clock: { text: string; label: string; urgent: boolean };
   score: Record<Alliance, number>;
+  /** Worst card each alliance has this match */
+  cards: Record<Alliance, 'none' | 'yellow' | 'red'>;
   tips: Record<Alliance, number>;
   stored: BallColor[];
   capacity: number;
@@ -81,6 +83,8 @@ export class Hud {
     this.fps.textContent = `${s.fps.toFixed(0)} FPS`;
     this.scoreRed.textContent = String(s.score.red);
     this.scoreBlue.textContent = String(s.score.blue);
+    this.scoreRed.dataset.card = s.cards.red;
+    this.scoreBlue.dataset.card = s.cards.blue;
     this.scoreRed.classList.toggle('mine', s.alliance === 'red');
     this.scoreBlue.classList.toggle('mine', s.alliance === 'blue');
     this.clock.textContent = s.clock.text;

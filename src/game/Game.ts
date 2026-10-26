@@ -418,7 +418,7 @@ export class Game {
     }
 
     const world = this.session?.state() ?? null;
-    if (world) this.draw(world);
+    if (world) this.draw(world, this.state === 'paused' && !this.session?.online ? 0 : dt);
     const mine = world?.robots.find(r => r.slot === this.session?.localSlot) ?? null;
     if (this.state === 'menu') this.updateMenuCamera(dt);
     else if (this.state === 'select') this.updatePreviewCamera(dt);
@@ -427,7 +427,7 @@ export class Game {
     this.renderer.render(this.scene, this.rig.camera);
   }
 
-  private draw(world: WorldState): void {
+  private draw(world: WorldState, dt: number): void {
     this.field.setHiveAngles(world.hiveAngles);
     this.ballsView.update(world.balls);
     const names = this.session?.names() ?? {};
@@ -451,7 +451,7 @@ export class Game {
         this.robotViews.set(r.slot, view);
       }
       view.setIdentity(slotAlliance(r.slot), names[r.slot] ?? def.team);
-      view.apply(r);
+      view.apply(r, dt);
     }
   }
 
@@ -471,6 +471,10 @@ export class Game {
       fps: this.fps,
       clock: matchClock(world.period, world.periodTime),
       score: { red: total(world.score.red), blue: total(world.score.blue) },
+      cards: {
+        red: world.score.red.redCards ? 'red' : world.score.red.yellowCards ? 'yellow' : 'none',
+        blue: world.score.blue.redCards ? 'red' : world.score.blue.yellowCards ? 'yellow' : 'none',
+      },
       tips: world.tips,
       stored: (mine?.stored ?? []).map(id => this.ballsView.specs[id].color),
       capacity: CAPACITY,
@@ -529,8 +533,9 @@ export class Game {
     const cam = this.rig.camera;
     const [x, z] = PREVIEW_SPOT;
     cam.up.set(0, 1, 0);
-    cam.position.set(x + Math.cos(this.menuOrbit) * 1.1, 0.65, z + Math.sin(this.menuOrbit) * 1.1);
-    cam.lookAt(x, 0.15, z);
+    // Looking slightly above the robot places it low-center, between the panels and the cards.
+    cam.position.set(x + Math.cos(this.menuOrbit) * 1.25, 0.75, z + Math.sin(this.menuOrbit) * 1.25);
+    cam.lookAt(x, 0.28, z);
   }
 
   private updateMenuCamera(dt: number): void {

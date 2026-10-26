@@ -8,6 +8,8 @@ export interface ShooterSpec {
   at: [number, number];
   /** Height where balls leave the shooter, m */
   height: number;
+  /** Distance from the turret axis to where balls leave, m */
+  exit: number;
   /** Up to this distance (m) the robot hits almost every shot */
   sweetSpot: number;
   /** At this distance and beyond (m) shots scatter widely */
@@ -49,9 +51,10 @@ export const URAN_V1: RobotDefinition = {
     maxAccel: 6.5,
     maxTurnAccel: 34,
   },
-  // Flywheel shooter on top in the middle of the robot.
-  // From the opening side of a cell the field allows at most ~2.3 m, so the scale fits that.
-  shooter: { at: [0, 0], height: 0.33, sweetSpot: 1.0, maxRange: 2.2 },
+  // Flywheel shooter on a turret (axis measured from the CAD turret ring); balls leave over the
+  // hood at the turret's nose. From the opening side of a cell the field allows at most ~2.3 m,
+  // so the accuracy scale fits that.
+  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2 },
 };
 
 export const ROBOTS: RobotDefinition[] = [URAN_V1];

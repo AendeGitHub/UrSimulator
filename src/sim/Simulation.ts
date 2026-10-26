@@ -100,6 +100,7 @@ export class Simulation {
     const robot = new RobotSim(this.world, slot, def.config, this.startPose(slot, def.config.length));
     const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter);
     mech.reset(this.balls.preloads(slot));
+    mech.onViolation = rule => this.match.recordViolation(robot, rule);
     const player = { robotId: def.id, robot, mech, input: idleInput(), name };
     this.robots.set(slot, player);
     return player;
@@ -181,7 +182,7 @@ export class Simulation {
       tips: { red: this.hives.red.tips, blue: this.hives.blue.tips },
       score: { red: structuredClone(this.match.score.red), blue: structuredClone(this.match.score.blue) },
       robots: SLOTS.filter(s => this.robots.has(s)).map(slot => {
-        const { robot, mech, robotId } = this.robots.get(slot)!;
+        const { robot, mech, robotId, input } = this.robots.get(slot)!;
         const [x, , z] = robot.position;
         return {
           slot,
@@ -195,6 +196,7 @@ export class Simulation {
           pitch: mech.shot?.pitch ?? 0.9,
           flywheel: mech.flywheel,
           intakeDir: mech.intakeDir,
+          transfer: input.transfer && this.match.robotEnabled,
           status: mech.status,
           shotSpeed: mech.shot?.speed ?? 0,
           shotDistance: mech.shot?.distance ?? 0,
