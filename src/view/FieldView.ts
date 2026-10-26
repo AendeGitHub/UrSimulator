@@ -1,4 +1,4 @@
-// BIOBUZZ field graphics: the official CAD model, tile floor and venue floor.
+// BIOBUZZ field graphics: the official CAD model and the tile floor (the venue is view/Arena.ts).
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -49,7 +49,7 @@ export class FieldView {
       if (node) pivot.attach(node);
     }
 
-    // Tile floor and the venue floor around the field.
+    // Tile floor.
     const half = this.layout.wallInnerHalf;
     const tiles = new THREE.Mesh(
       new THREE.PlaneGeometry(half * 2, half * 2),
@@ -59,10 +59,5 @@ export class FieldView {
     tiles.receiveShadow = true;
     this.root.add(tiles);
 
-    const venue = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: '#24282f', roughness: 0.9 }));
-    venue.rotation.x = -Math.PI / 2;
-    venue.position.y = -0.016;
-    venue.receiveShadow = true;
-    this.root.add(venue);
   }
 }

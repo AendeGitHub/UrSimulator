@@ -4,7 +4,7 @@ import { MODEL_NAMES, type ControlId, type PadModel } from '../input/gamepad';
 import { controlLabel } from '../input/labels';
 import type { Alliance } from '../robot/robotConfig';
 import type { BallColor } from '../sim/BallSim';
-import type { ShooterStatus } from '../sim/Mechanisms';
+import type { ShooterStatus, ShotRange } from '../sim/Mechanisms';
 import { h } from './dom';
 
 export interface HudState {
@@ -27,12 +27,16 @@ export interface HudState {
   shooter: ShooterStatus;
   shotSpeed: number;
   targetDistance: number;
+  /** How accurate a shot from here is */
+  range: ShotRange;
 }
 
 export function keyChip(model: PadModel, control: ControlId): HTMLElement {
   const label = controlLabel(model, control);
   return h('span', { class: 'key', style: label.color ? { color: label.color } : undefined }, label.text);
 }
+
+const RANGE_TEXT: Record<ShotRange, string> = { near: 'точно', mid: 'средне', far: 'далеко' };
 
 const SHOOTER_TEXT: Record<ShooterStatus, string> = {
   off: 'выключен',
@@ -83,15 +87,19 @@ export class Hud {
     this.clock.classList.toggle('urgent', s.clock.urgent);
     this.clockLabel.textContent = `${s.clock.label} · перевороты ${s.tips.red}:${s.tips.blue}`;
 
-    const detail = s.shooter === 'off' ? '' : ` · ${s.shotSpeed.toFixed(1)} м/с · до цели ${s.targetDistance.toFixed(1)} м`;
+    const detail = s.shooter === 'off' ? '' : ` · ${s.shotSpeed.toFixed(1)} м/с · до цели ${s.targetDistance.toFixed(1)} м `;
     for (const el of [this.storage, this.shooter, this.stats, this.mode]) el.hidden = s.spectator;
-    const mechKey = `${s.stored.join()}|${s.shooter}|${detail}`;
+    const mechKey = `${s.stored.join()}|${s.shooter}|${detail}|${s.range}`;
     if (mechKey !== this.mechKey) {
       this.mechKey = mechKey;
       const dots = Array.from({ length: s.capacity }, (_, i) =>
         h('span', { class: `ball-dot ${s.stored[i] ? `ball-${s.stored[i]}` : 'ball-empty'}` }));
       this.storage.replaceChildren(h('span', { class: 'muted' }, 'Мячи '), ...dots, h('span', { class: 'muted' }, ` ${s.stored.length}/${s.capacity}`));
-      this.shooter.replaceChildren(h('span', { class: 'muted' }, 'Шутер '), h('span', { class: `shooter-${s.shooter}` }, SHOOTER_TEXT[s.shooter]), detail);
+      this.shooter.replaceChildren(
+        h('span', { class: 'muted' }, 'Шутер '),
+        h('span', { class: `shooter-${s.shooter}` }, SHOOTER_TEXT[s.shooter]),
+        detail,
+        s.shooter === 'off' ? '' : h('span', { class: `chip range-${s.range}` }, RANGE_TEXT[s.range]));
     }
 
     // Rebuild the rest only when something visible changed.

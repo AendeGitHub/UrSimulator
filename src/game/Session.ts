@@ -4,6 +4,7 @@
 import type { AllianceScore } from './scoring';
 import type { Alliance } from '../robot/robotConfig';
 import type { FieldLayout } from '../field/layout';
+import { robotById } from '../robot/robots';
 import type { ColliderPart } from '../sim/colliders';
 import { PHYSICS_DT, Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/state';
@@ -34,12 +35,15 @@ export class LocalSession implements Session {
   private accumulator = 0;
   private cached: WorldState | null = null;
 
-  constructor(layout: FieldLayout, colliders: ColliderPart[], readonly localSlot: Slot, mode: GameMode, events: SessionEvents) {
+  private readonly team: string;
+
+  constructor(layout: FieldLayout, colliders: ColliderPart[], readonly localSlot: Slot, robotId: string, mode: GameMode, events: SessionEvents) {
     this.sim = new Simulation(layout, colliders, {
       toast: text => events.toast(text),
       finished: () => events.finished(structuredClone(this.sim.match.score)),
     });
-    this.sim.addRobot(localSlot, 'UrSim');
+    this.team = robotById(robotId).team;
+    this.sim.addRobot(localSlot, this.team, robotId);
     this.sim.start(mode);
   }
 
@@ -66,7 +70,7 @@ export class LocalSession implements Session {
   }
 
   names(): Partial<Record<Slot, string>> {
-    return { [this.localSlot]: 'UrSim' };
+    return { [this.localSlot]: this.team };
   }
 
   dispose(): void {

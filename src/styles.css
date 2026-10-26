@@ -823,3 +823,171 @@ table.controls td.num {
   font-size: 17px;
   font-weight: 700;
 }
+
+/* ---- robot selection ---- */
+
+.menu-select {
+  width: min(980px, 100%);
+  align-items: stretch;
+  text-align: left;
+  /* The robot preview shows through the middle of the screen. */
+  justify-content: space-between;
+  min-height: calc(100vh - 32px);
+}
+
+.select-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.select-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 14px;
+  align-items: start;
+}
+
+.robot-info {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.team-logo-big {
+  width: 120px;
+  height: 96px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 10px;
+  padding: 6px;
+  flex: none;
+}
+
+.robot-team {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-hi);
+  letter-spacing: 0.06em;
+}
+
+.robot-name {
+  font-size: 26px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+table.specs td {
+  padding: 3px 10px 3px 0;
+  border: none;
+}
+
+.match-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 15px;
+}
+
+.setting-value {
+  min-width: 150px;
+  background: #1f3a8a;
+  border-color: #2d4fb3;
+}
+
+.btn-start {
+  margin-top: 8px;
+  font-size: 20px;
+  padding: 14px;
+}
+
+.robot-cards .cards {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+}
+
+.robot-card {
+  font: inherit;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  width: 128px;
+  border-radius: var(--radius);
+  border: 2px solid var(--line);
+  background: var(--panel-solid);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.robot-card-active {
+  border-color: var(--accent-hi);
+  background: #12392a;
+}
+
+.robot-card:focus {
+  outline: none;
+  border-color: #fff;
+}
+
+.robot-card-logo {
+  width: 108px;
+  height: 80px;
+  background: #fff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.robot-card-logo img {
+  max-width: 96px;
+  max-height: 72px;
+}
+
+.slot-robot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.slot-robot img {
+  height: 18px;
+  background: #fff;
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+
+@media (max-width: 760px) {
+  .select-main {
+    grid-template-columns: 1fr;
+  }
+  .menu-select {
+    min-height: 0;
+  }
+}
+
+.range-near {
+  background: var(--accent);
+}
+
+.range-mid {
+  background: var(--warn);
+  color: #1b1300;
+}
+
+.range-far {
+  background: var(--red);
+}

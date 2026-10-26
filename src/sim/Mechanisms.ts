@@ -3,6 +3,7 @@
 import type { Vec3 } from '../field/layout';
 import { launchVelocity, solveShot, type ShotSolution } from '../game/ballistics';
 import { wrapAngle } from '../robot/mecanum';
+import type { ShooterSpec } from '../robot/robots';
 import type { Ball, BallSim } from './BallSim';
 import type { RobotSim } from './RobotSim';
 
@@ -21,14 +22,33 @@ export const SHOOTER = {
   shotDrop: 0.9,
   feedInterval: 0.28,
   turretRate: 7,
-  /** Turret pivot in robot frame (forward, right) and launch height */
-  turretAt: [-0.1, 0] as [number, number],
-  exitOffset: 0.09,
-  launchHeight: 0.43,
+  /** Balls leave this far from the turret axis */
+  exitOffset: 0.06,
   aimTolerance: 0.035,
 };
 
 const INTAKE = { reach: 0.09, inside: 0.06, halfWidth: 0.17, maxHeight: 0.16, interval: 0.12 };
+/** Balls inside a flower tube: this intake cannot reach into the flower's retrieval opening. */
+const FLOWER_TUBE = { radius: 0.09, height: 0.62 };
+
+const DEG = Math.PI / 180;
+
+/**
+ * Shot scatter (standard deviations) at a given distance: tight inside the sweet spot,
+ * growing quadratically to wide scatter at max range.
+ */
+export function shotSpread(distance: number, acc: Pick<ShooterSpec, 'sweetSpot' | 'maxRange'>): { angle: number; speed: number } {
+  const t = Math.max(0, Math.min(1.3, (distance - acc.sweetSpot) / (acc.maxRange - acc.sweetSpot)));
+  const k = t * t;
+  return { angle: 0.4 * DEG + k * 4.5 * DEG, speed: 0.006 + k * 0.07 };
+}
+
+export type ShotRange = 'near' | 'mid' | 'far';
+
+export function shotRange(distance: number, acc: Pick<ShooterSpec, 'sweetSpot' | 'maxRange'>): ShotRange {
+  if (distance <= acc.sweetSpot) return 'near';
+  return distance <= (acc.sweetSpot + acc.maxRange) / 2 ? 'mid' : 'far';
+}
 const EJECT = { speed: 1.6, interval: 0.25 };
 
 export interface MechanismInput {
@@ -66,6 +86,8 @@ export class Mechanisms {
     private readonly robot: RobotSim,
     private readonly balls: BallSim,
     private readonly target: () => Vec3,
+    private readonly flowers: [number, number][],
+    private readonly spec: ShooterSpec,
   ) {}
 
   reset(preloads: Ball[]): void {
@@ -93,11 +115,11 @@ export class Mechanisms {
     const yaw = this.robot.yaw;
     const [fx, fz] = [Math.cos(yaw), -Math.sin(yaw)];
     const [rx, rz] = [Math.sin(yaw), Math.cos(yaw)];
-    const [tf, tr] = SHOOTER.turretAt;
+    const [tf, tr] = this.spec.at;
     const aim = yaw + this.turretYaw;
     return [
       px + fx * tf + rx * tr + Math.cos(aim) * SHOOTER.exitOffset,
-      SHOOTER.launchHeight,
+      this.spec.height,
       pz + fz * tf + rz * tr - Math.sin(aim) * SHOOTER.exitOffset,
     ];
   }
@@ -135,6 +157,7 @@ export class Mechanisms {
       // G408: the intake sorts out the opponent's NECTAR.
       if (b.kind === 'nectar' && b.color !== this.robot.alliance) continue;
       const [x, y, z] = this.balls.position(b);
+      if (y < FLOWER_TUBE.height && this.flowers.some(([fx, fz]) => Math.hypot(x - fx, z - fz) < FLOWER_TUBE.radius)) continue;
       const dx = x - px;
       const dz = z - pz;
       const forward = dx * fx + dz * fz;
@@ -191,10 +214,11 @@ export class Mechanisms {
     this.feedTimer -= dt;
     if (this.feedTimer > 0 || !this.stored.length || !this.shot) return;
     const b = this.stored.shift()!;
-    const yaw = this.robot.yaw + this.turretYaw + noise(0.008);
-    const pitch = this.shot.pitch + noise(0.008);
+    const spread = shotSpread(this.shot.distance, this.spec);
+    const yaw = this.robot.yaw + this.turretYaw + noise(spread.angle);
+    const pitch = this.shot.pitch + noise(spread.angle);
     // A stopped flywheel just lets the ball drop out of the shooter.
-    const speed = Math.max(0.6, this.flywheel * SHOOTER.maxSpeed * (1 + noise(0.012)));
+    const speed = Math.max(0.6, this.flywheel * SHOOTER.maxSpeed * (1 + noise(spread.speed)));
     const v = launchVelocity(yaw, pitch, speed);
     const [rvx, rvz] = this.robot.velocity;
     this.balls.release(b, this.launchPoint(), [v[0] + rvx, v[1], v[2] + rvz]);

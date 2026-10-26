@@ -5,8 +5,8 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import type { FieldLayout } from '../field/layout';
 import { buildZones, type Zones } from '../field/zones';
 import { fieldCentric } from '../robot/mecanum';
-import { DEFAULT_ROBOT } from '../robot/robotConfig';
 import type { Alliance } from '../robot/robotConfig';
+import { DEFAULT_ROBOT_ID, robotById } from '../robot/robots';
 import { BallSim } from './BallSim';
 import type { ColliderPart } from './colliders';
 import { HiveSim } from './HiveSim';
@@ -25,6 +25,8 @@ const WALL_THICKNESS = 0.06;
 const START_Z: Record<Slot, number> = { red1: -0.25, red2: 1.15, blue1: 0.25, blue2: -1.15 };
 
 export interface PlayerRobot {
+  /** Which robot (robots.ts) this player drives */
+  robotId: string;
   robot: RobotSim;
   mech: Mechanisms;
   input: RobotInput;
@@ -87,17 +89,18 @@ export class Simulation {
     }
   }
 
-  startPose(slot: Slot): Pose {
-    const x = this.zones.wall - DEFAULT_ROBOT.length / 2 - 0.004;
+  startPose(slot: Slot, robotLength: number): Pose {
+    const x = this.zones.wall - robotLength / 2 - 0.004;
     return slot.startsWith('red') ? { x: -x, z: START_Z[slot], yaw: 0 } : { x, z: START_Z[slot], yaw: Math.PI };
   }
 
-  addRobot(slot: Slot, name: string): PlayerRobot {
+  addRobot(slot: Slot, name: string, robotId: string = DEFAULT_ROBOT_ID): PlayerRobot {
     this.removeRobot(slot);
-    const robot = new RobotSim(this.world, slot, DEFAULT_ROBOT, this.startPose(slot));
-    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target());
+    const def = robotById(robotId);
+    const robot = new RobotSim(this.world, slot, def.config, this.startPose(slot, def.config.length));
+    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter);
     mech.reset(this.balls.preloads(slot));
-    const player = { robot, mech, input: idleInput(), name };
+    const player = { robotId: def.id, robot, mech, input: idleInput(), name };
     this.robots.set(slot, player);
     return player;
   }
@@ -116,7 +119,7 @@ export class Simulation {
     this.hives.red.reset();
     this.hives.blue.reset();
     for (const [slot, p] of this.robots) {
-      p.robot.setPose(this.startPose(slot));
+      p.robot.setPose(this.startPose(slot, p.robot.cfg.length));
       p.mech.reset(this.balls.preloads(slot));
       p.input = idleInput();
     }
@@ -178,10 +181,11 @@ export class Simulation {
       tips: { red: this.hives.red.tips, blue: this.hives.blue.tips },
       score: { red: structuredClone(this.match.score.red), blue: structuredClone(this.match.score.blue) },
       robots: SLOTS.filter(s => this.robots.has(s)).map(slot => {
-        const { robot, mech } = this.robots.get(slot)!;
+        const { robot, mech, robotId } = this.robots.get(slot)!;
         const [x, , z] = robot.position;
         return {
           slot,
+          robot: robotId,
           x,
           z,
           yaw: robot.yaw,

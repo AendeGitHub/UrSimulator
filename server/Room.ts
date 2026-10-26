@@ -16,6 +16,7 @@ export interface Peer {
 interface Player {
   id: number;
   name: string;
+  robot: string;
   slot: Slot | null;
   peer: Peer;
 }
@@ -47,7 +48,7 @@ export class Room {
     return {
       code: this.code,
       hostId: this.hostId,
-      players: [...this.players.values()].map(p => ({ id: p.id, name: p.name, slot: p.slot })),
+      players: [...this.players.values()].map(p => ({ id: p.id, name: p.name, robot: p.robot, slot: p.slot })),
       running: this.running,
     };
   }
@@ -61,14 +62,14 @@ export class Room {
   }
 
   /** Adds a player in the first free slot. Returns false when the room is full. */
-  join(id: number, name: string, peer: Peer): boolean {
+  join(id: number, name: string, robot: string, peer: Peer): boolean {
     if (this.players.size >= MAX_PLAYERS) return false;
     const used = new Set([...this.players.values()].map(p => p.slot));
     // Alternate alliances as people join: Red 1, Blue 1, Red 2, Blue 2.
     const slot = (['red1', 'blue1', 'red2', 'blue2'] as Slot[]).find(s => !used.has(s)) ?? null;
-    this.players.set(id, { id, name: cleanName(name), slot, peer });
+    this.players.set(id, { id, name: cleanName(name), robot, slot, peer });
     if (this.hostId < 0) this.hostId = id;
-    if (this.running === 'practice' && slot) this.sim?.addRobot(slot, cleanName(name));
+    if (this.running === 'practice' && slot) this.sim?.addRobot(slot, cleanName(name), robot);
     this.broadcastRoom();
     return true;
   }
@@ -90,7 +91,7 @@ export class Room {
     if (this.running === 'match') return p.peer.sendText({ t: 'error', message: 'Во время матча меняться нельзя' });
     if (p.slot) this.sim?.removeRobot(p.slot);
     p.slot = slot;
-    if (this.running === 'practice' && slot) this.sim?.addRobot(slot, p.name);
+    if (this.running === 'practice' && slot) this.sim?.addRobot(slot, p.name, p.robot);
     this.broadcastRoom();
   }
 
@@ -103,7 +104,7 @@ export class Room {
       finished: () => this.finish(),
     });
     for (const slot of SLOTS) this.sim.removeRobot(slot);
-    for (const pl of this.players.values()) if (pl.slot) this.sim.addRobot(pl.slot, pl.name);
+    for (const pl of this.players.values()) if (pl.slot) this.sim.addRobot(pl.slot, pl.name, pl.robot);
     this.sim.start(mode);
     this.running = mode;
     this.accumulator = 0;

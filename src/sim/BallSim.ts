@@ -94,8 +94,15 @@ export class BallSim {
   }
 
   hold(b: Ball): void {
+    const [x, y, z] = this.position(b);
     b.state = 'held';
     b.body.setEnabled(false);
+    // Resting balls sleep; wake the ones that leaned on this ball (e.g. a stack in a flower) so they fall.
+    for (const o of this.all) {
+      if (o.state !== 'field' || !o.body.isSleeping()) continue;
+      const [ox, oy, oz] = this.position(o);
+      if (Math.hypot(ox - x, oy - y, oz - z) < 0.35) o.body.wakeUp();
+    }
   }
 
   /** Puts a ball into play at `pos` with velocity `vel`. */

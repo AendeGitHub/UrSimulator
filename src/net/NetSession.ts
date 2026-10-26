@@ -33,11 +33,11 @@ export class NetSession implements Session {
   private pendingInput: RobotInput | null = null;
   private inputTimer = 0;
 
-  constructor(url: string, name: string, private readonly events: NetEvents) {
+  constructor(url: string, name: string, robot: string, private readonly events: NetEvents) {
     this.ws = new WebSocket(url);
     this.ws.binaryType = 'arraybuffer';
     this.ws.onopen = () => {
-      this.ws.send(JSON.stringify({ t: 'hello', name } satisfies ClientMessage));
+      this.ws.send(JSON.stringify({ t: 'hello', name, robot } satisfies ClientMessage));
       for (const m of this.queue.splice(0)) this.ws.send(JSON.stringify(m));
     };
     this.ws.onmessage = e => this.receive(e.data);

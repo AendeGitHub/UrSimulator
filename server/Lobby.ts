@@ -3,6 +3,7 @@
 import type { FieldLayout } from '../src/field/layout';
 import { SNAPSHOT_RATE, normalizeCode, type ClientMessage } from '../src/net/protocol';
 import type { ColliderPart } from '../src/sim/colliders';
+import { DEFAULT_ROBOT_ID, robotById } from '../src/robot/robots';
 import { SLOTS } from '../src/sim/types';
 import { Room, randomCode, type Peer } from './Room';
 
@@ -12,6 +13,7 @@ const MAX_ROOMS = 40;
 interface Client {
   id: number;
   name: string;
+  robot: string;
   peer: Peer;
   room: Room | null;
 }
@@ -25,7 +27,7 @@ export class Lobby {
 
   connect(peer: Peer): number {
     const id = this.nextId++;
-    this.clients.set(id, { id, name: 'Игрок', peer, room: null });
+    this.clients.set(id, { id, name: 'Игрок', robot: DEFAULT_ROBOT_ID, peer, room: null });
     peer.sendText({ t: 'welcome', id });
     return id;
   }
@@ -41,6 +43,7 @@ export class Lobby {
     switch (msg.t) {
       case 'hello':
         c.name = String(msg.name ?? '');
+        c.robot = robotById(typeof msg.robot === 'string' ? msg.robot : undefined).id;
         break;
       case 'create': {
         if (this.rooms.size >= MAX_ROOMS) return c.peer.sendText({ t: 'error', message: 'Сервер заполнен, попробуй позже' });
@@ -79,7 +82,7 @@ export class Lobby {
   }
 
   private enter(c: Client, room: Room): void {
-    if (!room.join(c.id, c.name, c.peer)) return c.peer.sendText({ t: 'error', message: 'Комната заполнена (4 игрока)' });
+    if (!room.join(c.id, c.name, c.robot, c.peer)) return c.peer.sendText({ t: 'error', message: 'Комната заполнена (4 игрока)' });
     c.room = room;
   }
 

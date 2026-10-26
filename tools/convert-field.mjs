@@ -26,6 +26,9 @@ const OUT_DIR = path.join(ROOT, 'public', 'assets');
 // Hive pivot height above the tiles, from the Competition Manual (9.6.1: 43.95 in).
 const HIVE_PIVOT_Y = 1.1163;
 
+/** Tape whose center is farther than this from the field center is outside the walls. */
+const OUTSIDE_FIELD = 1.81;
+
 const FASTENER = /screw|nut\b|rivet|washer|quick release pin|bolt|cable tie|rivnut|plug|fastener|detent/i;
 
 function classify(meshName, pathNames) {
@@ -97,6 +100,9 @@ async function main() {
     if (kind === 'nectar_red') return void layout.nectar.red.push(center(box));
     if (kind === 'nectar_blue') return void layout.nectar.blue.push(center(box));
     if (kind === 'tape') {
+      // Alliance-area tape lies outside the field; the game does not draw it.
+      const [cx, , cz] = center(box);
+      if (Math.abs(cx) > OUTSIDE_FIELD || Math.abs(cz) > OUTSIDE_FIELD) return;
       const color = /Red/i.test(m.name) ? 'red' : 'blue';
       layout.tape.push({ color, min: box.min.map(v => round(v)), max: box.max.map(v => round(v)) });
     }

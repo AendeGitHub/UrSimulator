@@ -8,9 +8,10 @@ import { MODEL_NAMES } from '../input/gamepad';
 import { InputManager } from '../input/InputManager';
 import { NetSession, defaultServerUrl } from '../net/NetSession';
 import { cleanName, type RoomInfo } from '../net/protocol';
-import { DEFAULT_ROBOT, type Alliance } from '../robot/robotConfig';
+import type { Alliance } from '../robot/robotConfig';
+import { DEFAULT_ROBOT_ID, robotById } from '../robot/robots';
 import { parseColliders, type ColliderPart } from '../sim/colliders';
-import { CAPACITY } from '../sim/Mechanisms';
+import { CAPACITY, shotRange } from '../sim/Mechanisms';
 import { matchClock } from '../sim/Match';
 import { initPhysics } from '../sim/Simulation';
 import type { WorldState } from '../sim/state';
@@ -19,7 +20,9 @@ import { GamepadScreen } from '../ui/GamepadScreen';
 import { Hud } from '../ui/Hud';
 import { HelpScreen, MainMenu, PauseMenu, type Screen } from '../ui/menus';
 import { ConnectScreen, LobbyScreen } from '../ui/online';
+import { RobotSelectScreen, type SelectPurpose, type SelectSettings } from '../ui/RobotSelect';
 import { ResultsScreen } from '../ui/ResultsScreen';
+import { Arena } from '../view/Arena';
 import { BallsView } from '../view/BallsView';
 import { FieldView } from '../view/FieldView';
 import { RobotView } from '../view/RobotView';
@@ -27,10 +30,13 @@ import { total, type AllianceScore } from './scoring';
 import { LocalSession, type Session, type SessionEvents } from './Session';
 
 const SETTINGS_KEY = 'ursim.settings';
+/** Where the robot stands on the selection screen (x, z): open floor on the red side. */
+const PREVIEW_SPOT: [number, number] = [-1.05, 0.95];
 
-type State = 'menu' | 'playing' | 'paused' | 'results' | 'lobby';
+type State = 'menu' | 'select' | 'playing' | 'paused' | 'results' | 'lobby';
 
 interface Settings {
+  robot: string;
   alliance: Alliance;
   fieldCentric: boolean;
   camera: CameraMode;
@@ -39,7 +45,7 @@ interface Settings {
 }
 
 function loadSettings(): Settings {
-  const defaults: Settings = { alliance: 'red', fieldCentric: true, camera: 'driver', name: '', server: defaultServerUrl() };
+  const defaults: Settings = { robot: DEFAULT_ROBOT_ID, alliance: 'red', fieldCentric: true, camera: 'driver', name: '', server: defaultServerUrl() };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
     return { ...defaults, ...saved, camera: CAMERA_MODES.includes(saved.camera) ? saved.camera : defaults.camera };
@@ -65,6 +71,7 @@ export class Game {
   private field!: FieldView;
   private ballsView!: BallsView;
   private readonly robotViews = new Map<Slot, RobotView>();
+  private preview: RobotView | null = null;
 
   private session: Session | null = null;
   private net: NetSession | null = null;
@@ -72,7 +79,7 @@ export class Game {
   private state: State = 'menu';
   private screen: Screen | null = null;
   private readonly screens: {
-    main: MainMenu; pause: PauseMenu; help: HelpScreen; pads: GamepadScreen; results: ResultsScreen; connect: ConnectScreen; lobby: LobbyScreen;
+    main: MainMenu; select: RobotSelectScreen; pause: PauseMenu; help: HelpScreen; pads: GamepadScreen; results: ResultsScreen; connect: ConnectScreen; lobby: LobbyScreen;
   };
   private returnTo: Screen | null = null;
 
@@ -101,13 +108,17 @@ export class Game {
 
     const back = () => this.show(this.returnTo);
     this.screens = {
-      main: new MainMenu(this.settings.alliance, {
-        match: () => this.startSolo('match'),
-        practice: () => this.startSolo('practice'),
-        online: () => this.show(this.screens.connect),
-        toggleAlliance: () => this.toggleAlliance(),
+      main: new MainMenu({
+        match: () => this.openSelect('match'),
+        practice: () => this.openSelect('practice'),
+        online: () => this.openSelect('online'),
         gamepads: () => this.openSub(this.screens.pads),
         help: () => this.openSub(this.screens.help),
+      }),
+      select: new RobotSelectScreen(this.selectSettings(), {
+        change: settings => this.applySelect(settings),
+        start: purpose => (purpose === 'online' ? this.show(this.screens.connect) : this.startSolo(purpose)),
+        back: () => this.toMenu(),
       }),
       pause: new PauseMenu({
         resume: () => this.resume(),
@@ -165,12 +176,13 @@ export class Game {
   private setupLighting(): void {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.55;
-    this.scene.background = new THREE.Color('#0f1216');
-    this.scene.fog = new THREE.Fog('#0f1216', 14, 34);
+    this.scene.environmentIntensity = 0.75;
+    this.scene.background = new THREE.Color('#3a4150');
+    new Arena(this.scene);
 
-    this.scene.add(new THREE.HemisphereLight('#dfe7ff', '#30343b', 0.6));
-    const sun = new THREE.DirectionalLight('#ffffff', 2.2);
+    // Bright, even gym lighting from the ceiling.
+    this.scene.add(new THREE.HemisphereLight('#f2f5ff', '#5a6070', 1.3));
+    const sun = new THREE.DirectionalLight('#ffffff', 2.4);
     sun.position.set(2.5, 7, 3.5);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -193,11 +205,42 @@ export class Game {
     }
   }
 
-  private toggleAlliance(): Alliance {
-    this.settings.alliance = this.settings.alliance === 'red' ? 'blue' : 'red';
-    this.saveSettings();
-    return this.settings.alliance;
+  private selectSettings(): SelectSettings {
+    const { robot, alliance, camera, fieldCentric } = this.settings;
+    return { robot, alliance, camera, fieldCentric };
   }
+
+  private openSelect(purpose: SelectPurpose): void {
+    this.endSession();
+    this.state = 'select';
+    this.screens.select.open(purpose, this.selectSettings());
+    this.show(this.screens.select);
+    this.showPreview();
+  }
+
+  private applySelect(settings: SelectSettings): void {
+    Object.assign(this.settings, settings);
+    this.saveSettings();
+    this.showPreview();
+  }
+
+  /** The selected robot on the field behind the selection screen. */
+  private showPreview(): void {
+    const def = robotById(this.settings.robot);
+    if (this.preview?.def !== def) {
+      this.preview?.dispose();
+      this.preview = new RobotView(def, this.settings.alliance, def.team);
+      this.scene.add(this.preview.root);
+    }
+    this.preview.setIdentity(this.settings.alliance, def.team);
+    this.preview.root.position.set(PREVIEW_SPOT[0], 0.002, PREVIEW_SPOT[1]);
+  }
+
+  private hidePreview(): void {
+    this.preview?.dispose();
+    this.preview = null;
+  }
+
 
   // ---- sessions --------------------------------------------------------------
 
@@ -207,6 +250,7 @@ export class Game {
   };
 
   private endSession(): void {
+    this.hidePreview();
     this.session?.dispose();
     this.session = null;
     this.net = null;
@@ -218,7 +262,7 @@ export class Game {
     this.endSession();
     this.lastSoloMode = mode;
     const slot: Slot = this.settings.alliance === 'red' ? 'red1' : 'blue1';
-    this.session = new LocalSession(this.layout, this.colliders, slot, mode, this.sessionEvents);
+    this.session = new LocalSession(this.layout, this.colliders, slot, this.settings.robot, mode, this.sessionEvents);
     this.enterPlay();
     if (mode === 'match') this.hud.toast('АВТОНОМ: 30 секунд. Автонома пока нет — потренируй маршрут вручную');
   }
@@ -228,7 +272,7 @@ export class Game {
     this.settings.name = cleanName(name);
     this.settings.server = server || defaultServerUrl();
     this.saveSettings();
-    const net = new NetSession(this.settings.server, this.settings.name, {
+    const net = new NetSession(this.settings.server, this.settings.name, this.settings.robot, {
       ...this.sessionEvents,
       room: room => this.onRoom(room),
       error: message => {
@@ -374,15 +418,16 @@ export class Game {
     }
 
     const world = this.session?.state() ?? null;
-    if (world) this.draw(world, this.state === 'paused' && !this.session?.online ? 0 : dt);
+    if (world) this.draw(world);
     const mine = world?.robots.find(r => r.slot === this.session?.localSlot) ?? null;
     if (this.state === 'menu') this.updateMenuCamera(dt);
+    else if (this.state === 'select') this.updatePreviewCamera(dt);
     else this.rig.update(mine, dt);
     if (world && (this.state === 'playing' || this.state === 'paused')) this.updateHud(world);
     this.renderer.render(this.scene, this.rig.camera);
   }
 
-  private draw(world: WorldState, dt: number): void {
+  private draw(world: WorldState): void {
     this.field.setHiveAngles(world.hiveAngles);
     this.ballsView.update(world.balls);
     const names = this.session?.names() ?? {};
@@ -394,14 +439,19 @@ export class Game {
       }
     }
     for (const r of world.robots) {
+      const def = robotById(r.robot);
       let view = this.robotViews.get(r.slot);
+      if (view && view.def !== def) {
+        view.dispose();
+        view = undefined;
+      }
       if (!view) {
-        view = new RobotView(DEFAULT_ROBOT, slotAlliance(r.slot), names[r.slot] ?? 'UrSim');
+        view = new RobotView(def, slotAlliance(r.slot), names[r.slot] ?? def.team);
         this.scene.add(view.root);
         this.robotViews.set(r.slot, view);
       }
-      view.setIdentity(slotAlliance(r.slot), names[r.slot] ?? 'UrSim');
-      view.apply(r, this.ballsView.specs, dt);
+      view.setIdentity(slotAlliance(r.slot), names[r.slot] ?? def.team);
+      view.apply(r);
     }
   }
 
@@ -427,6 +477,7 @@ export class Game {
       shooter: mine?.status ?? 'off',
       shotSpeed: mine?.shotSpeed ?? 0,
       targetDistance: mine?.shotDistance ?? 0,
+      range: shotRange(mine?.shotDistance ?? 0, robotById(mine?.robot).shooter),
     });
   }
 
@@ -471,6 +522,15 @@ export class Game {
       shooterOff: input.triggerPressed(1, 'left_trigger') || input.triggerPressed(2, 'left_trigger'),
       imuReset: input.pressed(1, 'start'),
     };
+  }
+
+  private updatePreviewCamera(dt: number): void {
+    this.menuOrbit += dt * 0.25;
+    const cam = this.rig.camera;
+    const [x, z] = PREVIEW_SPOT;
+    cam.up.set(0, 1, 0);
+    cam.position.set(x + Math.cos(this.menuOrbit) * 1.1, 0.65, z + Math.sin(this.menuOrbit) * 1.1);
+    cam.lookAt(x, 0.15, z);
   }
 
   private updateMenuCamera(dt: number): void {

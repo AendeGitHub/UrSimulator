@@ -1,6 +1,7 @@
 // Online screens: connect (name, server, room code) and the room lobby with the four driver slots.
 
 import { normalizeCode, type RoomInfo } from '../net/protocol';
+import { robotById } from '../robot/robots';
 import { SLOT_NAMES, type Slot } from '../sim/types';
 import { h } from './dom';
 import type { Screen } from './menus';
@@ -92,7 +93,8 @@ export class LobbyScreen implements Screen {
         onclick: () => !p && this.actions.takeSlot(slot),
       },
       h('span', { class: 'slot-name' }, SLOT_NAMES[slot]),
-      h('span', { class: 'slot-player' }, p ? `${p.name}${p.id === room.hostId ? ' ★' : ''}${mine ? ' (ты)' : ''}` : 'Свободно — занять'));
+      h('span', { class: 'slot-player' }, p ? `${p.name}${p.id === room.hostId ? ' ★' : ''}${mine ? ' (ты)' : ''}` : 'Свободно — занять'),
+      p ? h('span', { class: 'slot-robot' }, h('img', { src: robotById(p.robot).teamLogo, alt: '' }), robotById(p.robot).name) : '');
     };
     const watchers = room.players.filter(p => !p.slot);
     this.el.replaceChildren(

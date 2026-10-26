@@ -6,9 +6,12 @@ import type { Alliance } from '../robot/robotConfig';
 import { PERIODS, type Period } from './Match';
 import type { ShooterStatus } from './Mechanisms';
 import { SLOTS, type Slot } from './types';
+import { ROBOTS, robotById } from '../robot/robots';
 
 export interface RobotState {
   slot: Slot;
+  /** Robot id (robots.ts) */
+  robot: string;
   x: number;
   z: number;
   yaw: number;
@@ -45,7 +48,7 @@ export interface WorldState {
 const STATUSES: ShooterStatus[] = ['off', 'spinning', 'ready', 'tooFar'];
 const SCORE_FIELDS = ['leave', 'autoPark', 'autoTips', 'teleopTips', 'teleopPark'] as const;
 const FIELD_FIELDS = ['cellElements', 'flowerBottom', 'ownedFlowerElements', 'gardenElements'] as const;
-const VERSION = 1;
+const VERSION = 2;
 
 /** Little binary writer/reader so snapshots stay ~1 KB instead of ~10 KB of JSON. */
 class Writer {
@@ -95,6 +98,7 @@ export function encodeState(s: WorldState): ArrayBuffer {
   w.u8(s.robots.length);
   for (const r of s.robots) {
     w.u8(SLOTS.indexOf(r.slot));
+    w.u8(Math.max(0, ROBOTS.indexOf(robotById(r.robot))));
     for (const v of [r.x, r.z, r.yaw, r.heading, r.speed, r.turretYaw, r.pitch, r.flywheel, r.shotSpeed, r.shotDistance]) w.f32(v);
     w.i8(r.intakeDir);
     w.u8(STATUSES.indexOf(r.status));
@@ -133,12 +137,13 @@ export function decodeState(buf: ArrayBuffer): WorldState {
   const count = r.u8();
   for (let i = 0; i < count; i++) {
     const slot = SLOTS[r.u8()];
+    const robot = (ROBOTS[r.u8()] ?? ROBOTS[0]).id;
     const [x, z, yaw, heading, speed, turretYaw, pitch, flywheel, shotSpeed, shotDistance] = Array.from({ length: 10 }, () => r.f32());
     const intakeDir = r.i8();
     const status = STATUSES[r.u8()];
     const [fl, fr, bl, br] = Array.from({ length: 4 }, () => r.i8() / 127);
     const stored = Array.from({ length: r.u8() }, () => r.u8());
-    robots.push({ slot, x, z, yaw, heading, speed, turretYaw, pitch, flywheel, intakeDir, status, shotSpeed, shotDistance, powers: { fl, fr, bl, br }, stored });
+    robots.push({ slot, robot, x, z, yaw, heading, speed, turretYaw, pitch, flywheel, intakeDir, status, shotSpeed, shotDistance, powers: { fl, fr, bl, br }, stored });
   }
   const n = r.u16();
   const states = new Uint8Array(n);

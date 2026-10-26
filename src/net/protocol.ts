@@ -13,6 +13,8 @@ export const SNAPSHOT_RATE = 30;
 export interface RoomPlayer {
   id: number;
   name: string;
+  /** Robot id (robots.ts) */
+  robot: string;
   /** null = watching without a robot */
   slot: Slot | null;
 }
@@ -26,7 +28,7 @@ export interface RoomInfo {
 }
 
 export type ClientMessage =
-  | { t: 'hello'; name: string }
+  | { t: 'hello'; name: string; robot?: string }
   | { t: 'create' }
   | { t: 'join'; code: string }
   | { t: 'slot'; slot: Slot | null }

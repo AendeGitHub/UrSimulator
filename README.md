@@ -11,6 +11,24 @@ npm run dev
 
 Открыть http://localhost:5173. Подключить геймпад (PS4, PS5 или Logitech F310) и нажать любую кнопку.
 
+## Роботы
+
+Перед матчем, тренировкой или онлайном открывается выбор робота: команда, характеристики, альянс, камера и режим управления.
+
+- **URAN V1** (команда URAN92): модель из CAD команды, mecanum на моторах 518 RPM с колёсами 82 мм (≈2,2 м/с), 9 кг, 44 × 32 см.
+- Точность шутера зависит от расстояния до ячейки: до 1 м — почти всегда попадает, к 2,2 м — сильный разброс. HUD подсказывает: «точно / средне / далеко».
+- Захват URAN V1 не достаёт мячи из цветов.
+
+Как добавить робота из CAD (STEP):
+
+```bash
+pip install cascadio==0.1.1 numpy
+python3 -c "import cascadio; cascadio.step_to_glb('Robot/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.4, tol_angular=0.6, include_materials=True)"
+node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb --forward=+z
+```
+
+`--forward` — ось, куда смотрит перед робота в CAD (сторона захвата). Потом добавь робота в `src/robot/robots.ts`: размеры, мотор, колёса, вес, шутер.
+
 ## Режимы
 
 - **Матч 2:30** — как на соревнованиях: АВТОНОМ 30 с → переход 8 с → TELEOP 2:00, подсчёт очков по мануалу, экран результатов. Автонома пока нет: в эти 30 секунд управляешь сам.
@@ -82,6 +100,7 @@ npm run build && npm run build:server && PORT=8787 npm start
 
 - `TIP_LOAD` и `NECTAR_WEIGHT` в `src/sim/HiveSim.ts` — улей переворачивается от веса 10 POLLEN, NECTAR весит как 2 POLLEN.
 - `SHOOTER` в `src/sim/Mechanisms.ts` — скорость маховика, темп стрельбы, угол подлёта.
+- `shooter.sweetSpot` / `shooter.maxRange` в `src/robot/robots.ts` — дальность точного броска робота.
 
 ## Структура
 
@@ -89,9 +108,9 @@ npm run build && npm run build:server && PORT=8787 npm start
 - `tools/convert-field.mjs` — переводит CAD поля (STEP) в `public/assets/field.glb` и `field-layout.json`; `tools/build-colliders.mjs` — коллизии поля для браузера и сервера (`field-colliders.bin`). Оба: `npm run convert:field`.
 - `src/sim/` — вся игра без графики: физика, роботы, механизмы, ульи, матч, очки, снимки для сети. Работает и в браузере (соло), и на сервере.
 - `src/net/` — протокол, онлайн-сессия, плавная интерполяция снимков; `server/` — игровой сервер с комнатами.
-- `src/view/` — отрисовка поля, мячей и роботов по состоянию мира.
+- `src/view/` — отрисовка поля, арены, мячей и роботов по состоянию мира.
 - `src/input/` — геймпады (имена кнопок как в FTC SDK), клавиатура, мастер настройки кнопок.
-- `src/robot/` — формулы меканум-шасси (как в FTC TeleOp) и параметры робота.
+- `src/robot/` — формулы меканум-шасси (как в FTC TeleOp) и список роботов (`robots.ts`).
 - `src/field/` — геометрия ячеек улья из CAD, зоны, текстура пола.
 - `src/game/` — игровой цикл, сессии (соло / онлайн), подсчёт очков, баллистика автонаведения.
 - `src/camera/`, `src/ui/` — камеры, меню, HUD, табло, результаты.

@@ -3,7 +3,6 @@
 import type { ControlId, PadModel } from '../input/gamepad';
 import { MODEL_NAMES } from '../input/gamepad';
 import type { InputManager } from '../input/InputManager';
-import type { Alliance } from '../robot/robotConfig';
 import { h } from './dom';
 import { keyChip } from './Hud';
 import { MenuNav } from './MenuNav';
@@ -22,7 +21,6 @@ export interface MainMenuActions {
   match(): void;
   practice(): void;
   online(): void;
-  toggleAlliance(): Alliance;
   gamepads(): void;
   help(): void;
 }
@@ -30,14 +28,10 @@ export interface MainMenuActions {
 export class MainMenu implements Screen {
   readonly el: HTMLElement;
   readonly nav: MenuNav;
-  private readonly allianceBtn: HTMLButtonElement;
   private readonly pads = h('div', { class: 'pad-status' });
   private padKey = '';
 
-  constructor(alliance: Alliance, actions: MainMenuActions) {
-    this.allianceBtn = h('button', { class: 'btn btn-secondary' });
-    this.setAlliance(alliance);
-    this.allianceBtn.addEventListener('click', () => this.setAlliance(actions.toggleAlliance()));
+  constructor(actions: MainMenuActions) {
     this.el = h('div', { class: 'screen menu-main' },
       h('img', { src: 'assets/logo.svg', alt: 'UrSim', class: 'menu-logo' }),
       h('p', { class: 'menu-sub' }, 'Симулятор FIRST Tech Challenge · сезон 2026–2027 BIOBUZZ'),
@@ -45,7 +39,6 @@ export class MainMenu implements Screen {
         h('button', { class: 'btn btn-primary', onclick: () => actions.match() }, 'Матч 2:30'),
         h('button', { class: 'btn btn-secondary', onclick: () => actions.practice() }, 'Тренировка'),
         h('button', { class: 'btn btn-secondary', onclick: () => actions.online() }, 'Онлайн 2 на 2'),
-        this.allianceBtn,
         h('button', { class: 'btn btn-secondary', onclick: () => actions.gamepads() }, 'Геймпады'),
         h('button', { class: 'btn btn-secondary', onclick: () => actions.help() }, 'Управление'),
       ),
@@ -53,11 +46,6 @@ export class MainMenu implements Screen {
       h('p', { class: 'menu-legal' }, 'Неофициальный фанатский симулятор. Не связан с FIRST®. BIOBUZZ™ — товарный знак FIRST.'),
     );
     this.nav = new MenuNav(this.el);
-  }
-
-  private setAlliance(a: Alliance): void {
-    this.allianceBtn.textContent = a === 'red' ? 'Альянс: Красный' : 'Альянс: Синий';
-    this.allianceBtn.dataset.alliance = a;
   }
 
   update(input: InputManager): void {
