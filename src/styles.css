@@ -581,39 +581,11 @@ table.controls td:first-child {
   color: var(--red);
 }
 
-.final-score {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 30px;
-}
-
-.final-score .score {
-  border-radius: var(--radius);
-  font-size: 44px;
-  min-width: 110px;
-}
-
-.results-table {
-  width: 100%;
-  text-align: left;
-}
-
 table.controls td.num {
   text-align: right;
   width: 1%;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-
-.rp {
-  justify-content: flex-start;
-  margin-top: 12px;
-  gap: 6px;
-}
-
-.chip-ok {
-  background: var(--accent);
 }
 
 .toasts {
@@ -1029,4 +1001,265 @@ table.specs td {
 
 .penalties p {
   margin: 6px 0 0;
+}
+
+/* ---- results board (FIRST audience display style) ---- */
+
+.menu-results {
+  width: min(1180px, 100%);
+}
+
+.overlay:has(.menu-results) {
+  background: rgba(8, 10, 14, 0.82);
+}
+
+.rb {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  text-align: left;
+}
+
+.rb-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #0b0d12;
+}
+
+.rb-brand {
+  display: flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #cfd6e3;
+}
+
+.rb-brand img {
+  height: 30px;
+}
+
+.rb-title {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.rb-game {
+  justify-self: end;
+  padding: 4px 12px;
+  background: #fff;
+  color: #0b0d12;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  transform: skew(-8deg);
+}
+
+.rb-body {
+  display: grid;
+  grid-template-columns: 1fr minmax(300px, 1.2fr) 1fr;
+  min-height: 360px;
+}
+
+.rb-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.rb-red {
+  background: #d1262c;
+}
+
+.rb-blue {
+  background: #1e5fd8;
+}
+
+.rb-winner {
+  background: #ffe14d;
+  color: #111;
+  font-size: 30px;
+  font-weight: 900;
+  text-align: center;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.rb-tie {
+  background: #e8ebf0;
+}
+
+.rb-empty {
+  visibility: hidden;
+}
+
+.rb-high {
+  align-self: center;
+  background: #ffe14d;
+  color: #111;
+  font-weight: 900;
+  padding: 4px 16px;
+  border-radius: 4px;
+}
+
+.rb-dq {
+  background: #111;
+  font-weight: 800;
+  text-align: center;
+  padding: 6px;
+}
+
+.rb-teams {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.rb-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.rb-team img {
+  height: 30px;
+  background: #fff;
+  border-radius: 4px;
+  padding: 2px;
+}
+
+.rb-rp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: auto;
+}
+
+.rb-rp-total {
+  font-size: 22px;
+  font-weight: 900;
+  margin-right: 6px;
+}
+
+.rb-rp .chip {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.rb-mine {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+
+.rb-center {
+  display: flex;
+  flex-direction: column;
+  background: #e9ecf1;
+  color: #111;
+}
+
+.rb-scores {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.rb-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px 2px;
+  color: #fff;
+}
+
+.rb-score span {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.rb-score strong {
+  font-size: 64px;
+  line-height: 1.05;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-score-red {
+  background: #e3343a;
+}
+
+.rb-score-blue {
+  background: #2d6ef0;
+}
+
+.rb-table {
+  padding: 6px 10px 10px;
+}
+
+.rb-row {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1fr;
+  align-items: center;
+  padding: 3px 4px;
+  border-bottom: 1px solid #c9ced8;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.rb-section {
+  display: block;
+  text-align: center;
+  background: #cfd5df;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  margin-top: 6px;
+}
+
+.rb-label {
+  text-align: center;
+  color: #333;
+}
+
+.rb-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-row .rb-num:last-child {
+  text-align: right;
+}
+
+.rb-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #0b0d12;
+}
+
+@media (max-width: 860px) {
+  .rb-body {
+    grid-template-columns: 1fr;
+  }
+  .rb-center {
+    order: -1;
+  }
+  .rb-score strong {
+    font-size: 44px;
+  }
 }

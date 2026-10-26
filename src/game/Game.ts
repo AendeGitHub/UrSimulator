@@ -21,8 +21,9 @@ import { Hud } from '../ui/Hud';
 import { HelpScreen, MainMenu, PauseMenu, type Screen } from '../ui/menus';
 import { ConnectScreen, LobbyScreen } from '../ui/online';
 import { RobotSelectScreen, type SelectPurpose, type SelectSettings } from '../ui/RobotSelect';
-import { ResultsScreen } from '../ui/ResultsScreen';
+import { ResultsScreen, type ResultsTeam } from '../ui/ResultsScreen';
 import { Arena } from '../view/Arena';
+import { asset } from '../view/assets';
 import { BallsView } from '../view/BallsView';
 import { FieldView } from '../view/FieldView';
 import { RobotView } from '../view/RobotView';
@@ -159,8 +160,8 @@ export class Game {
   static async create(container: HTMLElement, onProgress: (p: number) => void): Promise<Game> {
     const [, layout, colliderData] = await Promise.all([
       initPhysics(),
-      fetch('assets/field-layout.json').then(r => r.json() as Promise<FieldLayout>),
-      fetch('assets/field-colliders.bin').then(r => r.arrayBuffer()),
+      fetch(asset('assets/field-layout.json')).then(r => r.json() as Promise<FieldLayout>),
+      fetch(asset('assets/field-colliders.bin')).then(r => r.arrayBuffer()),
     ]);
     const game = new Game(container);
     game.layout = layout;
@@ -357,8 +358,33 @@ export class Game {
 
   private showResults(score: Record<Alliance, AllianceScore>): void {
     this.state = 'results';
-    const slot = this.session?.localSlot;
-    this.screens.results.show(score, slot ? slotAlliance(slot) : 'red', !!this.net);
+    const slot = this.session?.localSlot ?? null;
+    const mine = slot ? slotAlliance(slot) : null;
+    const names = this.session?.names() ?? {};
+    const teams: Record<Alliance, ResultsTeam[]> = { red: [], blue: [] };
+    // Online the room knows every driver even if the last snapshot is already gone.
+    const robots = this.net?.room?.players.flatMap(p => (p.slot ? [{ slot: p.slot, robot: p.robot }] : [])) ?? this.session?.state()?.robots ?? [];
+    for (const r of robots) {
+      const def = robotById(r.robot);
+      teams[slotAlliance(r.slot)].push({ name: names[r.slot] ?? def.team, logo: def.teamLogo });
+    }
+    // Personal best for solo matches, kept in this browser.
+    let highScore = false;
+    if (mine && !this.net) {
+      const points = total(score[mine]);
+      const key = `ursim.best.${this.settings.robot}`;
+      try {
+        const best = Number(localStorage.getItem(key) ?? 0);
+        if (points > best) {
+          localStorage.setItem(key, String(points));
+          highScore = best > 0 || points > 0;
+        }
+      } catch {
+        // No storage: no record keeping.
+      }
+    }
+    const title = this.net?.room ? `Онлайн-матч · комната ${this.net.room.code}` : 'Матч';
+    this.screens.results.show({ score, mine, teams, title, online: !!this.net, highScore });
     this.show(this.screens.results);
   }
 

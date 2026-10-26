@@ -62,10 +62,20 @@ function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, health
     if (!fs.existsSync(DIST)) return sendText(res, 200, 'UrSim server is running. Build the game (npm run build) to serve it here.');
     return sendText(res, 404, 'Not found');
   }
+  // Vite names its bundles with a content hash, so those never change. Everything else (page,
+  // models, field data) has a fixed name: browsers must check with us before reusing a copy.
+  const hashed = /[-.][A-Za-z0-9_]{8,}\.(js|css)$/.test(file);
+  const modified = fs.statSync(file).mtime;
+  modified.setMilliseconds(0);
+  const since = Date.parse(req.headers['if-modified-since'] ?? '');
+  if (!hashed && since >= modified.getTime()) {
+    res.writeHead(304);
+    return void res.end();
+  }
   res.writeHead(200, {
     'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
-    // The page itself must update with each deploy; the big field model can be cached for a day.
-    'cache-control': file.endsWith('.html') ? 'no-cache' : 'public, max-age=86400',
+    'cache-control': hashed ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'last-modified': modified.toUTCString(),
   });
   if (req.method === 'HEAD') return void res.end();
   fs.createReadStream(file).pipe(res);

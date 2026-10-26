@@ -10,12 +10,17 @@ import type { Alliance } from '../robot/robotConfig';
 import type { RobotDefinition } from '../robot/robots';
 import type { WheelPowers } from '../robot/mecanum';
 import type { RobotState } from '../sim/state';
+import { asset } from './assets';
 
 const ALLIANCE_COLORS: Record<Alliance, string> = { red: '#d42a2a', blue: '#1f5fd6' };
 /** Edges sharper than this stay sharp when normals are rebuilt. */
 const CREASE_ANGLE = (32 * Math.PI) / 180;
-/** Roller and flywheel speeds for the animation, rad/s */
-const SPIN = { intake: 28, transfer: 22, flywheel: 260 };
+/**
+ * On-screen spin speeds, rad/s. Real speeds (a flywheel at ~150 rad/s turns 150° per frame) strobe:
+ * the part looks frozen or turning backwards, like car wheels on film. About 8–11° per frame at
+ * 60 fps reads as a clear spin in the right direction.
+ */
+const SPIN = { wheelMax: 9, intake: 8, transfer: 7, flywheel: 11 };
 
 type Axis = 'x' | 'y' | 'z';
 
@@ -30,7 +35,7 @@ const models = new Map<string, Promise<THREE.Group>>();
 function loadModel(url: string): Promise<THREE.Group> {
   let model = models.get(url);
   if (!model) {
-    model = new GLTFLoader().loadAsync(url).then(gltf => {
+    model = new GLTFLoader().loadAsync(asset(url)).then(gltf => {
       gltf.scene.traverse(obj => {
         if (!(obj instanceof THREE.Mesh)) return;
         obj.geometry = toCreasedNormals(obj.geometry, CREASE_ANGLE);
@@ -136,11 +141,10 @@ export class RobotView {
     this.root.rotation.set(0, s.yaw, 0);
     if (this.turret) this.turret.rotation.y = s.turretYaw;
     // Driving forward turns the wheels backward about the side axis (right-hand rule).
-    const wheelRate = this.def.config.drive.maxWheelSpeed / this.def.config.wheelRadius;
-    for (const [k, w] of this.wheels) spin(w, -s.powers[k] * wheelRate * dt);
+    for (const [k, w] of this.wheels) spin(w, -s.powers[k] * SPIN.wheelMax * dt);
     for (const r of this.intake) spin(r, -s.intakeDir * SPIN.intake * dt);
     if (s.transfer) for (const r of this.transfer) spin(r, -SPIN.transfer * dt);
-    if (this.flywheel) spin(this.flywheel, -s.flywheel * SPIN.flywheel * dt);
+    if (this.flywheel) spin(this.flywheel, -Math.min(1, s.flywheel * 2) * SPIN.flywheel * dt);
   }
 }
 

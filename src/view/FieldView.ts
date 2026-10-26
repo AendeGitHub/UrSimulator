@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createTileTexture } from '../field/floorTexture';
 import type { FieldLayout } from '../field/layout';
 import type { Alliance } from '../robot/robotConfig';
+import { asset } from './assets';
 
 export class FieldView {
   readonly root = new THREE.Group();
@@ -15,7 +16,7 @@ export class FieldView {
 
   static async load(layout: FieldLayout, scene: THREE.Scene, onProgress?: (p: number) => void): Promise<FieldView> {
     const view = new FieldView(layout);
-    const gltf = await new GLTFLoader().loadAsync('assets/field.glb', e => {
+    const gltf = await new GLTFLoader().loadAsync(asset('assets/field.glb'), e => {
       if (e.total) onProgress?.(e.loaded / e.total);
     });
     view.build(gltf.scene);
