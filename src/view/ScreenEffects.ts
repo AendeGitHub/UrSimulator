@@ -69,7 +69,8 @@ class AmbientOcclusionPass extends GTAOPass {
     super(scene, camera, 1, 1);
     this.setGBuffer(gbuffer.depthTexture ?? undefined, gbuffer.texture);
     // Radius in metres: robot-sized creases, not whole-field darkening.
-    this.updateGtaoMaterial({ radius: 0.16, distanceExponent: 1, thickness: 1, scale: 1.25, samples: 12 });
+    this.updateGtaoMaterial({ radius: 0.16, distanceExponent: 1, thickness: 1, scale: 1.25, samples: 8 });
+    this.updatePdMaterial({ samples: 8 });
     this.blendIntensity = 0.85;
   }
 

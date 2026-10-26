@@ -4,8 +4,12 @@
 // Field center is the origin; red drivers stand at -X, blue at +X, the audience side is +Z.
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const HALL = { halfX: 15, halfZ: 13, height: 10 };
+/** Brightness of hall surfaces compared to their real colours (the field gets the light). */
+const HALL_DIM = 0.45;
+const BLACK = new THREE.Color(0, 0, 0);
 const FLOOR_Y = -0.016;
 
 function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, repeat?: [number, number]): THREE.CanvasTexture {
@@ -89,7 +93,50 @@ export class Arena {
     this.buildBleachers(-5.2, -1);
     this.buildCeiling();
     this.buildBanners();
+    this.mergeStatic();
+    this.dim();
     scene.add(this.root);
+  }
+
+  /** The hall sits in the dark around the lit field: surfaces reflect much less light. */
+  private dim(): void {
+    this.root.traverse(obj => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material as THREE.MeshStandardMaterial;
+      // Lamps and logo banners glow on their own and stay bright.
+      if (mat.emissiveIntensity > 0 && !mat.emissive.equals(BLACK)) return;
+      mat.color.multiplyScalar(HALL_DIM);
+    });
+  }
+
+  /**
+   * The hall is hundreds of small boxes (trusses, steps, lamps). Drawn one by one they cost a
+   * draw call each in every render pass, so boxes sharing a material become one mesh.
+   */
+  private mergeStatic(): void {
+    this.root.updateMatrixWorld(true);
+    const groups = new Map<THREE.Material, THREE.Mesh[]>();
+    for (const obj of this.root.children) {
+      if (!(obj instanceof THREE.Mesh) || obj instanceof THREE.InstancedMesh || Array.isArray(obj.material)) continue;
+      const list = groups.get(obj.material) ?? [];
+      list.push(obj);
+      groups.set(obj.material, list);
+    }
+    for (const [material, meshes] of groups) {
+      if (meshes.length < 2) continue;
+      const merged = mergeGeometries(meshes.map(m => {
+        const geo = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+        return geo.applyMatrix4(m.matrixWorld);
+      }));
+      if (!merged) continue;
+      for (const m of meshes) {
+        m.removeFromParent();
+        m.geometry.dispose();
+      }
+      const mesh = new THREE.Mesh(merged, material);
+      mesh.receiveShadow = true;
+      this.root.add(mesh);
+    }
   }
 
   private add<T extends THREE.Object3D>(obj: T): T {

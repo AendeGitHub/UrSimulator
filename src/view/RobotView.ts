@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries, toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Alliance } from '../robot/robotConfig';
 import type { RobotDefinition } from '../robot/robots';
 import type { WheelPowers } from '../robot/mecanum';
@@ -36,17 +36,64 @@ function loadModel(url: string): Promise<THREE.Group> {
   let model = models.get(url);
   if (!model) {
     model = new GLTFLoader().loadAsync(asset(url)).then(gltf => {
+      const parts: THREE.Object3D[] = [];
       gltf.scene.traverse(obj => {
-        if (!(obj instanceof THREE.Mesh)) return;
-        obj.geometry = toCreasedNormals(obj.geometry, CREASE_ANGLE);
-        obj.castShadow = true;
-        obj.receiveShadow = true;
+        if (obj.children.some(c => c instanceof THREE.Mesh)) parts.push(obj);
       });
+      for (const part of parts) mergePart(part);
       return gltf.scene;
     });
     models.set(url, model);
   }
   return model;
+}
+
+/**
+ * The CAD export has one mesh per colour per part (~80 for a robot), and each costs a draw call
+ * in every render pass. Meshes of one part are merged into one per surface finish, with the CAD
+ * colours kept as vertex colours: about 25 draw calls per robot instead of ~80.
+ */
+function mergePart(part: THREE.Object3D): void {
+  const groups = new Map<string, { metalness: number; roughness: number; geometries: THREE.BufferGeometry[] }>();
+  const meshes = part.children.filter((c): c is THREE.Mesh => c instanceof THREE.Mesh);
+  for (const mesh of meshes) {
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    // Normals are rebuilt with creases so flat CAD faces stay flat and edges stay sharp.
+    const src = toCreasedNormals(mesh.geometry, CREASE_ANGLE);
+    // Quantized positions carry their scale in the mesh transform: bake it into plain floats.
+    mesh.updateMatrix();
+    const normalMatrix = new THREE.Matrix3().getNormalMatrix(mesh.matrix);
+    const pos = src.getAttribute('position');
+    const nor = src.getAttribute('normal');
+    const count = pos.count;
+    const p = new Float32Array(count * 3);
+    const n = new Float32Array(count * 3);
+    const c = new Float32Array(count * 3);
+    const v = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrix).toArray(p, i * 3);
+      v.fromBufferAttribute(nor, i).applyMatrix3(normalMatrix).normalize().toArray(n, i * 3);
+      mat.color.toArray(c, i * 3);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(p, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(n, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    const key = `${mat.metalness.toFixed(2)}|${mat.roughness.toFixed(2)}`;
+    const group = groups.get(key) ?? { metalness: mat.metalness, roughness: mat.roughness, geometries: [] };
+    group.geometries.push(geo);
+    groups.set(key, group);
+    mesh.removeFromParent();
+    mesh.geometry.dispose();
+    src.dispose();
+  }
+  for (const { metalness, roughness, geometries } of groups.values()) {
+    const merged = new THREE.Mesh(mergeGeometries(geometries), new THREE.MeshStandardMaterial({ vertexColors: true, metalness, roughness }));
+    merged.castShadow = true;
+    merged.receiveShadow = true;
+    part.add(merged);
+    for (const g of geometries) g.dispose();
+  }
 }
 
 function signTexture(text: string, color: string): THREE.CanvasTexture {

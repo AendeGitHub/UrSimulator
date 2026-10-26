@@ -120,7 +120,8 @@ export class Game {
 
   private constructor(private readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // 1.5× is sharp enough with the outlines and draws ~45% fewer pixels than 2× on retina screens.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -217,13 +218,15 @@ export class Game {
   private setupLighting(): void {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.32;
-    this.scene.background = new THREE.Color('#1c2028');
+    this.scene.environmentIntensity = 0.14;
+    // Event lighting: the field glows under a spotlight, the hall fades into the dark around it.
+    const dark = new THREE.Color('#090b0f');
+    this.scene.background = dark;
+    this.scene.fog = new THREE.FogExp2(dark, 0.075);
     new Arena(this.scene);
 
-    // Event lighting: a bright spotlight on the field, the hall and stands left in soft dimness.
-    this.scene.add(new THREE.HemisphereLight('#f2f5ff', '#5a6070', 0.38));
-    const spot = new THREE.SpotLight('#ffffff', 4.4, 0, Math.atan(3.3 / 8.5), 0.55, 0);
+    this.scene.add(new THREE.HemisphereLight('#f2f5ff', '#5a6070', 0.13));
+    const spot = new THREE.SpotLight('#ffffff', 4.8, 0, Math.atan(3.6 / 8.5), 0.75, 0);
     spot.position.set(0.6, 8.5, 1.2);
     spot.target.position.set(0, 0, 0);
     spot.castShadow = true;
