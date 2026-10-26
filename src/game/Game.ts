@@ -33,6 +33,11 @@ import { LocalSession, type Session, type SessionEvents } from './Session';
 const SETTINGS_KEY = 'ursim.settings';
 /** Where the robot stands on the selection screen (x, z): open floor on the red side. */
 const PREVIEW_SPOT: [number, number] = [-1.05, 0.95];
+/**
+ * Main menu view (MoSim style): a high corner view from the audience side that sways slowly.
+ * The camera aims `shift` m left of the field center so the field sits right of the menu list.
+ */
+const MENU_VIEW = { angle: 0.62 * Math.PI, sway: 0.06 * Math.PI, distance: 4.25, height: 3.2, shift: 0.95 };
 
 type State = 'menu' | 'select' | 'playing' | 'paused' | 'results' | 'lobby';
 
@@ -98,6 +103,7 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.12;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.append(this.renderer.domElement);
 
@@ -132,8 +138,7 @@ export class Game {
       help: new HelpScreen(this.input, back),
       pads: new GamepadScreen(this.input, back),
       results: new ResultsScreen({
-        again: () => (this.net ? this.showLobby() : this.startSolo('match')),
-        practice: () => this.startSolo('practice'),
+        again: () => (this.net ? this.showLobby() : this.startSolo(this.lastSoloMode)),
         menu: () => this.toMenu(),
       }),
       connect: new ConnectScreen({ name: this.settings.name, server: this.settings.server }, {
@@ -177,14 +182,14 @@ export class Game {
   private setupLighting(): void {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.75;
+    this.scene.environmentIntensity = 0.55;
     this.scene.background = new THREE.Color('#3a4150');
     new Arena(this.scene);
 
-    // Bright, even gym lighting from the ceiling.
-    this.scene.add(new THREE.HemisphereLight('#f2f5ff', '#5a6070', 1.3));
-    const sun = new THREE.DirectionalLight('#ffffff', 2.4);
-    sun.position.set(2.5, 7, 3.5);
+    // Gym lighting from the ceiling; a strong key light gives the field crisp shadows.
+    this.scene.add(new THREE.HemisphereLight('#f2f5ff', '#5a6070', 0.95));
+    const sun = new THREE.DirectionalLight('#ffffff', 3.2);
+    sun.position.set(3.5, 7, 4.5);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -3.4;
@@ -196,6 +201,13 @@ export class Game {
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.02;
     this.scene.add(sun);
+
+    // Alliance colors glow onto the floor and walls at each end of the field.
+    for (const [color, x] of [['#ff2b2b', -2.6], ['#2b5bff', 2.6]] as const) {
+      const glow = new THREE.PointLight(color, 10, 5.5, 1.5);
+      glow.position.set(x, 1.4, 0);
+      this.scene.add(glow);
+    }
   }
 
   private saveSettings(): void {
@@ -436,9 +448,11 @@ export class Game {
     } else {
       // Online games keep going behind menus; the robot just gets no input.
       if (this.session?.online) this.session.update(dt, null);
-      if (this.screen) {
-        this.screen.update?.(this.input);
-        if (!this.screen.blocksNav) this.screen.nav.update(this.input);
+      const screen = this.screen;
+      if (screen) {
+        screen.update?.(this.input);
+        // A screen may have just switched to another one; that one starts reading input next frame.
+        if (this.screen === screen && !screen.blocksNav) screen.nav.update(this.input);
         if (this.state === 'paused' && this.screen === this.screens.pause && this.input.pressed(1, 'guide')) this.resume();
       }
     }
@@ -565,11 +579,14 @@ export class Game {
   }
 
   private updateMenuCamera(dt: number): void {
-    this.menuOrbit += dt * 0.07;
+    this.menuOrbit += dt;
+    const v = MENU_VIEW;
+    const angle = v.angle + Math.sin(this.menuOrbit * 0.15) * v.sway;
     const cam = this.rig.camera;
     cam.up.set(0, 1, 0);
-    cam.position.set(Math.cos(this.menuOrbit) * 4.6, 2.6, Math.sin(this.menuOrbit) * 4.6);
-    cam.lookAt(0, 0.45, 0);
+    cam.position.set(Math.cos(angle) * v.distance, v.height, Math.sin(angle) * v.distance);
+    // Aim at a point left of the field center as seen from the camera.
+    cam.lookAt(-Math.sin(angle) * v.shift, 0.05, Math.cos(angle) * v.shift);
   }
 
   private announcePads(): void {

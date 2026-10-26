@@ -60,6 +60,12 @@ function bannerTexture(logo: HTMLImageElement | null, title: string, subtitle: s
   return canvasTexture(1024, 400, g => {
     g.fillStyle = '#0b0f14';
     g.fillRect(0, 0, 1024, 400);
+    // A banner without a title is just the logo, centered.
+    if (logo && !title) {
+      const scale = Math.min(960 / logo.width, 340 / logo.height);
+      g.drawImage(logo, (1024 - logo.width * scale) / 2, (400 - logo.height * scale) / 2, logo.width * scale, logo.height * scale);
+      return;
+    }
     if (logo) g.drawImage(logo, 36, 40, 400, 320);
     g.fillStyle = '#ffffff';
     g.font = 'bold 110px system-ui, -apple-system, Segoe UI, sans-serif';
@@ -231,7 +237,7 @@ export class Arena {
   }
 
   private buildBanners(): void {
-    const make = (title: string, subtitle: string, width: number, pos: [number, number, number], ry: number) => {
+    const make = (src: string, title: string, subtitle: string, width: number, pos: [number, number, number], ry: number) => {
       const mat = new THREE.MeshStandardMaterial({ map: bannerTexture(null, title, subtitle), roughness: 0.7, emissive: '#ffffff', emissiveIntensity: 0.25 });
       mat.emissiveMap = mat.map;
       const banner = this.add(new THREE.Mesh(new THREE.PlaneGeometry(width, width * 0.39), mat));
@@ -244,9 +250,9 @@ export class Arena {
         mat.emissiveMap = mat.map;
         mat.needsUpdate = true;
       };
-      logo.src = 'assets/logo.svg';
+      logo.src = src;
     };
-    make('BIOBUZZ', 'FTC 2026–2027 · UrSim', 10, [-HALL.halfX + 0.05, 5.6, 0], Math.PI / 2);
-    make('UrSim', 'Симулятор FIRST Tech Challenge', 8, [HALL.halfX - 0.05, 5.6, 0], -Math.PI / 2);
+    make('assets/biobuzz.webp', '', '', 10, [-HALL.halfX + 0.05, 5.6, 0], Math.PI / 2);
+    make('assets/logo.svg', 'UrSim', 'Симулятор FIRST Tech Challenge', 8, [HALL.halfX - 0.05, 5.6, 0], -Math.PI / 2);
   }
 }

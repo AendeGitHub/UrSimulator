@@ -91,7 +91,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: radial-gradient(ellipse at center, rgba(10, 12, 16, 0.35), rgba(10, 12, 16, 0.85));
+  background: rgba(8, 10, 14, 0.62);
   overflow-y: auto;
 }
 
@@ -114,16 +114,6 @@ body {
   font-size: 28px;
 }
 
-.menu-logo {
-  width: min(220px, 50vw);
-  max-height: 22vh;
-}
-
-.menu-sub {
-  margin: -8px 0 8px;
-  color: var(--muted);
-}
-
 .menu-buttons {
   display: flex;
   flex-direction: column;
@@ -131,10 +121,112 @@ body {
   width: min(320px, 100%);
 }
 
+/* ---- main and pause menus (MoSim style: big white words, outlined when selected) ---- */
+
+.overlay:has(.menu-main) {
+  background: linear-gradient(90deg, rgba(6, 8, 12, 0.6), rgba(6, 8, 12, 0.18) 45%, rgba(6, 8, 12, 0) 70%);
+}
+
+.overlay:has(.menu-pause) {
+  background: linear-gradient(90deg, rgba(6, 8, 12, 0.72), rgba(6, 8, 12, 0.35) 55%, rgba(6, 8, 12, 0.2));
+  justify-content: flex-start;
+  padding: 5vh 4vw;
+}
+
+.menu-main {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  margin: 0;
+  padding: 4vh 4vw;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 1fr auto;
+  align-items: end;
+  justify-items: start;
+  gap: 2vh 24px;
+  text-align: left;
+}
+
+.menu-logo {
+  grid-area: 1 / 1;
+  align-self: start;
+  height: clamp(64px, 13vh, 140px);
+  filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.45));
+}
+
+.menu-season {
+  grid-area: 1 / 2;
+  align-self: start;
+  height: clamp(56px, 12vh, 124px);
+  max-width: 38vw;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.35));
+}
+
+.menu-main .menu-list {
+  grid-area: 2 / 1;
+}
+
+.menu-foot {
+  grid-area: 3 / 1 / 4 / 3;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .menu-legal {
-  margin-top: 12px;
+  margin: 0;
   font-size: 12px;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.55);
+  text-align: right;
+}
+
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.menu-pause {
+  width: auto;
+  margin: auto 0;
+  align-items: flex-start;
+}
+
+.btn.menu-item,
+.menu-heading {
+  font-size: clamp(24px, min(5.2vh, 8.5vw), 50px);
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.005em;
+  padding: 0.12em 0.42em;
+}
+
+.btn.menu-item {
+  margin-left: -0.42em;
+  border: 3px solid transparent;
+  border-radius: 14px;
+  background: none;
+  color: #fff;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
+}
+
+.btn.menu-item:hover,
+.btn.menu-item:focus {
+  border-color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.menu-heading {
+  margin-left: -0.42em;
+  color: rgba(255, 255, 255, 0.38);
 }
 
 .menu-pads,
@@ -144,35 +236,27 @@ body {
 
 .btn {
   font: inherit;
-  font-size: 16px;
-  font-weight: 600;
-  padding: 13px 18px;
+  font-size: 17px;
+  font-weight: 700;
+  padding: 11px 18px;
   border-radius: var(--radius);
-  border: 1px solid var(--line);
-  color: var(--text);
-  background: var(--panel-solid);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  background: transparent;
   cursor: pointer;
-  transition: transform 0.08s, background 0.15s, border-color 0.15s;
+  transition: background 0.12s, border-color 0.12s;
 }
 
 .btn:hover,
 .btn:focus-visible,
 .btn:focus {
   outline: none;
-  border-color: var(--accent-hi);
-  background: #1d242d;
-  transform: translateY(-1px);
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.btn-primary:hover,
-.btn-primary:focus {
-  background: var(--accent-hi);
-  border-color: #fff;
+  border-color: rgba(255, 255, 255, 0.7);
 }
 
 .btn-secondary[data-alliance='red'] {
@@ -184,7 +268,7 @@ body {
 }
 
 .btn-ghost {
-  background: transparent;
+  border-color: transparent;
 }
 
 .btn-small {
@@ -200,9 +284,9 @@ body {
 }
 
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  background: rgba(10, 13, 18, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
   padding: 14px 16px;
   backdrop-filter: blur(6px);
 }
@@ -676,7 +760,7 @@ table.controls td.num {
 
 .field:focus {
   outline: none;
-  border-color: var(--accent-hi);
+  border-color: #fff;
 }
 
 .field-code {
@@ -777,11 +861,11 @@ table.controls td.num {
 .slot-card:not(:disabled):hover,
 .slot-card:focus {
   outline: none;
-  border-color: var(--accent-hi);
+  border-color: #fff;
 }
 
 .slot-mine {
-  box-shadow: inset 0 0 0 2px var(--accent-hi);
+  box-shadow: inset 0 0 0 2px #fff;
 }
 
 .slot-name {
@@ -883,8 +967,6 @@ table.specs td {
 
 .setting-value {
   min-width: 150px;
-  background: #1f3a8a;
-  border-color: #2d4fb3;
 }
 
 .btn-start {
@@ -916,8 +998,8 @@ table.specs td {
 }
 
 .robot-card-active {
-  border-color: var(--accent-hi);
-  background: #12392a;
+  border-color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .robot-card:focus {
@@ -1003,23 +1085,25 @@ table.specs td {
   margin: 6px 0 0;
 }
 
-/* ---- results board (FIRST audience display style) ---- */
-
-.menu-results {
-  width: min(1180px, 100%);
-}
+/* ---- results board: whole screen, FIRST audience display style ---- */
 
 .overlay:has(.menu-results) {
-  background: rgba(8, 10, 14, 0.82);
+  padding: 0;
+  background: #0b0d12;
+}
+
+.menu-results {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  gap: 0;
 }
 
 .rb {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
   text-align: left;
 }
 
@@ -1027,8 +1111,8 @@ table.specs td {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: 16px;
+  padding: 1.2vh 2.4vw;
   background: #0b0d12;
 }
 
@@ -1036,43 +1120,36 @@ table.specs td {
   display: flex;
   white-space: nowrap;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
+  gap: 12px;
+  font-size: clamp(12px, 1.8vh, 18px);
   font-weight: 700;
   color: #cfd6e3;
 }
 
 .rb-brand img {
-  height: 30px;
+  height: clamp(30px, 5.5vh, 60px);
 }
 
 .rb-title {
-  font-size: 22px;
+  font-size: clamp(22px, 4vh, 44px);
   font-weight: 800;
 }
 
-.rb-game {
+.rb-season {
   justify-self: end;
-  padding: 4px 12px;
-  background: #fff;
-  color: #0b0d12;
-  font-weight: 900;
-  font-style: italic;
-  letter-spacing: 0.04em;
-  transform: skew(-8deg);
+  height: clamp(44px, 8.5vh, 96px);
 }
 
 .rb-body {
   display: grid;
-  grid-template-columns: 1fr minmax(300px, 1.2fr) 1fr;
-  min-height: 360px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr);
 }
 
 .rb-side {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
+  gap: 2vh;
+  padding: 3vh 2vw;
 }
 
 .rb-red {
@@ -1086,11 +1163,12 @@ table.specs td {
 .rb-winner {
   background: #ffe14d;
   color: #111;
-  font-size: 30px;
+  font-size: clamp(28px, 7vh, 76px);
   font-weight: 900;
+  line-height: 1.1;
   text-align: center;
-  padding: 12px;
-  border-radius: 4px;
+  padding: 2vh 1vw;
+  border-radius: 6px;
 }
 
 .rb-tie {
@@ -1105,65 +1183,42 @@ table.specs td {
   align-self: center;
   background: #ffe14d;
   color: #111;
+  font-size: clamp(16px, 2.8vh, 30px);
   font-weight: 900;
-  padding: 4px 16px;
-  border-radius: 4px;
+  padding: 0.3em 1em;
+  border-radius: 6px;
 }
 
 .rb-dq {
   background: #111;
+  font-size: clamp(16px, 2.6vh, 28px);
   font-weight: 800;
   text-align: center;
-  padding: 6px;
+  padding: 0.4em;
 }
 
 .rb-teams {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.4vh;
 }
 
 .rb-team {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
+  gap: 1vw;
+  padding: 1.2vh 1vw;
   background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  font-size: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  font-size: clamp(20px, 4vh, 44px);
   font-weight: 800;
 }
 
 .rb-team img {
-  height: 30px;
+  height: clamp(32px, 6.5vh, 72px);
   background: #fff;
-  border-radius: 4px;
-  padding: 2px;
-}
-
-.rb-rp {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  margin-top: auto;
-}
-
-.rb-rp-total {
-  font-size: 22px;
-  font-weight: 900;
-  margin-right: 6px;
-}
-
-.rb-rp .chip {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.rb-mine {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  opacity: 0.85;
+  border-radius: 6px;
+  padding: 3px;
 }
 
 .rb-center {
@@ -1182,18 +1237,18 @@ table.specs td {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 4px 2px;
+  padding: 1.4vh 4px 0.4vh;
   color: #fff;
 }
 
 .rb-score span {
-  font-size: 13px;
+  font-size: clamp(13px, 2.2vh, 24px);
   font-weight: 800;
 }
 
 .rb-score strong {
-  font-size: 64px;
-  line-height: 1.05;
+  font-size: clamp(64px, 17vh, 190px);
+  line-height: 1;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
 }
@@ -1207,16 +1262,20 @@ table.specs td {
 }
 
 .rb-table {
-  padding: 6px 10px 10px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  padding: 1vh 1.2vw 1.6vh;
 }
 
 .rb-row {
   display: grid;
   grid-template-columns: 1fr 1.3fr 1fr;
   align-items: center;
-  padding: 3px 4px;
+  padding: 0.25vh 0.4vw;
   border-bottom: 1px solid #c9ced8;
-  font-size: 17px;
+  font-size: clamp(16px, 3vh, 34px);
   font-weight: 700;
 }
 
@@ -1224,9 +1283,8 @@ table.specs td {
   display: block;
   text-align: center;
   background: #cfd5df;
-  font-size: 13px;
+  font-size: clamp(12px, 2vh, 22px);
   letter-spacing: 0.1em;
-  margin-top: 6px;
 }
 
 .rb-label {
@@ -1242,14 +1300,24 @@ table.specs td {
   text-align: right;
 }
 
-.rb-footer {
+.rb-hint {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 12px 16px;
+  justify-content: center;
+  gap: 4vw;
+  padding: 1.2vh 2vw;
   background: #0b0d12;
+  font-size: clamp(13px, 1.9vh, 20px);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.rb-hint > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rb-hint .key {
+  margin-right: 6px;
 }
 
 @media (max-width: 860px) {
@@ -1259,7 +1327,7 @@ table.specs td {
   .rb-center {
     order: -1;
   }
-  .rb-score strong {
-    font-size: 44px;
+  .rb-brand span {
+    display: none;
   }
 }

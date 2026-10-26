@@ -1,15 +1,20 @@
-// End-of-match results in the style of the FIRST audience display: alliance panels with teams
-// and the winner banner, both scores, and a side-by-side breakdown by period.
+// End-of-match results over the whole screen, in the style of the FIRST audience display:
+// alliance panels with teams and the winner banner, both scores and a side-by-side breakdown.
+// No buttons: R (✕ / A) plays again, Esc (○ / B) goes back to the menu.
 
-import { POINTS, RP_THRESHOLDS, rankingPoints, total, type AllianceScore } from '../game/scoring';
+import type { PadModel } from '../input/gamepad';
+import type { InputManager } from '../input/InputManager';
+import { POINTS, total, type AllianceScore } from '../game/scoring';
 import type { Alliance } from '../robot/robotConfig';
 import { h } from './dom';
+import { keyChip } from './Hud';
 import type { Screen } from './menus';
 import { MenuNav } from './MenuNav';
 
 export interface ResultsActions {
+  /** Solo: the same match again · online: back to the room lobby */
   again(): void;
-  practice(): void;
+  /** Solo: main menu · online: leave the room */
   menu(): void;
 }
 
@@ -52,39 +57,46 @@ function rows(s: AllianceScore): Row[] {
   ];
 }
 
-/** Ranking points an alliance earns in a qualification match (manual table 10-2). */
-export function matchRp(s: AllianceScore, own: number, other: number): { total: number; items: string[] } {
-  const rp = rankingPoints(s);
-  const items: string[] = [];
-  let sum = Number(rp.swarm) + Number(rp.pollinator1) + Number(rp.pollinator2);
-  if (own > other) {
-    sum += 3;
-    items.push('WIN +3');
-  } else if (own === other) {
-    sum += 1;
-    items.push('TIE +1');
-  }
-  if (rp.swarm) items.push(`SWARM +1`);
-  if (rp.pollinator1) items.push(`POLLINATOR ${RP_THRESHOLDS.pollinator1} +1`);
-  if (rp.pollinator2) items.push(`POLLINATOR ${RP_THRESHOLDS.pollinator2} +1`);
-  return { total: sum, items };
-}
-
 export class ResultsScreen implements Screen {
   readonly el = h('div', { class: 'screen menu-results' });
   readonly nav: MenuNav;
+  private readonly hint = h('div', { class: 'rb-hint' });
+  private online = false;
+  private model: PadModel | null = null;
+  /** R must be pressed after the board appears, not still held from the match. */
+  private rWasDown = true;
 
   constructor(private readonly actions: ResultsActions) {
     this.nav = new MenuNav(this.el, actions.menu);
   }
 
+  update(input: InputManager): void {
+    if (input.model1 !== this.model) this.renderHint(input.model1);
+    const rDown = input.keyboard.isDown('KeyR');
+    const again = (rDown && !this.rWasDown) || input.menuPressed('a');
+    this.rWasDown = rDown;
+    if (again) this.actions.again();
+    else if (input.pressed(1, 'guide')) this.actions.menu();
+  }
+
+  private renderHint(model: PadModel): void {
+    this.model = model;
+    const pad = model !== 'keyboard';
+    this.hint.replaceChildren(
+      h('span', {}, h('span', { class: 'key' }, 'R'), pad ? keyChip(model, 'a') : '', this.online ? 'в лобби комнаты' : 'ещё раз'),
+      h('span', {}, keyChip('keyboard', 'guide'), pad ? keyChip(model, 'b') : '', this.online ? 'выйти из комнаты' : 'в меню'),
+    );
+  }
+
   show(info: ResultsInfo): void {
+    this.online = info.online;
+    this.model = null;
+    this.rWasDown = true;
     const totals = { red: total(info.score.red), blue: total(info.score.blue) };
     const winner: Alliance | null = totals.red === totals.blue ? null : totals.red > totals.blue ? 'red' : 'blue';
     const blueRows = rows(info.score.blue);
 
     const side = (a: Alliance) => {
-      const rp = matchRp(info.score[a], totals[a], totals[a === 'red' ? 'blue' : 'red']);
       const teams = info.teams[a].length ? info.teams[a] : [{ name: '—', logo: '' }];
       return h('div', { class: `rb-side rb-${a}` },
         winner === a ? h('div', { class: 'rb-winner' }, '🏆 ПОБЕДА') : winner === null ? h('div', { class: 'rb-winner rb-tie' }, 'НИЧЬЯ') : h('div', { class: 'rb-winner rb-empty' }, '🏆'),
@@ -92,28 +104,15 @@ export class ResultsScreen implements Screen {
         info.score[a].redCards ? h('div', { class: 'rb-dq' }, '🟥 ДИСКВАЛИФИКАЦИЯ') : '',
         h('div', { class: 'rb-teams' },
           ...teams.map(t => h('div', { class: 'rb-team' }, t.logo ? h('img', { src: t.logo, alt: '' }) : '', h('span', {}, t.name)))),
-        h('div', { class: 'rb-rp' }, h('span', { class: 'rb-rp-total' }, `${rp.total} RP`), ...rp.items.map(i => h('span', { class: 'chip' }, i))),
-        info.mine === a ? h('div', { class: 'rb-mine' }, 'ТВОЙ АЛЬЯНС') : '',
       );
     };
-
-    const buttons = info.online
-      ? [
-        h('button', { class: 'btn btn-primary', onclick: this.actions.again }, 'В лобби комнаты'),
-        h('button', { class: 'btn btn-ghost', onclick: this.actions.menu }, 'Выйти из комнаты'),
-      ]
-      : [
-        h('button', { class: 'btn btn-primary', onclick: this.actions.again }, 'Ещё матч'),
-        h('button', { class: 'btn btn-secondary', onclick: this.actions.practice }, 'Тренировка'),
-        h('button', { class: 'btn btn-ghost', onclick: this.actions.menu }, 'В главное меню'),
-      ];
 
     this.el.replaceChildren(
       h('div', { class: 'rb' },
         h('div', { class: 'rb-header' },
           h('div', { class: 'rb-brand' }, h('img', { src: 'assets/logo.svg', alt: 'UrSim' }), h('span', {}, 'FIRST Tech Challenge · 2026–2027')),
           h('div', { class: 'rb-title' }, info.title),
-          h('div', { class: 'rb-game' }, 'BIOBUZZ')),
+          h('img', { class: 'rb-season', src: 'assets/biobuzz.webp', alt: 'BIOBUZZ' })),
         h('div', { class: 'rb-body' },
           side('red'),
           h('div', { class: 'rb-center' },
@@ -127,7 +126,7 @@ export class ResultsScreen implements Screen {
                 return h('div', { class: 'rb-row' }, h('span', { class: 'rb-num' }, String(r.points)), h('span', { class: 'rb-label' }, r.label), h('span', { class: 'rb-num' }, String(blue.points)));
               }))),
           side('blue')),
-        h('div', { class: 'rb-footer' }, h('div', { class: 'row' }, ...buttons), h('span', { class: 'muted' }, 'Результаты матча · UrSim'))),
+        this.hint),
     );
   }
 }

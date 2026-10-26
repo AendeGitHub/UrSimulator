@@ -139,7 +139,7 @@ export class RobotView {
   apply(s: RobotState, dt: number): void {
     this.root.position.set(s.x, 0.002, s.z);
     this.root.rotation.set(0, s.yaw, 0);
-    if (this.turret) this.turret.rotation.y = s.turretYaw;
+    if (this.turret) this.turret.rotation.y = s.turretYaw + this.def.shooter.modelYaw;
     // Driving forward turns the wheels backward about the side axis (right-hand rule).
     for (const [k, w] of this.wheels) spin(w, -s.powers[k] * SPIN.wheelMax * dt);
     for (const r of this.intake) spin(r, -s.intakeDir * SPIN.intake * dt);

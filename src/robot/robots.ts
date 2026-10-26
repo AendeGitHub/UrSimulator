@@ -14,6 +14,8 @@ export interface ShooterSpec {
   sweetSpot: number;
   /** At this distance and beyond (m) shots scatter widely */
   maxRange: number;
+  /** Turret angle (rad) at which the model's shooter points straight forward */
+  modelYaw: number;
 }
 
 export interface RobotDefinition {
@@ -52,9 +54,9 @@ export const URAN_V1: RobotDefinition = {
     maxTurnAccel: 34,
   },
   // Flywheel shooter on a turret (axis measured from the CAD turret ring); balls leave over the
-  // hood at the turret's nose. From the opening side of a cell the field allows at most ~2.3 m,
-  // so the accuracy scale fits that.
-  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2 },
+  // hood on the flywheel side, which faces the back of the robot in the CAD. From the opening side
+  // of a cell the field allows at most ~2.3 m, so the accuracy scale fits that.
+  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: Math.PI },
 };
 
 export const ROBOTS: RobotDefinition[] = [URAN_V1];
