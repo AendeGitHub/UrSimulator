@@ -27,6 +27,8 @@ export interface Ball extends BallSpec {
   state: BallState;
   /** NECTAR handed back to the drive team after leaving the field (re-entered any time, G427) */
   returned: boolean;
+  /** Which robot last shot or ejected it and how long ago (for the referee); null otherwise */
+  launch: { by: Slot; kind: 'shot' | 'eject'; age: number } | null;
 }
 
 /** Pre-loaded POLLEN per robot (manual 10.3.4). */
@@ -74,7 +76,7 @@ export class BallSim {
         RAPIER.RigidBodyDesc.dynamic().setTranslation(...spec.pos).setLinearDamping(AIR_DAMPING).setAngularDamping(0.9).setCcdEnabled(true),
       );
       world.createCollider(RAPIER.ColliderDesc.ball(spec.radius).setMass(MASS[spec.kind]).setRestitution(BALL_RESTITUTION).setFriction(BALL_FRICTION), body);
-      return { ...spec, id, body, state: spec.homeState, returned: false };
+      return { ...spec, id, body, state: spec.homeState, returned: false, launch: null };
     });
     this.reset();
   }
@@ -84,6 +86,7 @@ export class BallSim {
     for (const b of this.all) {
       b.state = b.homeState;
       b.returned = false;
+      b.launch = null;
       b.body.setEnabled(b.state === 'field');
       b.body.setTranslation({ x: b.pos[0], y: b.pos[1], z: b.pos[2] }, false);
       b.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
@@ -106,6 +109,7 @@ export class BallSim {
   hold(b: Ball): void {
     const [x, y, z] = this.position(b);
     b.state = 'held';
+    b.launch = null;
     b.body.setEnabled(false);
     // Resting balls sleep; wake the ones that leaned on this ball (e.g. a stack in a flower) so they fall.
     for (const o of this.all) {
@@ -119,6 +123,7 @@ export class BallSim {
   release(b: Ball, pos: Vec3, vel: Vec3): void {
     b.state = 'field';
     b.returned = false;
+    b.launch = null;
     b.body.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, true);
     b.body.setLinvel({ x: vel[0], y: vel[1], z: vel[2] }, true);
     b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
@@ -130,6 +135,7 @@ export class BallSim {
   giveBack(b: Ball, pos: Vec3): void {
     b.state = 'staged';
     b.returned = true;
+    b.launch = null;
     b.body.setEnabled(false);
     b.body.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, false);
     b.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
@@ -137,8 +143,9 @@ export class BallSim {
   }
 
   /** Rolling resistance on the floor only, so it does not slow shots in the air. */
-  step(): void {
+  step(dt: number): void {
     for (const b of this.all) {
+      if (b.launch) b.launch.age += dt;
       if (b.state !== 'field' || b.body.isSleeping()) continue;
       const onFloor = b.body.translation().y < b.radius + 0.01;
       const damping = onFloor ? FLOOR_DAMPING : AIR_DAMPING;

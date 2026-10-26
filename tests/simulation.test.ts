@@ -7,6 +7,7 @@ import { decodeState, encodeState } from '../src/sim/state';
 import { idleInput } from '../src/sim/types';
 import { cellFrame } from '../src/field/hiveGeometry';
 import { total } from '../src/game/scoring';
+import type { Ball } from '../src/sim/BallSim';
 
 const layout: FieldLayout = JSON.parse(fs.readFileSync('public/assets/field-layout.json', 'utf8'));
 const bin = fs.readFileSync('public/assets/field-colliders.bin');
@@ -177,29 +178,145 @@ describe('hive tipping delay', () => {
   });
 });
 
-describe('G408: opponent NECTAR', () => {
+describe('referee (manual 11.4)', () => {
   beforeAll(() => initPhysics());
 
-  it('warns, then a yellow card, then a red card that zeroes the score', () => {
-    const { sim, toasts } = makeSim();
+  /** Puts `b` right in front of the robot's intake and runs the intake. */
+  function intake(sim: Simulation, slot: 'red1' | 'blue1', b: Ball, x: number, z: number) {
+    const p = sim.robots.get(slot)!;
+    p.robot.setPose({ x, z, yaw: slot === 'red1' ? 0 : Math.PI });
+    sim.balls.release(b, [x + (slot === 'red1' ? 1 : -1) * (p.robot.cfg.length / 2 + 0.04), b.radius, z], [0, 0, 0]);
+    sim.setInput(slot, { ...idleInput(), intake: true });
+    run(sim, 0.3);
+    sim.setInput(slot, idleInput());
+    return p.mech.stored.includes(b);
+  }
+
+  it('G408: a warning, then one yellow card per match for more opponent NECTAR', () => {
+    const { sim } = makeSim();
     const p = sim.addRobot('red1', 'test');
     sim.start('match');
     p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
     const blue = sim.balls.all.filter(b => b.kind === 'nectar' && b.color === 'blue' && b.state === 'staged').slice(0, 3);
-    const score = sim.match.score.red;
-    for (const [i, b] of blue.entries()) {
-      p.robot.setPose({ x: -1.0, z: -0.8 + i * 0.5, yaw: 0 });
-      sim.balls.release(b, [-1.0 + 0.3, 0.05, -0.8 + i * 0.5], [0, 0, 0]);
-      sim.setInput('red1', { ...idleInput(), intake: true });
-      run(sim, 0.3);
-      expect(p.mech.stored).toContain(b);
+    blue.forEach((b, i) => expect(intake(sim, 'red1', b, -1.0, -0.8 + i * 0.5)).toBe(true));
+    const red = sim.match.score.red;
+    expect(red.warnings).toBe(1);
+    expect(red.yellowCards).toBe(1);
+    expect(red.redCards).toBe(0);
+    expect(red.calls.filter(c => c.startsWith('G408'))).toHaveLength(2);
+  });
+
+  it('G410: NECTAR launched into a FLOWER before the last minute is a MAJOR FOUL', () => {
+    const { sim } = makeSim();
+    sim.addRobot('red1', 'test');
+    sim.start('match');
+    sim.match.next('teleop');
+    const [fx, fz] = sim.zones.flowers[0];
+    const b = sim.balls.all.find(x => x.kind === 'nectar' && x.color === 'red' && x.state === 'staged')!;
+    sim.balls.release(b, [fx, 0.75, fz], [0, 0, 0]);
+    b.launch = { by: 'red1', kind: 'shot', age: 0 };
+    run(sim, 1.5);
+    expect(sim.match.score.red.majorFouls).toBe(1);
+    expect(sim.match.score.blue.foulPoints).toBe(20);
+    expect(total(sim.match.score.blue)).toBeGreaterThanOrEqual(20);
+  });
+
+  it('G405: a ball ejected out of the field is a MAJOR FOUL, a missed shot is not', () => {
+    const { sim } = makeSim();
+    sim.addRobot('red1', 'test');
+    sim.start('match');
+    const [a, b] = sim.balls.all.filter(x => x.kind === 'pollen' && x.state === 'field');
+    sim.balls.release(a, [sim.zones.wall + 0.4, 0.1, 0.5], [0, 0, 0]);
+    a.launch = { by: 'red1', kind: 'eject', age: 0 };
+    sim.balls.release(b, [sim.zones.wall + 0.4, 0.1, -0.5], [0, 0, 0]);
+    b.launch = { by: 'red1', kind: 'shot', age: 0 };
+    run(sim, 0.2);
+    expect(sim.match.score.red.majorFouls).toBe(1);
+    expect(sim.match.score.red.calls[0]).toContain('G405');
+  });
+
+  it('G402: in AUTO, taking elements on the opponent side is one MAJOR FOUL per match', () => {
+    const { sim } = makeSim();
+    sim.addRobot('red1', 'test');
+    sim.addRobot('blue1', 'opponent');
+    sim.start('match');
+    sim.robots.get('red1')!.mech.stored.splice(0).forEach(b => sim.balls.release(b, [-1.4, 0.05, -1.5], [0, 0, 0]));
+    const pollen = sim.balls.all.filter(x => x.kind === 'pollen' && x.state === 'field').slice(0, 2);
+    pollen.forEach((b, i) => expect(intake(sim, 'red1', b, 0.6, -1.2 + i * 0.5)).toBe(true));
+    expect(sim.match.score.red.majorFouls).toBe(1);
+    expect(sim.match.score.red.calls[0]).toContain('G402');
+  });
+
+  it('G417: ramming the HIVE frame is a MAJOR FOUL and a yellow card; a second yellow is a red card', () => {
+    const { sim } = makeSim();
+    sim.addRobot('red1', 'test');
+    sim.start('match');
+    const ref = sim.match.referee;
+    ref.hiveFrameHit('red1', 1.0, 10);
+    expect(sim.match.score.red.warnings).toBe(1);
+    expect(sim.match.score.red.majorFouls).toBe(0);
+    ref.hiveFrameHit('red1', 1.0, 14);
+    expect(sim.match.score.red.majorFouls).toBe(1);
+    expect(sim.match.score.red.yellowCards).toBe(1);
+    // Another yellow (here from G408) turns into a red card: 0 points.
+    ref.opponentNectar('red1');
+    ref.opponentNectar('red1');
+    expect(sim.match.score.red.redCards).toBe(1);
+    sim.match.score.red.leave = 1;
+    expect(total(sim.match.score.red)).toBe(0);
+  });
+
+  it('G417: driving into the HIVE frame at full speed is called by itself', () => {
+    let called = false;
+    for (const z of [0.45, 0.3, -0.3, -0.45, 0]) {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test');
+      sim.start('match');
+      p.robot.setPose({ x: -1.5, z, yaw: 0 });
+      sim.setInput('red1', { ...idleInput(), ly: -1 });
+      run(sim, 1.6);
+      if (sim.match.score.red.calls.some(c => c.startsWith('G417'))) called = true;
     }
-    expect(score.warnings).toBe(1);
-    expect(score.yellowCards).toBe(1);
-    expect(score.redCards).toBe(1);
-    score.leave = 1;
-    expect(total(score)).toBe(0);
-    expect(toasts.some(t => t.includes('G408'))).toBe(true);
+    expect(called).toBe(true);
+  });
+
+  it('G421: pinning an opponent against the wall for more than 3 s is a MAJOR FOUL, then one per 3 s', () => {
+    const { sim } = makeSim();
+    const red = sim.addRobot('red1', 'pinner');
+    const blue = sim.addRobot('blue1', 'pinned');
+    sim.start('match');
+    sim.match.next('teleop');
+    // Blue backed up against its wall; red drives into it and holds it there.
+    const bx = sim.zones.wall - blue.robot.cfg.length / 2 - 0.001;
+    const bz = blue.robot.position[2];
+    blue.robot.setPose({ x: bx, z: bz, yaw: Math.PI });
+    red.robot.setPose({ x: bx - blue.robot.cfg.length / 2 - red.robot.cfg.length / 2 - 0.01, z: bz, yaw: 0 });
+    const push = () => {
+      sim.setInput('red1', { ...idleInput(), ly: -1 });
+      sim.setInput('blue1', { ...idleInput(), ly: -1 });
+    };
+    for (let i = 0; i < Math.round(3.4 / PHYSICS_DT); i++) {
+      push();
+      sim.step();
+    }
+    expect(sim.match.score.red.majorFouls).toBe(1);
+    for (let i = 0; i < Math.round(3 / PHYSICS_DT); i++) {
+      push();
+      sim.step();
+    }
+    expect(sim.match.score.red.majorFouls).toBe(2);
+    expect(sim.match.score.blue.majorFouls).toBe(0);
+    expect(sim.match.score.blue.foulPoints).toBe(40);
+  });
+
+  it('calls nothing in practice', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test');
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    const blue = sim.balls.all.find(b => b.kind === 'nectar' && b.color === 'blue' && b.state === 'staged')!;
+    expect(intake(sim, 'red1', blue, -1.0, -0.8)).toBe(true);
+    expect(sim.match.score.red.warnings).toBe(0);
   });
 });
 

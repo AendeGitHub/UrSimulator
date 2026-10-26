@@ -48,9 +48,18 @@ function rows(s: AllianceScore): [string, number][] {
     ['TELEOP HIVE', s.teleopTips * POINTS.tip],
     ['Other TELEOP', f.cellElements * POINTS.cellElement + f.flowerBottom * POINTS.flowerBottomNectar
       + f.ownedFlowerElements * POINTS.ownedFlowerElement + f.gardenElements * POINTS.gardenElement + s.teleopPark * POINTS.teleopPark],
-    // G408 / G409 give cards, not foul points, so no alliance is credited points yet.
-    ['FOUL', 0],
+    ['FOUL', s.foulPoints],
   ];
+}
+
+/** Referee calls against an alliance, the same call counted once with ×N. */
+function calls(list: string[]): HTMLElement | '' {
+  if (!list.length) return '';
+  const counts = new Map<string, number>();
+  for (const c of list) counts.set(c, (counts.get(c) ?? 0) + 1);
+  return h('div', { class: 'fr-calls' },
+    h('div', { class: 'fr-calls-title' }, 'Нарушения'),
+    ...[...counts].map(([c, n]) => h('div', {}, n > 1 ? `${c} ×${n}` : c)));
 }
 
 const clockText = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -125,6 +134,7 @@ export class ResultsScreen implements Screen {
             h('span', { class: 'fr-team-name' }, t.name),
             card(a) ? h('span', { class: `fr-card fr-card-${card(a)}` }) : ''))),
       info.score[a].redCards ? h('div', { class: 'fr-dq' }, 'Дисквалификация: красная карточка') : '',
+      calls(info.score[a].calls),
     );
 
     this.el.replaceChildren(

@@ -1,4 +1,4 @@
-// The venue around the field: carpet, sided hall walls, two arena stands with seats and fans,
+// The venue around the field: carpet, sided hall walls, two arena stands with seats,
 // steel ceiling trusses with light rows and big logo banners. FTC drivers stand on the floor in
 // the alliance area, so there are no FRC-style driver station walls.
 // Field center is the origin; red drivers stand at -X, blue at +X, the audience side is +Z.
@@ -182,8 +182,8 @@ export class Arena {
   /**
    * Arena stand along one long side. `side` = +1 faces the field from +Z, -1 from -Z.
    * Concrete steps, single plastic seats on pedestals, a glass front barrier with a rail and an
-   * LED strip, aisle stairs with handrails, and a scattering of spectators. Everything repeated
-   * is instanced, so a stand costs a handful of draw calls.
+   * LED strip, aisle stairs with handrails. Everything repeated is instanced, so a stand costs a
+   * handful of draw calls.
    */
   private buildBleachers(z0: number, side: 1 | -1): void {
     const rows = 10;
@@ -221,12 +221,6 @@ export class Arena {
     const back = new THREE.BoxGeometry(0.44, 0.4, 0.05).rotateX(-0.12).translate(0, 0.66, 0.19);
     const seatGeo = mergeGeometries([pan, back])!;
     const pedestalGeo = new THREE.BoxGeometry(0.08, 0.4, 0.26).translate(0, 0.2, 0.04);
-    // A seated spectator: body (shirt colour) and head (skin tone).
-    const torso = new THREE.CapsuleGeometry(0.15, 0.3, 3, 8).translate(0, 0.78, 0.08);
-    const thighs = new THREE.BoxGeometry(0.32, 0.14, 0.42).translate(0, 0.52, -0.14);
-    const shins = new THREE.BoxGeometry(0.28, 0.44, 0.12).translate(0, 0.24, -0.34);
-    const bodyGeo = mergeGeometries([torso.toNonIndexed(), thighs.toNonIndexed(), shins.toNonIndexed()])!;
-    const headGeo = new THREE.SphereGeometry(0.1, 10, 8).translate(0, 1.13, 0.06);
 
     const spots: THREE.Vector3[] = [];
     for (let i = 0; i < rows; i++) {
@@ -246,26 +240,7 @@ export class Arena {
       pedestals.setMatrixAt(i, m);
     });
 
-    // About a third of the seats are taken (deterministic, so the crowd is the same every run).
-    let seed = side > 0 ? 7 : 11;
-    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const taken = spots.filter(() => rand() < 0.33);
-    const shirts = ['#c62828', '#1f4fd1', '#f5c518', '#2e7d32', '#eeeeee', '#222222', '#ff7043', '#6a1b9a'];
-    const skins = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
-    const bodies = new THREE.InstancedMesh(bodyGeo, new THREE.MeshStandardMaterial({ roughness: 0.8 }), taken.length);
-    const heads = new THREE.InstancedMesh(headGeo, new THREE.MeshStandardMaterial({ roughness: 0.6 }), taken.length);
-    const color = new THREE.Color();
-    taken.forEach((p, i) => {
-      // People lean and turn a little; nobody sits perfectly still.
-      const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), facing + (rand() - 0.5) * 0.5);
-      m.compose(p, turn, s.set(1, 0.9 + rand() * 0.2, 1));
-      bodies.setMatrixAt(i, m);
-      heads.setMatrixAt(i, m);
-      bodies.setColorAt(i, color.set(shirts[Math.floor(rand() * shirts.length)]));
-      heads.setColorAt(i, color.set(skins[Math.floor(rand() * skins.length)]));
-    });
-
-    for (const mesh of [steps, nosing, seats, pedestals, bodies, heads]) {
+    for (const mesh of [steps, nosing, seats, pedestals]) {
       mesh.receiveShadow = true;
       this.root.add(mesh);
     }

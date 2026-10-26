@@ -78,6 +78,20 @@ function heldBallPositions(world: WorldState): Map<number, [number, number, numb
   return held;
 }
 
+/**
+ * Render quality steps, best first. Slow computers step down automatically: fewer pixels first,
+ * then no ambient occlusion. The pixel ratio never goes above the screen's own.
+ */
+const QUALITY = [
+  { ratio: 1.5, ao: true },
+  { ratio: 1.25, ao: true },
+  { ratio: 1, ao: false },
+  { ratio: 0.8, ao: false },
+];
+/** Below this frame rate quality steps down; above the upper one for a while it tries a step up. */
+const FPS_LOW = 50;
+const FPS_HIGH = 58;
+
 /** Driver stations: "1" stands closest to the audience (+Z). */
 const DRIVER_Z: Record<Slot, number> = { red1: 0.6, red2: -0.6, blue1: 0.6, blue2: -0.6 };
 
@@ -110,6 +124,10 @@ export class Game {
   private returnTo: Screen | null = null;
 
   private lastTime = 0;
+  /** Index into QUALITY, and the best level that ran too slowly (never tried again). */
+  private quality = 0;
+  private qualityFloor = 0;
+  private perf = { time: 0, frames: 0, goodTime: 0 };
   private menuOrbit = 0;
   private resetKeyWasDown = false;
   private lastPad1 = '';
@@ -121,7 +139,7 @@ export class Game {
   private constructor(private readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     // 1.5× is sharp enough with the outlines and draws ~45% fewer pixels than 2× on retina screens.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY[0].ratio));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -489,9 +507,42 @@ export class Game {
 
   private frame(time: number): void {
     requestAnimationFrame(t => this.frame(t));
-    const dt = Math.min(0.1, this.lastTime ? (time - this.lastTime) / 1000 : 1 / 60);
+    const raw = this.lastTime ? (time - this.lastTime) / 1000 : 1 / 60;
     this.lastTime = time;
-    this.tick(dt);
+    this.adaptQuality(raw);
+    this.tick(Math.min(0.1, raw));
+  }
+
+  /** Measures the frame rate over 2 s windows and steps render quality down (or back up). */
+  private adaptQuality(dt: number): void {
+    // Hidden tabs and one-off hitches (loading a model) say nothing about the GPU.
+    if (document.hidden || dt > 0.25) return;
+    const p = this.perf;
+    p.time += dt;
+    p.frames++;
+    if (p.time < 2) return;
+    const fps = p.frames / p.time;
+    p.time = p.frames = 0;
+    if (fps < FPS_LOW && this.quality < QUALITY.length - 1) {
+      this.qualityFloor = Math.max(this.qualityFloor, this.quality + 1);
+      this.setQuality(this.quality + 1);
+      p.goodTime = 0;
+    } else if (fps > FPS_HIGH && this.quality > this.qualityFloor) {
+      // Only climb back to levels that have not already proved too slow.
+      p.goodTime += 2;
+      if (p.goodTime >= 10) {
+        this.setQuality(this.quality - 1);
+        p.goodTime = 0;
+      }
+    }
+  }
+
+  private setQuality(level: number): void {
+    this.quality = level;
+    const q = QUALITY[level];
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.ratio));
+    this.effects.setAmbientOcclusion(q.ao);
+    this.resize();
   }
 
   /** One frame of game logic + rendering. Public so dev tools can drive the game without rAF. */

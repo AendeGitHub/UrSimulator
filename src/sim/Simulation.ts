@@ -3,7 +3,7 @@
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { FieldLayout } from '../field/layout';
-import { buildZones, type Zones } from '../field/zones';
+import { buildZones, footprint, type Zones } from '../field/zones';
 import { fieldCentric } from '../robot/mecanum';
 import type { Alliance } from '../robot/robotConfig';
 import { DEFAULT_ROBOT_ID, robotById } from '../robot/robots';
@@ -14,12 +14,25 @@ import { Match, type MatchEvents } from './Match';
 import { Mechanisms } from './Mechanisms';
 import { RobotSim, type Pose } from './RobotSim';
 import type { WorldState } from './state';
+import type { Vec3 } from '../field/layout';
+import type { Ball } from './BallSim';
 import { SLOTS, idleInput, mergeInput, type GameMode, type RobotInput, type Slot } from './types';
 
 export const PHYSICS_DT = 1 / 120;
 const SLOW_MODE_SCALE = 0.35;
 const WALL_HEIGHT = 0.32;
 const WALL_THICKNESS = 0.06;
+
+/** A hit on the HIVE frame faster than this is reported to the referee (G417), m/s */
+const HIVE_HIT_SPEED = 0.8;
+/**
+ * A PIN (G421): the pinned robot's driver pushes the sticks this far but it moves slower than
+ * `stuck`, held within `against` of a wall or field element.
+ */
+const PIN = { trying: 0.3, stuck: 0.15, against: 0.03, foulEvery: 3, apart: 0.61, endAfterApart: 3 };
+
+/** During AUTO each alliance owns its half of the field: red is -X (columns A–C), blue +X. */
+const onOpponentSide = (alliance: Alliance, x: number) => (alliance === 'red' ? x > 0 : x < 0);
 
 /** Robots start touching their alliance wall, facing away from their drivers. */
 const START_Z: Record<Slot, number> = { red1: -0.25, red2: 1.15, blue1: 0.25, blue2: -1.15 };
@@ -49,6 +62,13 @@ export class Simulation {
   readonly robots = new Map<Slot, PlayerRobot>();
   /** Simulated seconds since creation */
   time = 0;
+  /** The HIVE frame (G417) and the outlines of field elements a robot can be pinned against (G421) */
+  private hiveFrame: RAPIER.Collider | null = null;
+  private readonly obstacles: { minX: number; maxX: number; minZ: number; maxZ: number }[] = [];
+  private readonly frameContact = new Map<Slot, boolean>();
+  private readonly lastSpeed = new Map<Slot, number>();
+  /** PIN counts keyed "pinner|pinned" */
+  private readonly pins = new Map<string, { time: number; fouls: number; apart: number }>();
 
   /** Call initPhysics() first. */
   constructor(readonly layout: FieldLayout, colliders: ColliderPart[], events: MatchEvents) {
@@ -70,7 +90,18 @@ export class Simulation {
   private buildField(colliders: ColliderPart[]): void {
     const ground = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     for (const part of colliders) {
-      if (part.kind === 'static') this.world.createCollider(RAPIER.ColliderDesc.trimesh(part.vertices, part.indices).setFriction(0.5).setRestitution(0.3), ground);
+      if (part.kind !== 'static') continue;
+      const collider = this.world.createCollider(RAPIER.ColliderDesc.trimesh(part.vertices, part.indices).setFriction(0.5).setRestitution(0.3), ground);
+      if (part.name === 'frame') this.hiveFrame = collider;
+      const v = part.vertices;
+      const box = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+      for (let i = 0; i < v.length; i += 3) {
+        box.minX = Math.min(box.minX, v[i]);
+        box.maxX = Math.max(box.maxX, v[i]);
+        box.minZ = Math.min(box.minZ, v[i + 2]);
+        box.maxZ = Math.max(box.maxZ, v[i + 2]);
+      }
+      this.obstacles.push(box);
     }
     // Floor (soft foam tiles) and perimeter walls (polycarbonate) as simple boxes.
     const half = this.zones.wall;
@@ -100,7 +131,7 @@ export class Simulation {
     const robot = new RobotSim(this.world, slot, def.config, this.startPose(slot, def.config.length));
     const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter);
     mech.reset(this.balls.preloads(slot));
-    mech.onViolation = rule => this.match.recordViolation(robot, rule);
+    mech.onPickup = (b, at) => this.judgePickup(robot, b, at);
     const player = { robotId: def.id, robot, mech, input: idleInput(), name };
     this.robots.set(slot, player);
     return player;
@@ -160,10 +191,107 @@ export class Simulation {
     }
     this.hives.red.step(dt, this.balls);
     this.hives.blue.step(dt, this.balls);
-    this.balls.step();
+    this.balls.step(dt);
     this.match.step(dt);
     this.world.step();
+    this.judgeContacts(dt);
     this.time += dt;
+  }
+
+  private hasOpponent(alliance: Alliance): boolean {
+    return [...this.robots.values()].some(p => p.robot.alliance !== alliance);
+  }
+
+  /** G408 (opponent NECTAR) and G402 (opponent's elements during AUTO) when the intake takes a ball. */
+  private judgePickup(robot: RobotSim, b: Ball, at: Vec3): void {
+    const match = this.match;
+    if (!match.judging) return;
+    if (b.kind === 'nectar' && b.color !== robot.alliance) match.referee.opponentNectar(robot.slot);
+    if (match.period === 'auto' && onOpponentSide(robot.alliance, at[0]) && this.hasOpponent(robot.alliance)) match.referee.autoInterference(robot.slot);
+  }
+
+  private touching(a: RAPIER.Collider, b: RAPIER.Collider): boolean {
+    let contact = false;
+    this.world.contactPair(a, b, manifold => {
+      if (manifold.numContacts() > 0) contact = true;
+    });
+    return contact;
+  }
+
+  /** Rules about contact: G417 (HIVE frame), G402 (opponent robot during AUTO), G421 (PINS). */
+  private judgeContacts(dt: number): void {
+    const match = this.match;
+    const players = [...this.robots.values()];
+    if (!match.judging) {
+      this.pins.clear();
+      return;
+    }
+    for (const p of players) {
+      const slot = p.robot.slot;
+      const collider = p.robot.body.collider(0);
+      const hit = !!this.hiveFrame && this.touching(collider, this.hiveFrame);
+      // The speed it had before this step is how hard it hit.
+      const speed = this.lastSpeed.get(slot) ?? 0;
+      if (hit && !this.frameContact.get(slot) && speed > HIVE_HIT_SPEED) match.referee.hiveFrameHit(slot, speed, this.time);
+      this.frameContact.set(slot, hit);
+      this.lastSpeed.set(slot, p.robot.speed);
+    }
+    for (const a of players) {
+      for (const b of players) {
+        if (a.robot.alliance !== 'red' || b.robot.alliance !== 'blue') continue;
+        const contact = this.touching(a.robot.body.collider(0), b.robot.body.collider(0));
+        if (contact && match.period === 'auto') {
+          // Whoever is on the other alliance's half is disrupting their AUTO.
+          const x = (a.robot.position[0] + b.robot.position[0]) / 2;
+          for (const p of [a, b]) if (onOpponentSide(p.robot.alliance, x)) match.referee.autoInterference(p.robot.slot);
+        }
+        this.judgePin(a, b, contact, dt);
+        this.judgePin(b, a, contact, dt);
+      }
+    }
+  }
+
+  /** A robot right up against the perimeter wall, the HIVE frame or a FLOWER. */
+  private againstFieldElement(robot: RobotSim): boolean {
+    const [x, , z] = robot.position;
+    const wall = this.zones.wall - PIN.against;
+    const e = PIN.against;
+    return footprint(x, z, robot.yaw, robot.cfg.length, robot.cfg.width).some(([cx, cz]) =>
+      Math.abs(cx) > wall || Math.abs(cz) > wall
+      || this.obstacles.some(o => cx > o.minX - e && cx < o.maxX + e && cz > o.minZ - e && cz < o.maxZ + e));
+  }
+
+  /**
+   * G421: `pinner` holds `pinned` against a field element while its driver tries to get away.
+   * The count pauses when they separate and ends once they stay 2 ft apart for 3 s.
+   */
+  private judgePin(pinner: PlayerRobot, pinned: PlayerRobot, contact: boolean, dt: number): void {
+    const key = `${pinner.robot.slot}|${pinned.robot.slot}`;
+    const { lx, ly, rx } = pinned.input;
+    const held = contact
+      && Math.hypot(lx, ly, rx) > PIN.trying
+      && pinned.robot.speed < PIN.stuck
+      && this.againstFieldElement(pinned.robot);
+    const count = this.pins.get(key);
+    if (held) {
+      const c = count ?? { time: 0, fouls: 0, apart: 0 };
+      c.time += dt;
+      c.apart = 0;
+      if (c.time > PIN.foulEvery * (c.fouls + 1)) {
+        c.fouls++;
+        this.match.referee.pin(pinner.robot.slot);
+      }
+      this.pins.set(key, c);
+      return;
+    }
+    if (!count) return;
+    const [ax, , az] = pinner.robot.position;
+    const [bx, , bz] = pinned.robot.position;
+    const gap = Math.hypot(ax - bx, az - bz) - (pinner.robot.cfg.length + pinned.robot.cfg.length) / 2;
+    if (gap > PIN.apart) {
+      count.apart += dt;
+      if (count.apart > PIN.endAfterApart) this.pins.delete(key);
+    }
   }
 
   /** Everything a renderer or a network snapshot needs. */

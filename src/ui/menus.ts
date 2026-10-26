@@ -138,6 +138,16 @@ const CONTROLS: [ControlId, string][] = [
   ['guide', 'Пауза'],
 ];
 
+/** What the automatic referee calls during a match (sim/Referee.ts). */
+const RULES: [string, string][] = [
+  ['G402', 'В AUTO не трогать мячи и робота соперника на его половине — MAJOR FOUL'],
+  ['G405', 'Не выбрасывать мячи за поле (не путать с промахом) — MAJOR FOUL за мяч'],
+  ['G408', 'Не брать NECTAR соперника — предупреждение, затем жёлтая карточка'],
+  ['G410', 'NECTAR в цветок только в последнюю минуту — MAJOR FOUL за NECTAR'],
+  ['G417', 'Не таранить раму улья — предупреждение, затем MAJOR FOUL и жёлтая'],
+  ['G421', 'Не прижимать соперника дольше 3 с — MAJOR FOUL и ещё один каждые 3 с'],
+];
+
 export class HelpScreen implements Screen {
   readonly el = h('div', { class: 'screen menu-help' });
   readonly nav: MenuNav;
@@ -166,6 +176,10 @@ export class HelpScreen implements Screen {
           : '',
         h('div', { class: 'panel' }, h('h3', {}, 'Клавиатура'), h('table', { class: 'controls' }, ...rows('keyboard'),
           h('tr', {}, h('td', {}, h('span', { class: 'key' }, 'R')), h('td', {}, 'Сбросить робота на старт'))))),
+      h('div', { class: 'panel help-rules' },
+        h('h3', {}, 'Правила, за которыми следит судья в матче'),
+        h('table', { class: 'controls' }, ...RULES.map(([id, text]) => h('tr', {}, h('td', {}, h('span', { class: 'key' }, id)), h('td', {}, text)))),
+        h('p', { class: 'muted' }, 'MINOR FOUL даёт сопернику 5 очков, MAJOR FOUL — 20. Вторая жёлтая карточка становится красной: 0 очков за матч.')),
       h('p', { class: 'muted' }, 'Турель сама наводится на верхнюю ячейку своего улья и подбирает скорость. Твоя задача — встать там, куда смотрит отверстие ячейки. ',
         'Механизмы слушаются и gamepad1, и gamepad2 — можно играть вдвоём, как в FTC.'),
       h('div', { class: 'menu-buttons' }, h('button', { class: 'btn btn-secondary', onclick: this.back }, 'Назад')),

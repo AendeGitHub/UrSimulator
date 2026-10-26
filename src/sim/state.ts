@@ -51,9 +51,9 @@ export interface WorldState {
 }
 
 const STATUSES: ShooterStatus[] = ['off', 'spinning', 'ready', 'tooFar'];
-const SCORE_FIELDS = ['leave', 'autoPark', 'autoTips', 'teleopTips', 'teleopPark', 'warnings', 'yellowCards', 'redCards'] as const;
+const SCORE_FIELDS = ['leave', 'autoPark', 'autoTips', 'teleopTips', 'teleopPark', 'warnings', 'yellowCards', 'redCards', 'minorFouls', 'majorFouls'] as const;
 const FIELD_FIELDS = ['cellElements', 'flowerBottom', 'ownedFlowerElements', 'gardenElements'] as const;
-const VERSION = 5;
+const VERSION = 6;
 
 /** Little binary writer/reader so snapshots stay ~1 KB instead of ~10 KB of JSON. */
 class Writer {
@@ -98,6 +98,7 @@ export function encodeState(s: WorldState): ArrayBuffer {
     w.f32(s.hiveAngles[a]);
     w.u8(s.tips[a]);
     for (const k of SCORE_FIELDS) w.u8(s.score[a][k]);
+    w.u16(s.score[a].foulPoints);
     for (const k of FIELD_FIELDS) w.u8(s.score[a].field[k]);
   }
   w.u8(s.robots.length);
@@ -140,6 +141,7 @@ export function decodeState(buf: ArrayBuffer): WorldState {
     hiveAngles[a] = r.f32();
     tips[a] = r.u8();
     for (const k of SCORE_FIELDS) score[a][k] = r.u8();
+    score[a].foulPoints = r.u16();
     for (const k of FIELD_FIELDS) score[a].field[k] = r.u8();
   }
   const robots: RobotState[] = [];

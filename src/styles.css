@@ -400,6 +400,11 @@ table.controls {
   font-size: 14px;
 }
 
+.help-rules {
+  width: 100%;
+  text-align: left;
+}
+
 table.controls td {
   padding: 6px 4px;
   border-top: 1px solid var(--line);
@@ -1289,6 +1294,27 @@ body.pad-nav .ms-card:focus {
   font-size: 2.8vh;
   font-weight: 700;
   text-align: center;
+}
+
+.fr-calls {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 3vh;
+  max-height: 22vh;
+  overflow: hidden;
+  padding: 1vh 1vw;
+  background: #fff;
+  color: #000;
+  font-size: 2vh;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.fr-calls-title {
+  font-size: 2.2vh;
+  font-weight: 800;
+  margin-bottom: 0.4vh;
 }
 
 .fr-center {

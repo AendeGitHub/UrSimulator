@@ -159,6 +159,7 @@ class OutlinePass extends ShaderPass {
 export class ScreenEffects {
   private readonly composer: EffectComposer;
   private readonly outline: OutlinePass;
+  private readonly ao: AmbientOcclusionPass;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     // 4× MSAA on the colour image; the effects work on the shared normal/depth buffer.
@@ -167,7 +168,8 @@ export class ScreenEffects {
     this.outline = new OutlinePass(camera, gbuffer.target);
     this.composer.addPass(new RenderPass(scene, camera));
     this.composer.addPass(gbuffer);
-    this.composer.addPass(new AmbientOcclusionPass(scene, camera, gbuffer.target));
+    this.ao = new AmbientOcclusionPass(scene, camera, gbuffer.target);
+    this.composer.addPass(this.ao);
     this.composer.addPass(this.outline);
     this.composer.addPass(new OutputPass());
   }
@@ -176,6 +178,11 @@ export class ScreenEffects {
     this.outline.setPixelRatio(pixelRatio);
     this.composer.setPixelRatio(pixelRatio);
     this.composer.setSize(width, height);
+  }
+
+  /** Ambient occlusion is the first thing to go on a slow computer. */
+  setAmbientOcclusion(on: boolean): void {
+    this.ao.enabled = on;
   }
 
   render(dt: number): void {

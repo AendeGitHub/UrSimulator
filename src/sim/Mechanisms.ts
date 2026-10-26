@@ -80,8 +80,8 @@ export class Mechanisms {
   intakeDir = 0;
   shot: ShotSolution | null = null;
   status: ShooterStatus = 'off';
-  /** Called when the robot breaks a rule (e.g. picks up the opponent's NECTAR). */
-  onViolation?: (rule: 'G408') => void;
+  /** Called for every ball the intake picks up, with where it was (for the referee). */
+  onPickup?: (ball: Ball, at: Vec3) => void;
   private intakeTimer = 0;
   private ejectTimer = 0;
   private feedTimer = 0;
@@ -169,8 +169,7 @@ export class Mechanisms {
         this.balls.hold(b);
         this.stored.push(b);
         this.intakeTimer = INTAKE.interval;
-        // G408: a robot may not control the opponent's NECTAR.
-        if (b.kind === 'nectar' && b.color !== this.robot.alliance) this.onViolation?.('G408');
+        this.onPickup?.(b, [x, y, z]);
         return;
       }
     }
@@ -186,6 +185,7 @@ export class Mechanisms {
     const out = this.robot.cfg.length / 2 + b.radius + 0.03;
     const [vx, vz] = this.robot.velocity;
     this.balls.release(b, [px + fx * out, b.radius + 0.01, pz + fz * out], [vx + fx * EJECT.speed, 0, vz + fz * EJECT.speed]);
+    b.launch = { by: this.robot.slot, kind: 'eject', age: 0 };
     this.ejectTimer = EJECT.interval;
   }
 
@@ -234,6 +234,7 @@ export class Mechanisms {
     const v = launchVelocity(yaw, pitch, speed);
     const [rvx, rvz] = this.robot.velocity;
     this.balls.release(b, this.launchPoint(), [v[0] + rvx, v[1], v[2] + rvz]);
+    b.launch = { by: this.robot.slot, kind: 'shot', age: 0 };
     this.flywheel *= SHOOTER.shotDrop;
     this.feedTimer = SHOOTER.feedInterval;
   }

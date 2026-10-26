@@ -68,11 +68,19 @@ export interface AllianceScore {
   warnings: number;
   yellowCards: number;
   redCards: number;
+  /** FOULS this alliance committed */
+  minorFouls: number;
+  majorFouls: number;
+  /** Points credited to this alliance for the opponent's FOULS */
+  foulPoints: number;
+  /** Referee calls against this alliance, e.g. "G410 · MAJOR FOUL · Red 1" (sim/Referee.ts) */
+  calls: string[];
   field: FieldScore;
 }
 
 export const emptyScore = (): AllianceScore => ({
-  leave: 0, autoPark: 0, autoTips: 0, teleopTips: 0, teleopPark: 0, warnings: 0, yellowCards: 0, redCards: 0, field: emptyField(),
+  leave: 0, autoPark: 0, autoTips: 0, teleopTips: 0, teleopPark: 0, warnings: 0, yellowCards: 0, redCards: 0,
+  minorFouls: 0, majorFouls: 0, foulPoints: 0, calls: [], field: emptyField(),
 });
 
 /** Point breakdown for one alliance. */
@@ -87,6 +95,7 @@ export function breakdown(s: AllianceScore): { label: string; count: number; poi
     { label: 'Мячи в своих цветах', count: s.field.ownedFlowerElements, points: s.field.ownedFlowerElements * POINTS.ownedFlowerElement },
     { label: 'Мячи в GARDEN', count: s.field.gardenElements, points: s.field.gardenElements * POINTS.gardenElement },
     { label: 'PARK (конец матча)', count: s.teleopPark, points: s.teleopPark * POINTS.teleopPark },
+    { label: 'Фолы соперника', count: 1, points: s.foulPoints },
   ];
 }
 
