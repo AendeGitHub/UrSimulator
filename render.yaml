@@ -1,0 +1,15 @@
+# Render.com blueprint: one web service that serves the game and runs the online rooms.
+# Dashboard → New → Blueprint → pick this repository.
+services:
+  - type: web
+    name: ursim
+    runtime: node
+    # Closest to Europe and CIS players; Render also has oregon, ohio, virginia, singapore.
+    region: frankfurt
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build && npm run build:server
+    startCommand: node dist-server/index.mjs
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
