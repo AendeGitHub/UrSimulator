@@ -134,7 +134,7 @@ export class Simulation {
     this.removeRobot(slot);
     const def = robotById(robotId);
     const robot = new RobotSim(this.world, slot, def.config, this.startPose(slot, def.config.length));
-    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter, def.intakes);
+    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter, def.intakes, def.arm);
     mech.reset(this.balls.preloads(slot));
     mech.onPickup = (b, at) => this.judgePickup(robot, b, at);
     robot.battery.enabled = this.rules.battery;
@@ -200,7 +200,7 @@ export class Simulation {
       mech.step(dt, input, enabled);
       const { fl, fr, bl, br } = robot.powers;
       robot.battery.step(dt, mech.flywheel, (Math.abs(fl) + Math.abs(fr) + Math.abs(bl) + Math.abs(br)) / 4);
-      input.shooterOn = input.shooterOff = input.imuReset = false;
+      input.shooterOn = input.shooterOff = input.imuReset = input.armUp = input.armDown = false;
     }
     this.hives.red.step(dt, this.balls);
     this.hives.blue.step(dt, this.balls);
@@ -355,6 +355,7 @@ export class Simulation {
           stored: mech.stored.map(b => b.id),
           voltage: robot.battery.voltage,
           minVoltage: robot.battery.minVoltage,
+          arm: mech.arm,
         };
       }),
       balls: { states, transforms },

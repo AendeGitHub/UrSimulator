@@ -67,7 +67,7 @@ export class RobotSelectScreen implements Screen {
 
     for (const r of ROBOTS) {
       this.cards.set(r.id, h('button', { class: 'ms-card', onclick: () => this.set({ robot: r.id }) },
-        h('img', { src: r.teamLogo, alt: r.team }),
+        h('img', { src: r.teamLogo, alt: r.team, style: r.logoBackground ? `background: ${r.logoBackground}` : '' }),
         h('span', {}, r.team)));
     }
 

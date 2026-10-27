@@ -67,6 +67,10 @@ describe('headless simulation', () => {
     expect(decoded.robots[0].stored).toHaveLength(4);
     expect(decoded.period).toBe('auto');
     expect(decoded.robots[2].x).toBeCloseTo(state.robots[2].x, 4);
+    expect(decoded.robots.map(r => r.arm)).toEqual([0, 0, 0, 0]);
+    // A snapshot from a server before the arm (no arm bytes at the end) still reads.
+    const old = encodeState(state);
+    expect(decodeState(old.slice(0, old.byteLength - 4)).robots[0].arm).toBe(0);
     for (let i = 0; i < state.balls.transforms.length; i += 7) {
       expect(decoded.balls.transforms[i]).toBeCloseTo(state.balls.transforms[i], 2);
     }
@@ -205,6 +209,55 @@ describe('referee (manual 11.4)', () => {
     const nectar = sim.balls.all.find(b => b.kind === 'nectar' && b.color === 'red' && b.state === 'staged')!;
     expect(intake(sim, 'red1', nectar, -1.0, -0.8)).toBe(false);
     const pollen = sim.balls.all.find(b => b.kind === 'pollen' && b.state === 'field')!;
+    expect(intake(sim, 'red1', pollen, -1.0, 0.2)).toBe(true);
+  });
+
+  it("Bumble V's arm: raised it takes balls off the floor, lowered only the bottom POLLEN of a FLOWER", () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', 'bumble-v');
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    const press = (key: 'armUp' | 'armDown') => {
+      sim.setInput('red1', { ...idleInput(), [key]: true });
+      run(sim, 0.5);
+    };
+    expect(p.mech.arm).toBe(0);
+    const floor = sim.balls.all.filter(b => b.kind === 'pollen' && b.state === 'field' && sim.balls.position(b)[1] < 0.06);
+    expect(intake(sim, 'red1', floor[0], -1.0, 0.2)).toBe(true);
+
+    press('armDown');
+    expect(p.mech.arm).toBe(1);
+    expect(intake(sim, 'red1', floor[1], -1.0, 0.2)).toBe(false);
+
+    // Nose up to the FLOWER near the red wall, facing it (-Z).
+    const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
+    const inFlower = () => sim.balls.all.filter(b => b.state === 'field' && Math.hypot(sim.balls.position(b)[0] - fx, sim.balls.position(b)[2] - fz) < 0.09);
+    const bottom = inFlower().sort((a, b) => sim.balls.position(a)[1] - sim.balls.position(b)[1])[0];
+    const atFlower = (arm: 'armUp' | 'armDown') => {
+      press(arm);
+      p.robot.setPose({ x: fx, z: fz + p.robot.cfg.length / 2 + 0.1, yaw: Math.PI / 2 });
+      sim.setInput('red1', { ...idleInput(), intake: true });
+      run(sim, 0.3);
+      sim.setInput('red1', idleInput());
+    };
+    atFlower('armUp');
+    expect(p.mech.stored).toHaveLength(1);
+    atFlower('armDown');
+    // The bottom POLLEN first; the ones above drop down and follow while the intake runs.
+    expect(p.mech.stored.length).toBeGreaterThanOrEqual(2);
+    expect(p.mech.stored).toContain(bottom);
+    expect(p.mech.stored.every(b => b.kind === 'pollen')).toBe(true);
+  });
+
+  it('URAN V1 has no arm: the arm buttons change nothing', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test');
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    sim.setInput('red1', { ...idleInput(), armDown: true });
+    run(sim, 0.5);
+    expect(p.mech.arm).toBe(0);
+    const pollen = sim.balls.all.find(b => b.kind === 'pollen' && b.state === 'field' && sim.balls.position(b)[1] < 0.06)!;
     expect(intake(sim, 'red1', pollen, -1.0, 0.2)).toBe(true);
   });
 

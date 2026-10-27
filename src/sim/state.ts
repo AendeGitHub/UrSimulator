@@ -32,6 +32,8 @@ export interface RobotState {
   /** Battery under load and the lowest it has been, V */
   voltage: number;
   minVoltage: number;
+  /** Front arm: 0 raised .. 1 lowered (0 for robots without one) */
+  arm: number;
 }
 
 export interface WorldState {
@@ -82,6 +84,7 @@ class Reader {
   u8() { return this.view.getUint8(this.offset++); }
   i8() { return this.view.getInt8(this.offset++); }
   u16() { const v = this.view.getUint16(this.offset, true); this.offset += 2; return v; }
+  get left() { return this.view.byteLength - this.offset; }
   i16() { const v = this.view.getInt16(this.offset, true); this.offset += 2; return v; }
   f32() { const v = this.view.getFloat32(this.offset, true); this.offset += 4; return v; }
 }
@@ -125,6 +128,8 @@ export function encodeState(s: WorldState): ArrayBuffer {
     for (let k = 0; k < 3; k++) w.i16(clampI16(t[i * 7 + k] * 1000));
     for (let k = 3; k < 7; k++) w.i16(clampI16(t[i * 7 + k] * 32767));
   }
+  // Added after the balls so apps from before the arm, which stop reading there, still work.
+  for (const r of s.robots) w.u8(Math.round(r.arm * 255));
   return w.done();
 }
 
@@ -157,7 +162,7 @@ export function decodeState(buf: ArrayBuffer): WorldState {
     const stored = Array.from({ length: r.u8() }, () => r.u8());
     const voltage = r.u16() / 100;
     const minVoltage = r.u16() / 100;
-    robots.push({ slot, robot, x, z, yaw, heading, speed, turretYaw, pitch, flywheel, intakeDir, transfer, status, shotSpeed, shotDistance, powers: { fl, fr, bl, br }, stored, voltage, minVoltage });
+    robots.push({ slot, robot, x, z, yaw, heading, speed, turretYaw, pitch, flywheel, intakeDir, transfer, status, shotSpeed, shotDistance, powers: { fl, fr, bl, br }, stored, voltage, minVoltage, arm: 0 });
   }
   const n = r.u16();
   const states = new Uint8Array(n);
@@ -167,5 +172,7 @@ export function decodeState(buf: ArrayBuffer): WorldState {
     for (let k = 0; k < 3; k++) transforms[i * 7 + k] = r.i16() / 1000;
     for (let k = 3; k < 7; k++) transforms[i * 7 + k] = r.i16() / 32767;
   }
+  // Servers from before the arm send no arm positions.
+  if (r.left >= robots.length) for (const robot of robots) robot.arm = r.u8() / 255;
   return { time, period, periodTime, hiveAngles, tips, score, robots, balls: { states, transforms } };
 }

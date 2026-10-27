@@ -4,14 +4,14 @@
 import { t } from '../ui/i18n';
 import type { ControlId } from './gamepad';
 
-export type ActionId = 'intake' | 'eject' | 'transfer' | 'shooterOn' | 'shooterOff' | 'slow' | 'fieldCentric' | 'imuReset' | 'camera' | 'pause';
+export type ActionId = 'intake' | 'eject' | 'transfer' | 'shooterOn' | 'shooterOff' | 'armUp' | 'armDown' | 'slow' | 'fieldCentric' | 'imuReset' | 'camera' | 'pause';
 /** Keyboard stand-ins for the sticks */
 export type MoveId = 'forward' | 'backward' | 'left' | 'right' | 'turnLeft' | 'turnRight';
 
-export const ACTIONS: ActionId[] = ['intake', 'eject', 'transfer', 'shooterOn', 'shooterOff', 'slow', 'fieldCentric', 'imuReset', 'camera', 'pause'];
+export const ACTIONS: ActionId[] = ['intake', 'eject', 'transfer', 'shooterOn', 'shooterOff', 'armUp', 'armDown', 'slow', 'fieldCentric', 'imuReset', 'camera', 'pause'];
 export const MOVES: MoveId[] = ['forward', 'backward', 'left', 'right', 'turnLeft', 'turnRight'];
 /** Mechanisms listen to gamepad1 and gamepad2, as in FTC; the rest is the driver's (gamepad1). */
-export const MECHANISM_ACTIONS = new Set<ActionId>(['intake', 'eject', 'transfer', 'shooterOn', 'shooterOff']);
+export const MECHANISM_ACTIONS = new Set<ActionId>(['intake', 'eject', 'transfer', 'shooterOn', 'shooterOff', 'armUp', 'armDown']);
 
 /** What an action is called in Settings → Controls, in the interface language (ui/i18n.ts). */
 export const actionName = (id: ActionId | MoveId): string => t(`action.${id}`);
@@ -30,6 +30,9 @@ export const DEFAULT_BINDINGS: Bindings = {
     transfer: 'right_bumper',
     shooterOn: 'left_trigger',
     shooterOff: 'right_trigger',
+    // Triangle / cross on PlayStation pads
+    armUp: 'y',
+    armDown: 'a',
     slow: 'left_stick_button',
     fieldCentric: 'back',
     imuReset: 'start',
@@ -48,6 +51,8 @@ export const DEFAULT_BINDINGS: Bindings = {
     transfer: 'Space',
     shooterOn: 'KeyZ',
     shooterOff: 'KeyV',
+    armUp: 'KeyY',
+    armDown: 'KeyX',
     slow: 'ShiftLeft',
     fieldCentric: 'Tab',
     imuReset: 'Enter',

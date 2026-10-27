@@ -4,7 +4,8 @@
 //   node tools/lighten-model.mjs <in.glb> <out.glb> <error> [only=node,node] [--drop-normals]
 //
 // `error` is how far (as a fraction of each mesh's size) a simplified surface may move:
-// 0.005 is invisible, 0.02 starts to round off small details. `only` limits it to named nodes.
+// 0.005 is invisible, 0.02 starts to round off small details. `only` limits it to named nodes
+// (or meshes under them, such as a robot's wheel_fl).
 // --drop-normals removes stored normals first: flat-shaded CAD stores every triangle on its own
 // vertices, which blocks simplification; the game then rebuilds creased normals on load.
 
@@ -35,7 +36,7 @@ if (dropNormals) for (const mesh of doc.getRoot().listMeshes()) for (const prim 
 await doc.transform(weld({ tolerance: 0.00005 }));
 for (const node of doc.getRoot().listNodes()) {
   const mesh = node.getMesh();
-  if (!mesh || (only && !only.has(node.getName()))) continue;
+  if (!mesh || (only && !only.has(node.getName()) && !only.has(node.getParentNode()?.getName() ?? ''))) continue;
   for (const prim of mesh.listPrimitives()) simplifyPrimitive(prim, { simplifier: MeshoptSimplifier, ratio: 0, error, lockBorder: false });
 }
 

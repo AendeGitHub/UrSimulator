@@ -34,6 +34,17 @@ interface Spinner {
 const models = new Map<string, Promise<THREE.Group>>();
 
 /** Loads each robot model once; every robot on the field gets a clone sharing its geometry. */
+/** Which of a robot's models to show: Settings → Graphics → Low picks the lighter one. */
+let modelDetail: 'high' | 'low' = 'high';
+
+export function setModelDetail(detail: 'high' | 'low'): void {
+  modelDetail = detail;
+}
+
+export function robotModel(def: RobotDefinition): string {
+  return modelDetail === 'low' ? def.lowModel : def.model;
+}
+
 function loadModel(url: string): Promise<THREE.Group> {
   let model = models.get(url);
   if (!model) {
@@ -120,26 +131,32 @@ export class RobotView {
   private disposed = false;
   private turret: THREE.Object3D | null = null;
   private readonly flywheels: Spinner[] = [];
+  private arm: Spinner | null = null;
   private readonly wheels = new Map<keyof WheelPowers, Spinner>();
   private readonly intake: Spinner[] = [];
   private readonly transfer: Spinner[] = [];
 
+  /** The model file this view shows (changes with the graphics quality) */
+  readonly model: string;
+
   constructor(readonly def: RobotDefinition, alliance: Alliance, name: string) {
     this.alliance = alliance;
     this.name = name;
+    this.model = robotModel(def);
     const { length, width } = def.config;
 
     // Robot signs (FTC R402) on both sides, low on the frame like bumpers.
+    const { at, length: signLength } = def.sign ?? { at: 0, length: Math.min(0.3, length * 0.7) };
     for (const side of [-1, 1]) {
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(0.3, length * 0.7), 0.07), new THREE.MeshStandardMaterial({ roughness: 0.6 }));
-      sign.position.set(0, 0.075, side * (width / 2 + 0.003));
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(signLength, 0.07), new THREE.MeshStandardMaterial({ roughness: 0.6 }));
+      sign.position.set(at, 0.075, side * (width / 2 + 0.003));
       sign.rotation.y = side > 0 ? 0 : Math.PI;
       this.root.add(sign);
       this.signs.push(sign);
     }
     this.paintSigns();
 
-    loadModel(def.model).then(model => {
+    loadModel(this.model).then(model => {
       if (this.disposed) return;
       const robot = model.clone();
       this.root.add(robot);
@@ -153,6 +170,7 @@ export class RobotView {
           node.rotation.y = def.shooter.modelYaw;
         }
         else if (node.name.startsWith('flywheel')) this.flywheels.push(spinner);
+        else if (node.name === 'arm') this.arm = spinner;
         else if (node.name.startsWith('wheel_')) this.wheels.set(node.name.slice(6) as keyof WheelPowers, spinner);
         else if (node.name.startsWith('intake')) this.intake.push(spinner);
         else if (node.name.startsWith('transfer')) this.transfer.push(spinner);
@@ -197,6 +215,8 @@ export class RobotView {
     // The flywheel throws balls out of the side that faces the target, so it turns that way.
     const throwSide = Math.cos(this.def.shooter.modelYaw) < 0 ? -1 : 1;
     for (const f of this.flywheels) spin(f, throwSide * Math.min(1, s.flywheel * 2) * SPIN.flywheel * dt);
+    // The model's arm is lowered; raising swings its front end up about the hinge.
+    if (this.arm && this.def.arm) this.arm.node.rotation[this.arm.axis] = (1 - s.arm) * this.def.arm.upAngle;
   }
 }
 

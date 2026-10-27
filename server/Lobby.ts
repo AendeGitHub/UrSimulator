@@ -125,5 +125,7 @@ function sanitizeInput(input: object) {
     shooterOn: flag(raw.shooterOn),
     shooterOff: flag(raw.shooterOff),
     imuReset: flag(raw.imuReset),
+    armUp: flag(raw.armUp),
+    armDown: flag(raw.armDown),
   };
 }

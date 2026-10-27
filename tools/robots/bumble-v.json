@@ -1,5 +1,5 @@
 {
-  "comment": "Bumble V (SWB, Fusion 360 STEP export). Coordinates are in the CAD frame (meters, Z up, front = +X, left = +Y). Parts are matched in order: the first rule that fits a CAD part wins.",
+  "comment": "Bumble V (SWB, Fusion 360 STEP export). Coordinates are in the CAD frame (meters, Z up, front = +X, left = +Y). Parts are matched in order: the first rule that fits a CAD part wins. The arm (Palka) is lowered in the CAD; its servo stays on the body.",
   "up": "+z",
   "forward": "+x",
   "triangles": 70000,
@@ -9,6 +9,7 @@
     { "name": "flywheel", "parent": "turret", "ancestor": "2HogbackWheels&Gruzik_Kit:3", "within": { "z": [0.2, 0.3] }, "pivot": [0.206, 0.138, 0.257], "axis": "y" },
     { "name": "flywheel_top", "parent": "turret", "ancestor": "2HogbackWheels&Gruzik_Kit:3", "within": { "z": [0.31, 0.41] }, "pivot": [0.071, 0.138, 0.352], "axis": "y", "reverse": true },
     { "name": "turret", "ancestor": "Full_Shooter:2", "pivot": [0.1385, 0.138, 0.201], "axis": "z" },
+    { "name": "arm", "ancestor": "Palka:1", "within": { "x": [0.279, 0.46] }, "pivot": [0.291, 0.138, 0.0995], "axis": "y" },
     { "name": "intake_front", "ancestor": "1st:1", "pivot": [0.291, 0.138, 0.099], "axis": "y" },
     { "name": "intake_back", "ancestor": "2st:1", "pivot": [0.195, 0.138, 0.1515], "axis": "y" },
     { "name": "wheel_fl", "ancestorPrefix": "Mecanum_Kit", "within": { "x": [0.15, 0.3], "y": [0.15, 0.3] }, "pivot": [0.223, 0.245, 0.052], "axis": "y" },

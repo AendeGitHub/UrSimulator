@@ -13,7 +13,7 @@ function world(time: number, x: number, yaw: number, ballX: number, ballState = 
     score: { red: emptyScore(), blue: emptyScore() },
     robots: [{
       slot: 'red1', robot: 'uran-v1', x, z: 0, yaw, heading: yaw, speed: 0, turretYaw: 0, pitch: 1, flywheel: 0, intakeDir: 0, transfer: false,
-      status: 'off', shotSpeed: 0, shotDistance: 0, powers: { fl: 0, fr: 0, bl: 0, br: 0 }, stored: [], voltage: 14, minVoltage: 14,
+      status: 'off', shotSpeed: 0, shotDistance: 0, powers: { fl: 0, fr: 0, bl: 0, br: 0 }, stored: [], voltage: 14, minVoltage: 14, arm: 0,
     }],
     balls: { states: new Uint8Array([ballState]), transforms: new Float32Array([ballX, 0.04, 0, 0, 0, 0, 1]) },
   };

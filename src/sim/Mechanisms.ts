@@ -1,9 +1,10 @@
 // Intake → storage (4 balls) → transfer → flywheel shooter on an auto-aiming turret.
 
 import type { Vec3 } from '../field/layout';
+import { FLOWER_VOLUME } from '../field/zones';
 import { launchVelocity, solveShot, type ShotSolution } from '../game/ballistics';
 import { wrapAngle } from '../robot/mecanum';
-import type { ShooterSpec } from '../robot/robots';
+import type { ArmSpec, ShooterSpec } from '../robot/robots';
 import type { Ball, BallKind, BallSim } from './BallSim';
 import type { RobotSim } from './RobotSim';
 
@@ -28,8 +29,10 @@ export const SHOOTER = {
 };
 
 const INTAKE = { reach: 0.09, inside: 0.06, halfWidth: 0.17, maxHeight: 0.16, interval: 0.12 };
-/** Balls inside a flower tube: this intake cannot reach into the flower's retrieval opening. */
+/** Balls inside a flower tube: only a lowered arm reaches the flower's retrieval opening. */
 const FLOWER_TUBE = { radius: 0.09, height: 0.62 };
+/** With the arm down, a FLOWER this close in front of the robot (center from its front face, m) */
+const FLOWER_REACH = { behind: 0.05, ahead: 0.2, side: 0.15 };
 
 const DEG = Math.PI / 180;
 
@@ -57,6 +60,8 @@ export interface MechanismInput {
   shooterOn: boolean;
   shooterOff: boolean;
   transfer: boolean;
+  armUp: boolean;
+  armDown: boolean;
 }
 
 export type ShooterStatus = 'off' | 'spinning' | 'ready' | 'tooFar';
@@ -78,6 +83,9 @@ export class Mechanisms {
   intakeDir = 0;
   shot: ShotSolution | null = null;
   status: ShooterStatus = 'off';
+  /** Front arm: 0 raised .. 1 lowered (robots without one stay at 0) */
+  arm = 0;
+  private armLowered = false;
   /** Called for every ball the intake picks up, with where it was (for the referee). */
   onPickup?: (ball: Ball, at: Vec3) => void;
   private intakeTimer = 0;
@@ -91,6 +99,7 @@ export class Mechanisms {
     private readonly flowers: [number, number][],
     private readonly spec: ShooterSpec,
     private readonly intakes: readonly BallKind[],
+    private readonly armSpec?: ArmSpec,
   ) {}
 
   reset(preloads: Ball[]): void {
@@ -104,6 +113,8 @@ export class Mechanisms {
     this.turretYaw = 0;
     this.shot = null;
     this.status = 'off';
+    this.arm = 0;
+    this.armLowered = false;
   }
 
   /** Drops everything the robot holds where it stands (robot leaving the field). */
@@ -138,6 +149,12 @@ export class Mechanisms {
     }
     if (input.shooterOn) this.shooterOn = true;
     if (input.shooterOff) this.shooterOn = false;
+    if (this.armSpec) {
+      if (input.armDown) this.armLowered = true;
+      if (input.armUp) this.armLowered = false;
+      const step = dt / this.armSpec.travel;
+      this.arm = Math.max(0, Math.min(1, this.arm + (this.armLowered ? step : -step)));
+    }
 
     // The transfer runs the intake too, so balls picked up while feeding go straight to the shooter.
     this.intakeDir = input.eject ? -1 : input.intake || input.transfer ? 1 : 0;
@@ -152,6 +169,11 @@ export class Mechanisms {
   private runIntake(dt: number): void {
     this.intakeTimer -= dt;
     if (this.intakeTimer > 0 || this.stored.length >= CAPACITY) return;
+    // A lowered arm blocks the floor but reaches into a FLOWER; one on its way blocks both.
+    if (this.armSpec && this.arm > 0) {
+      if (this.arm === 1) this.takeFromFlower();
+      return;
+    }
     const [px, , pz] = this.robot.position;
     const yaw = this.robot.yaw;
     const [fx, fz] = [Math.cos(yaw), -Math.sin(yaw)];
@@ -171,6 +193,38 @@ export class Mechanisms {
         this.onPickup?.(b, [x, y, z]);
         return;
       }
+    }
+  }
+
+  /** The bottom POLLEN of a FLOWER right in front of the robot, pulled out of its retrieval opening. */
+  private takeFromFlower(): void {
+    if (!this.intakes.includes('pollen')) return;
+    const [px, , pz] = this.robot.position;
+    const yaw = this.robot.yaw;
+    const [fx, fz] = [Math.cos(yaw), -Math.sin(yaw)];
+    const front = this.robot.cfg.length / 2;
+    for (const [cx, cz] of this.flowers) {
+      const forward = (cx - px) * fx + (cz - pz) * fz - front;
+      const side = (cx - px) * -fz + (cz - pz) * fx;
+      if (forward < -FLOWER_REACH.behind || forward > FLOWER_REACH.ahead || Math.abs(side) > FLOWER_REACH.side) continue;
+      let bottom: Ball | null = null;
+      let bottomY = Infinity;
+      for (const b of this.balls.all) {
+        if (b.state !== 'field') continue;
+        const [x, y, z] = this.balls.position(b);
+        if (y < FLOWER_TUBE.height && y < bottomY && Math.hypot(x - cx, z - cz) < FLOWER_TUBE.radius) {
+          bottom = b;
+          bottomY = y;
+        }
+      }
+      // Only POLLEN, and only from below the middle ring (G418): NECTAR at the bottom blocks it.
+      if (!bottom || bottom.kind !== 'pollen' || bottomY > FLOWER_VOLUME.yMin) return;
+      const at = this.balls.position(bottom);
+      this.balls.hold(bottom);
+      this.stored.push(bottom);
+      this.intakeTimer = INTAKE.interval;
+      this.onPickup?.(bottom, at);
+      return;
     }
   }
 

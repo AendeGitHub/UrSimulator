@@ -20,6 +20,7 @@ function lerpRobot(a: RobotState, b: RobotState, k: number): RobotState {
     turretYaw: lerp(a.turretYaw, b.turretYaw, k),
     pitch: lerp(a.pitch, b.pitch, k),
     flywheel: lerp(a.flywheel, b.flywheel, k),
+    arm: lerp(a.arm, b.arm, k),
   };
 }
 

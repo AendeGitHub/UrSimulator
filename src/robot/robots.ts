@@ -21,18 +21,38 @@ export interface ShooterSpec {
   turretLimit: number;
 }
 
+/**
+ * A front arm that swings down in front of the intake (Bumble V's): raised, the intake takes balls
+ * off the floor; lowered, it can't, but it pulls POLLEN out of the bottom of a FLOWER (G418 B).
+ */
+export interface ArmSpec {
+  /** Seconds to swing all the way up or down */
+  travel: number;
+  /** How far the model's arm turns up from its CAD pose (lowered), rad */
+  upAngle: number;
+}
+
 export interface RobotDefinition {
   id: string;
   /** Robot name shown on its signs */
   name: string;
   team: string;
+  /** FTC team number, on the robot's signs */
+  number: string;
   teamLogo: string;
-  /** glTF model made from the team's CAD (tools/convert-robot.mjs) */
+  /** Fill around a logo that isn't square-on-white, to match its own background */
+  logoBackground?: string;
+  /** glTF model made from the team's CAD (tools/convert-robot.mjs), detailed */
   model: string;
+  /** The same model simplified further (tools/lighten-model.mjs), for Low graphics */
+  lowModel: string;
+  /** Where the side signs go if not centred on the footprint: forward offset and length, m */
+  sign?: { at: number; length: number };
   config: RobotConfig;
   shooter: ShooterSpec;
   /** Game pieces the intake picks up; it drives over the others */
   intakes: BallKind[];
+  arm?: ArmSpec;
   /**
    * Where held balls sit in the model (robot frame: forward, up, right; m): `first` is the ball
    * next to be shot, each further ball is `step` closer to the intake.
@@ -47,8 +67,10 @@ export const URAN_V1: RobotDefinition = {
   id: 'uran-v1',
   name: 'URAN V1',
   team: 'URAN92',
+  number: '25300',
   teamLogo: 'assets/teams/uran.svg',
   model: 'assets/robots/uran-v1.glb',
+  lowModel: 'assets/robots/uran-v1-low.glb',
   // Sizes measured from the team CAD (Jedi92.stp).
   config: {
     name: 'URAN V1',
@@ -77,8 +99,13 @@ export const BUMBLE_V: RobotDefinition = {
   id: 'bumble-v',
   name: 'Bumble V',
   team: 'SWB',
+  number: '21094',
   teamLogo: 'assets/teams/swb.png',
+  logoBackground: '#481a60',
   model: 'assets/robots/bumble-v.glb',
+  lowModel: 'assets/robots/bumble-v-low.glb',
+  // On the side plates of the drive base (the arm sticks out in front of them).
+  sign: { at: -0.055, length: 0.26 },
   // Sizes measured from the team CAD (Bumble V.step); the intake bar sticks out in front.
   config: {
     name: 'Bumble V',
@@ -97,6 +124,8 @@ export const BUMBLE_V: RobotDefinition = {
   // low front wheel and the high back one and leaves forward over the front wheel (camera side).
   shooter: { at: [-0.084, 0], height: 0.33, exit: 0.06, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: 2 * Math.PI },
   intakes: ['pollen'],
+  // The bush-back arm on the front intake axle, driven by a servo.
+  arm: { travel: 0.4, upAngle: 1.85 },
   // Up the transfer ramp, from under the turret forward to the intake rollers.
   storage: { first: [-0.09, 0.13, 0], step: [0.06, 0, 0] },
 };

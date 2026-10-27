@@ -31,7 +31,7 @@ import { Arena } from '../view/Arena';
 import { asset } from '../view/assets';
 import { BallsView, loadBallShapes, type HeldBall } from '../view/BallsView';
 import { FieldView } from '../view/FieldView';
-import { RobotView } from '../view/RobotView';
+import { RobotView, robotModel, setModelDetail } from '../view/RobotView';
 import { ScreenEffects } from '../view/ScreenEffects';
 import { total, type AllianceScore } from './scoring';
 import { LocalSession, type Session, type SessionEvents } from './Session';
@@ -346,12 +346,12 @@ export class Game {
   /** The selected robot on the field behind the selection screen. */
   private showPreview(): void {
     const def = robotById(this.settings.robot);
-    if (this.preview?.def !== def) {
+    if (this.preview?.def !== def || this.preview.model !== robotModel(def)) {
       this.preview?.dispose();
-      this.preview = new RobotView(def, this.settings.alliance, def.team);
+      this.preview = new RobotView(def, this.settings.alliance, def.number);
       this.scene.add(this.preview.root);
     }
-    this.preview.setIdentity(this.settings.alliance, def.team);
+    this.preview.setIdentity(this.settings.alliance, def.number);
     this.preview.root.position.set(PREVIEW_SPOT[0], 0.002, PREVIEW_SPOT[1]);
   }
 
@@ -575,6 +575,8 @@ export class Game {
     this.spot.castShadow = g.shadows;
     this.effects.setOutlines(g.outlines);
     this.effects.setAntialias(g.antialias);
+    // Robots switch to their lighter model on Low (views are rebuilt with it on the next frame).
+    setModelDetail(g.quality === 'low' ? 'low' : 'high');
     this.hud.showFps(g.fps);
     if (g.quality !== 'auto') this.setQuality(PRESET_LEVEL[g.quality]);
     else if (this.quality > this.qualityFloor) this.setQuality(this.qualityFloor);
@@ -670,17 +672,19 @@ export class Game {
     }
     for (const r of world.robots) {
       const def = robotById(r.robot);
+      // Team numbers on the signs, like real robots; online, the player's name says who drives which.
+      const sign = (this.session?.online ? names[r.slot] : undefined) ?? def.number;
       let view = this.robotViews.get(r.slot);
-      if (view && view.def !== def) {
+      if (view && (view.def !== def || view.model !== robotModel(def))) {
         view.dispose();
         view = undefined;
       }
       if (!view) {
-        view = new RobotView(def, slotAlliance(r.slot), names[r.slot] ?? def.team);
+        view = new RobotView(def, slotAlliance(r.slot), sign);
         this.scene.add(view.root);
         this.robotViews.set(r.slot, view);
       }
-      view.setIdentity(slotAlliance(r.slot), names[r.slot] ?? def.team);
+      view.setIdentity(slotAlliance(r.slot), sign);
       view.apply(r, dt);
     }
   }
@@ -733,6 +737,8 @@ export class Game {
       shooterOn: input.triggered('shooterOn'),
       shooterOff: input.triggered('shooterOff'),
       imuReset: input.triggered('imuReset'),
+      armUp: input.triggered('armUp'),
+      armDown: input.triggered('armDown'),
     };
   }
 
