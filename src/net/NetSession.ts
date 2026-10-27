@@ -14,9 +14,13 @@ export interface NetEvents extends SessionEvents {
 }
 
 /** Where the game server is: ?server=… in the address, the Vite dev setup, or the page's own host. */
+/** The public game server; the desktop app (loaded from app://) plays online here. */
+export const PUBLIC_SERVER_URL = 'wss://ursim.onrender.com/ws';
+
 export function defaultServerUrl(): string {
   const param = new URLSearchParams(location.search).get('server');
   if (param) return param;
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return PUBLIC_SERVER_URL;
   if (import.meta.env.DEV) return `ws://${location.hostname || 'localhost'}:${DEFAULT_PORT}/ws`;
   return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 }

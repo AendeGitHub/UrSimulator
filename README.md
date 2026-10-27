@@ -134,6 +134,37 @@ npm run build && npm run build:server && PORT=8787 npm start
 
 У F310 сзади переключатель режимов: **X** на Windows, **D** на Mac. Если кнопки перепутаны, открой «Геймпады → Настроить кнопки».
 
+## Приложение и релизы
+
+Игра есть и как приложение для Windows, macOS и Linux (Electron, папка `desktop/`): та же игра в своём окне, онлайн-комнаты и рекорды идут через сервер на Render. Скачать его можно со страницы релизов публичного репозитория [AendeGitHub/UrSim-Public](https://github.com/AendeGitHub/UrSim-Public/releases), код игры остаётся приватным.
+
+Запустить приложение у себя:
+
+```bash
+npm run desktop
+```
+
+Новый релиз:
+
+1. Подними версию в `package.json` (её видно в меню игры) и закоммить.
+2. Поставь тег и отправь его — GitHub Actions («Desktop app») соберёт zip для Windows, macOS и Linux на своих машинах:
+
+```bash
+git tag v1.0.1 && git push origin v1.0.1
+```
+
+3. Когда сборка закончится, скачай архивы и выложи их на публичную страницу:
+
+```bash
+gh run download --name UrSim-Windows --name UrSim-macOS --name UrSim-Linux --dir release
+```
+
+```bash
+gh release create v1.0.1 release/*/*.zip --repo AendeGitHub/UrSim-Public --title "UrSim v1.0.1" --notes "Что нового: …"
+```
+
+Mac-версия подписана без сертификата Apple, поэтому при первом запуске macOS спросит разрешение (подробности — в README публичного репозитория).
+
 ## Размещение в интернете (Render, бесплатно)
 
 1. Создай на GitHub пустой **приватный** репозиторий `ursim` и отправь туда код (`git push`).

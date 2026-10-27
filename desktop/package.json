@@ -1,0 +1,66 @@
+{
+  "name": "ursim-desktop",
+  "productName": "UrSim",
+  "version": "1.0.0",
+  "description": "UrSim — FIRST Tech Challenge BIOBUZZ simulator",
+  "author": "URAN92",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "com.uran92.ursim",
+    "productName": "UrSim",
+    "files": [
+      "main.cjs",
+      "app/**/*"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.games",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "artifactName": "UrSim_${version}_Mac.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "UrSim_${version}_Windows.${ext}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Game",
+      "artifactName": "UrSim_${version}_Linux.${ext}"
+    }
+  }
+}

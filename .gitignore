@@ -13,3 +13,8 @@ Robot/**/*.f3d
 
 # High scores saved by a local server (npm run server).
 data/
+
+# Desktop app: the copied game, its dependencies and the built downloads.
+desktop/app/
+desktop/node_modules/
+desktop/release/

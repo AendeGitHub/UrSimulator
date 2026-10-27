@@ -1,0 +1,48 @@
+# Builds the desktop app on GitHub's own Windows, macOS and Linux machines.
+# Run it from Actions → "Desktop app" → Run workflow (or push a tag like v1.2.0). The zips are
+# the run's artifacts; README → "Приложение и релизы" shows how they go onto the public release
+# page (AendeGitHub/UrSim-Public).
+
+name: Desktop app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win
+          - os: macos-latest
+            target: --mac
+          - os: ubuntu-latest
+            target: --linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build the game
+        run: |
+          npm ci
+          npm run build
+          node tools/prepare-desktop.mjs
+      - name: Package the app
+        working-directory: desktop
+        run: |
+          npm ci
+          npx electron-builder ${{ matrix.target }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UrSim-${{ runner.os }}
+          path: desktop/release/*.zip
+          if-no-files-found: error
+          # The zips are already compressed.
+          compression-level: 0
