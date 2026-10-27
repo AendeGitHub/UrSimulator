@@ -61,10 +61,10 @@ export const URAN_V1: RobotDefinition = {
     maxAccel: 6.5,
     maxTurnAccel: 34,
   },
-  // Flywheel shooter on a turret (axis measured from the CAD turret ring); balls leave over the
-  // hood on the flywheel side, which faces the back of the robot in the CAD. From the opening side
-  // of a cell the field allows at most ~2.3 m, so the accuracy scale fits that.
-  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: Math.PI },
+  // Flywheel shooter on a turret (axis measured from the CAD turret ring); balls leave on the side
+  // that faces the front of the robot in the CAD. From the opening side of a cell the field allows
+  // at most ~2.3 m, so the accuracy scale fits that.
+  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0 },
   // URAN V1 plays POLLEN only: NECTAR stays on the field.
   intakes: ['pollen'],
   // A row under the transfer rollers, from the turret forward to the intake.

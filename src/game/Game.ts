@@ -26,10 +26,10 @@ import { RecordsScreen } from '../ui/RecordsScreen';
 import { RobotSelectScreen, type SelectPurpose, type SelectSettings } from '../ui/RobotSelect';
 import { ResultsScreen, type ResultsTeam } from '../ui/ResultsScreen';
 import { LANGUAGES, defaultLanguage, localize, setLanguage, t, type Language } from '../ui/i18n';
-import { DEFAULT_GRAPHICS, SettingsScreen, type GraphicsSettings, type QualityPreset, type SettingsValues } from '../ui/SettingsScreen';
+import { DEFAULT_GRAPHICS, SettingsScreen, cleanSensitivity, type GraphicsSettings, type QualityPreset, type Sensitivity, type SettingsValues } from '../ui/SettingsScreen';
 import { Arena } from '../view/Arena';
 import { asset } from '../view/assets';
-import { BallsView, loadBallShapes } from '../view/BallsView';
+import { BallsView, loadBallShapes, type HeldBall } from '../view/BallsView';
 import { FieldView } from '../view/FieldView';
 import { RobotView } from '../view/RobotView';
 import { ScreenEffects } from '../view/ScreenEffects';
@@ -55,6 +55,7 @@ interface Settings {
   name: string;
   server: string;
   bindings: Bindings;
+  sensitivity: Sensitivity;
   graphics: GraphicsSettings;
   rules: RuleOptions;
   language: Language;
@@ -77,6 +78,7 @@ export function loadSettings(): Settings {
     camera: CAMERA_MODES.includes(saved.camera as CameraMode) ? saved.camera as CameraMode : 'driver',
     // Nested settings are merged so options added in a later version get their defaults.
     bindings: withDefaults(saved.bindings),
+    sensitivity: cleanSensitivity(saved.sensitivity),
     graphics: { ...DEFAULT_GRAPHICS, ...saved.graphics },
     rules: cleanRules(saved.rules),
     // The first time, from the browser's language.
@@ -85,8 +87,8 @@ export function loadSettings(): Settings {
 }
 
 /** World positions of the balls inside each robot, so you can see how many it holds. */
-function heldBallPositions(world: WorldState): Map<number, [number, number, number]> {
-  const held = new Map<number, [number, number, number]>();
+function heldBallPositions(world: WorldState): Map<number, HeldBall> {
+  const held = new Map<number, HeldBall>();
   for (const r of world.robots) {
     const { first, step } = robotById(r.robot).storage;
     const cos = Math.cos(r.yaw);
@@ -94,7 +96,7 @@ function heldBallPositions(world: WorldState): Map<number, [number, number, numb
     r.stored.forEach((id, i) => {
       const [fx, y, rz] = [first[0] + step[0] * i, first[1] + step[1] * i, first[2] + step[2] * i];
       // Same rotation as the robot model (about +Y by yaw).
-      held.set(id, [r.x + fx * cos + rz * sin, y, r.z - fx * sin + rz * cos]);
+      held.set(id, { pos: [r.x + fx * cos + rz * sin, y, r.z - fx * sin + rz * cos], place: `${r.slot}:${i}` });
     });
   }
   return held;
@@ -102,17 +104,17 @@ function heldBallPositions(world: WorldState): Map<number, [number, number, numb
 
 /**
  * Render quality steps, best first. Slow computers step down automatically: fewer pixels first,
- * then no ambient occlusion. The pixel ratio never goes above the screen's own.
+ * then no ambient occlusion. The pixel ratio never goes above the screen's own. Edges are smoothed
+ * by FXAA instead of drawing extra pixels, so even the top step draws few.
  */
 const QUALITY = [
-  { ratio: 1.5, ao: true },
   { ratio: 1.25, ao: true },
   { ratio: 1, ao: true },
   { ratio: 1, ao: false },
-  { ratio: 0.75, ao: false },
+  { ratio: 0.85, ao: false },
 ];
 /** Fixed presets from Settings → Graphics, as steps of the ladder above */
-const PRESET_LEVEL: Record<Exclude<QualityPreset, 'auto'>, number> = { high: 0, medium: 2, low: 4 };
+const PRESET_LEVEL: Record<Exclude<QualityPreset, 'auto'>, number> = { high: 0, medium: 1, low: 3 };
 /** Below this frame rate quality steps down; above the upper one for a while it tries a step up. */
 const FPS_LOW = 50;
 const FPS_HIGH = 58;
@@ -166,10 +168,10 @@ export class Game {
 
   private constructor(private readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    // 1.5× is sharp enough with the outlines and draws ~45% fewer pixels than 2× on retina screens.
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY[0].ratio));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Plain PCF: soft PCF samples the shadow map many more times for every lit pixel.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -561,8 +563,8 @@ export class Game {
   }
 
   private settingsValues(): SettingsValues {
-    const { bindings, graphics, rules, language } = this.settings;
-    return structuredClone({ bindings, graphics, rules, language });
+    const { bindings, sensitivity, graphics, rules, language } = this.settings;
+    return structuredClone({ bindings, sensitivity, graphics, rules, language });
   }
 
   /** Controls, graphics, house rules and language from the settings (the rules apply from the next game). */
@@ -572,6 +574,7 @@ export class Game {
     this.input.bindings = this.settings.bindings;
     this.spot.castShadow = g.shadows;
     this.effects.setOutlines(g.outlines);
+    this.effects.setAntialias(g.antialias);
     this.hud.showFps(g.fps);
     if (g.quality !== 'auto') this.setQuality(PRESET_LEVEL[g.quality]);
     else if (this.quality > this.qualityFloor) this.setQuality(this.qualityFloor);
@@ -656,7 +659,7 @@ export class Game {
 
   private draw(world: WorldState, dt: number): void {
     this.field.setHiveAngles(world.hiveAngles);
-    this.ballsView.update(world.balls, heldBallPositions(world));
+    this.ballsView.update(world.balls, heldBallPositions(world), dt);
     const names = this.session?.names() ?? {};
     const present = new Set(world.robots.map(r => r.slot));
     for (const [slot, view] of this.robotViews) {
@@ -714,8 +717,14 @@ export class Game {
   /** gamepad1 drives; mechanisms listen to both gamepads, so a second driver can run them as in FTC. */
   private readDriverInput(): RobotInput {
     const input = this.input;
+    const { lx, ly, rx } = input.driveSticks();
+    const { drive, turn } = this.settings.sensitivity;
+    // Sensitivity scales the stick; the drive vector keeps its direction when it hits full speed.
+    const k = drive / Math.max(1, Math.hypot(lx, ly) * drive);
     return {
-      ...input.driveSticks(),
+      lx: lx * k,
+      ly: ly * k,
+      rx: Math.max(-1, Math.min(1, rx * turn)),
       fieldCentric: this.settings.fieldCentric,
       slow: this.slowMode,
       intake: input.held('intake'),

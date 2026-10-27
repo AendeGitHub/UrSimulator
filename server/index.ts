@@ -19,7 +19,9 @@ import { MAX_SCORE, Records, createRecords } from './Records';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
 const PORT = Number(process.env.PORT) || DEFAULT_PORT;
-const TICK_MS = 4;
+// Each wake-up costs CPU, and a free server only gets about 10 ms of it per 100 ms: waking every
+// 4 ms used that up early and froze the room for the rest of each 100 ms (snapshots in bursts).
+const TICK_MS = 15;
 /** Protects a small free server from overload. */
 const MAX_CONNECTIONS = 200;
 /** Inputs arrive 60 times a second; anything far above that is a broken or hostile client. */

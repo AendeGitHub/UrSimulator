@@ -9,6 +9,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 
 /** Outlines fade out with distance, so the hall and stands stay soft, m */
 const OUTLINE_FADE = { start: 5, end: 9 };
@@ -159,12 +160,14 @@ class OutlinePass extends ShaderPass {
 export class ScreenEffects {
   private readonly composer: EffectComposer;
   private readonly outline: OutlinePass;
+  private readonly fxaa = new ShaderPass(FXAAShader);
   private readonly ao: AmbientOcclusionPass;
   private readonly gbuffer: GBufferPass;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
-    // 4× MSAA on the colour image; the effects work on the shared normal/depth buffer.
-    this.composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+    // No MSAA: every pass would then read and write 4× the memory. FXAA at the end smooths the
+    // edges of the scene and of the outlines (which MSAA never covered) for one cheap pass.
+    this.composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }));
     const gbuffer = new GBufferPass(scene, camera);
     this.gbuffer = gbuffer;
     this.outline = new OutlinePass(camera, gbuffer.target);
@@ -174,12 +177,19 @@ export class ScreenEffects {
     this.composer.addPass(this.ao);
     this.composer.addPass(this.outline);
     this.composer.addPass(new OutputPass());
+    // After OutputPass: FXAA expects the final sRGB colours.
+    this.composer.addPass(this.fxaa);
   }
 
   setSize(width: number, height: number, pixelRatio: number): void {
     this.outline.setPixelRatio(pixelRatio);
     this.composer.setPixelRatio(pixelRatio);
     this.composer.setSize(width, height);
+    this.fxaa.material.uniforms.resolution.value.set(1 / (width * pixelRatio), 1 / (height * pixelRatio));
+  }
+
+  setAntialias(on: boolean): void {
+    this.fxaa.enabled = on;
   }
 
   /** Ambient occlusion is the first thing to go on a slow computer. */

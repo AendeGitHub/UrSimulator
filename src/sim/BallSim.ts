@@ -70,6 +70,14 @@ export function ballSpecs(layout: FieldLayout): BallSpec[] {
 
 export class BallSim {
   readonly all: Ball[];
+  /**
+   * Every ball's position and rotation after the last physics step (x y z qx qy qz qw per ball).
+   * Reading them from Rapier allocates on every call and most balls lie asleep, so the simulation
+   * reads this copy, refreshed by sync().
+   */
+  readonly transforms: Float32Array;
+  /** Balls that were awake at the last sync() */
+  private readonly awake: Uint8Array;
 
   constructor(world: RAPIER.World, layout: FieldLayout) {
     this.all = ballSpecs(layout).map((spec, id) => {
@@ -79,6 +87,8 @@ export class BallSim {
       world.createCollider(RAPIER.ColliderDesc.ball(spec.radius).setMass(MASS[spec.kind]).setRestitution(BALL_RESTITUTION).setFriction(BALL_FRICTION), body);
       return { ...spec, id, body, state: spec.homeState, returned: false, launch: null };
     });
+    this.transforms = new Float32Array(this.all.length * 7);
+    this.awake = new Uint8Array(this.all.length);
     this.reset();
   }
 
@@ -94,7 +104,24 @@ export class BallSim {
       b.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
       b.body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, false);
       if (b.state === 'field') b.body.sleep();
+      this.store(b);
     }
+  }
+
+  /** Call after every physics step: refreshes the balls that moved (awake now or until now). */
+  sync(): void {
+    for (const b of this.all) {
+      if (b.state !== 'field') continue;
+      const sleeping = b.body.isSleeping();
+      if (!sleeping || this.awake[b.id]) this.store(b);
+      this.awake[b.id] = sleeping ? 0 : 1;
+    }
+  }
+
+  private store(b: Ball): void {
+    const t = b.body.translation();
+    const r = b.body.rotation();
+    this.transforms.set([t.x, t.y, t.z, r.x, r.y, r.z, r.w], b.id * 7);
   }
 
   /** POLLEN that start the match inside the robot in `slot`. */
@@ -103,8 +130,8 @@ export class BallSim {
   }
 
   position(b: Ball): Vec3 {
-    const t = b.body.translation();
-    return [t.x, t.y, t.z];
+    const o = b.id * 7;
+    return [this.transforms[o], this.transforms[o + 1], this.transforms[o + 2]];
   }
 
   hold(b: Ball): void {
@@ -130,6 +157,8 @@ export class BallSim {
     b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     b.body.setEnabled(true);
     b.body.wakeUp();
+    this.store(b);
+    this.awake[b.id] = 1;
   }
 
   /** NECTAR given back to the human player: it waits at `pos` in the alliance area. */
@@ -141,6 +170,7 @@ export class BallSim {
     b.body.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, false);
     b.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
     b.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
+    this.store(b);
   }
 
   /** Rolling resistance on the floor only, so it does not slow shots in the air. */
@@ -148,7 +178,7 @@ export class BallSim {
     for (const b of this.all) {
       if (b.launch) b.launch.age += dt;
       if (b.state !== 'field' || b.body.isSleeping()) continue;
-      const onFloor = b.body.translation().y < b.radius + 0.01;
+      const onFloor = this.transforms[b.id * 7 + 1] < b.radius + 0.01;
       const damping = onFloor ? FLOOR_DAMPING : AIR_DAMPING;
       if (b.body.linearDamping() !== damping) b.body.setLinearDamping(damping);
     }

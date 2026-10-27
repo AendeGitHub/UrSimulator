@@ -66,6 +66,8 @@ export class Simulation {
   private rules: RuleOptions = { ...DEFAULT_RULES };
   /** The HIVE frame (G417) and the outlines of field elements a robot can be pinned against (G421) */
   private hiveFrame: RAPIER.Collider | null = null;
+  /** The HIVE frame's footprint, so contact is only asked of Rapier for robots near it */
+  private hiveFrameBox: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
   private readonly obstacles: { minX: number; maxX: number; minZ: number; maxZ: number }[] = [];
   private readonly frameContact = new Map<Slot, boolean>();
   private readonly lastSpeed = new Map<Slot, number>();
@@ -104,6 +106,7 @@ export class Simulation {
         box.maxZ = Math.max(box.maxZ, v[i + 2]);
       }
       this.obstacles.push(box);
+      if (part.name === 'frame') this.hiveFrameBox = box;
     }
     // Floor (soft foam tiles) and perimeter walls (polycarbonate) as simple boxes.
     const half = this.zones.wall;
@@ -204,6 +207,7 @@ export class Simulation {
     this.balls.step(dt);
     this.match.step(dt);
     this.world.step();
+    this.balls.sync();
     this.judgeContacts(dt);
     this.time += dt;
   }
@@ -228,6 +232,17 @@ export class Simulation {
     return contact;
   }
 
+  /** Robots near each other, or near the HIVE frame (a cheap test before asking Rapier). */
+  private near(r: RobotSim, other: RobotSim | { minX: number; maxX: number; minZ: number; maxZ: number }): boolean {
+    const [x, , z] = r.position;
+    const reach = Math.hypot(r.cfg.length, r.cfg.width) / 2 + 0.05;
+    if (other instanceof RobotSim) {
+      const [ox, , oz] = other.position;
+      return Math.hypot(x - ox, z - oz) < reach + Math.hypot(other.cfg.length, other.cfg.width) / 2;
+    }
+    return x > other.minX - reach && x < other.maxX + reach && z > other.minZ - reach && z < other.maxZ + reach;
+  }
+
   /** Rules about contact: G417 (HIVE frame), G402 (opponent robot during AUTO), G421 (PINS). */
   private judgeContacts(dt: number): void {
     const match = this.match;
@@ -238,8 +253,7 @@ export class Simulation {
     }
     for (const p of players) {
       const slot = p.robot.slot;
-      const collider = p.robot.body.collider(0);
-      const hit = !!this.hiveFrame && this.touching(collider, this.hiveFrame);
+      const hit = !!this.hiveFrame && !!this.hiveFrameBox && this.near(p.robot, this.hiveFrameBox) && this.touching(p.robot.collider, this.hiveFrame);
       // The speed it had before this step is how hard it hit.
       const speed = this.lastSpeed.get(slot) ?? 0;
       if (hit && !this.frameContact.get(slot) && speed > HIVE_HIT_SPEED) match.referee.hiveFrameHit(slot, speed, this.time);
@@ -249,7 +263,7 @@ export class Simulation {
     for (const a of players) {
       for (const b of players) {
         if (a.robot.alliance !== 'red' || b.robot.alliance !== 'blue') continue;
-        const contact = this.touching(a.robot.body.collider(0), b.robot.body.collider(0));
+        const contact = this.near(a.robot, b.robot) && this.touching(a.robot.collider, b.robot.collider);
         if (contact && match.period === 'auto') {
           // Whoever is on the other alliance's half is disrupting their AUTO.
           const x = (a.robot.position[0] + b.robot.position[0]) / 2;
@@ -306,13 +320,9 @@ export class Simulation {
 
   /** Everything a renderer or a network snapshot needs. */
   state(): WorldState {
-    const n = this.balls.all.length;
-    const transforms = new Float32Array(n * 7);
-    const states = new Uint8Array(n);
+    const transforms = this.balls.transforms.slice();
+    const states = new Uint8Array(this.balls.all.length);
     this.balls.all.forEach((b, i) => {
-      const t = b.body.translation();
-      const r = b.body.rotation();
-      transforms.set([t.x, t.y, t.z, r.x, r.y, r.z, r.w], i * 7);
       states[i] = b.state === 'field' ? 0 : b.state === 'held' ? 1 : 2;
     });
     return {

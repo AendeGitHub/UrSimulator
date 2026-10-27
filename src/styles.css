@@ -1738,3 +1738,37 @@ body.pad-nav .ms-select:focus {
     grid-template-columns: 1fr 96px 96px;
   }
 }
+
+/* − 100% + rows in Settings (sensitivity) */
+.ms-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 48%;
+}
+
+.ms-step {
+  width: 3.2em;
+  font: inherit;
+  font-size: clamp(16px, 2.6vh, 26px);
+  font-weight: 700;
+  color: #fff;
+  background: var(--ms-blue);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 0.2em 0;
+  cursor: pointer;
+}
+
+.ms-step:hover,
+.ms-step:focus-visible,
+body.pad-nav .ms-step:focus {
+  outline: none;
+  background-color: var(--ms-blue-hi);
+  border-color: #fff;
+}
+
+.ms-step-value {
+  font-size: clamp(14px, 2.4vh, 24px);
+  font-weight: 700;
+}

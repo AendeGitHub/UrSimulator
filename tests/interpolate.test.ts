@@ -44,4 +44,21 @@ describe('snapshot interpolation', () => {
     expect(s.robots[0].x).toBeGreaterThan(0);
     expect(s.robots[0].x).toBeLessThan(1);
   });
+
+  it('renders further back when snapshots come in bursts, and closer on a steady stream', () => {
+    const lag = (gapsOf: (i: number) => number) => {
+      const buf = new SnapshotBuffer();
+      let local = 100;
+      for (let i = 0; i < 300; i++) {
+        local += gapsOf(i);
+        buf.push(world(i / 30, i, 0, 0), local);
+      }
+      // How many snapshots (= x) behind the newest one it draws
+      return 299 - buf.sample(local)!.robots[0].x;
+    };
+    const steady = lag(() => 1 / 30);
+    const bursts = lag(i => (i % 3 === 0 ? 0.1 : 0));
+    expect(steady).toBeLessThan(3);
+    expect(bursts).toBeGreaterThan(steady + 2);
+  });
 });

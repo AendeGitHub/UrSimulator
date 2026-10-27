@@ -17,13 +17,32 @@ export interface GraphicsSettings {
   quality: QualityPreset;
   shadows: boolean;
   outlines: boolean;
+  /** FXAA: smooths jagged edges for little cost */
+  antialias: boolean;
   fps: boolean;
 }
 
-export const DEFAULT_GRAPHICS: GraphicsSettings = { quality: 'auto', shadows: true, outlines: true, fps: false };
+export const DEFAULT_GRAPHICS: GraphicsSettings = { quality: 'auto', shadows: true, outlines: true, antialias: true, fps: false };
+
+/** Multipliers on the driving and turning stick (1 = as the stick says). */
+export interface Sensitivity {
+  drive: number;
+  turn: number;
+}
+
+export const DEFAULT_SENSITIVITY: Sensitivity = { drive: 1, turn: 1 };
+export const SENSITIVITY_RANGE = { min: 0.3, max: 2, step: 0.1 };
+
+/** Saved sensitivity, with anything missing or out of range back to a usable value. */
+export function cleanSensitivity(saved: unknown): Sensitivity {
+  const s = (saved ?? {}) as Partial<Record<keyof Sensitivity, unknown>>;
+  const value = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(SENSITIVITY_RANGE.max, Math.max(SENSITIVITY_RANGE.min, v)) : 1);
+  return { drive: value(s.drive), turn: value(s.turn) };
+}
 
 export interface SettingsValues {
   bindings: Bindings;
+  sensitivity: Sensitivity;
   graphics: GraphicsSettings;
   rules: RuleOptions;
   language: Language;
@@ -139,6 +158,19 @@ export class SettingsScreen implements Screen {
     localize(this.el);
   }
 
+  /** A settings row with − and + around a percentage. */
+  private stepper(label: TextKey, value: number, change: (v: number) => void): HTMLElement {
+    const step = (d: number) => () => {
+      change(Math.round(Math.min(SENSITIVITY_RANGE.max, Math.max(SENSITIVITY_RANGE.min, value + d)) * 10) / 10);
+      this.render();
+    };
+    return h('div', { class: 'ms-row' }, ht('span', { class: 'ms-label' }, label),
+      h('div', { class: 'ms-stepper' },
+        h('button', { class: 'ms-step', onclick: step(-SENSITIVITY_RANGE.step) }, '−'),
+        h('span', { class: 'ms-step-value' }, `${Math.round(value * 100)}%`),
+        h('button', { class: 'ms-step', onclick: step(SENSITIVITY_RANGE.step) }, '+')));
+  }
+
   /** A settings row: label on the left, a blue button that cycles the value. */
   private row(label: TextKey, value: string, onclick: () => void): HTMLElement {
     return h('div', { class: 'ms-row' }, ht('span', { class: 'ms-label' }, label), h('button', { class: 'ms-select', onclick }, value));
@@ -156,13 +188,16 @@ export class SettingsScreen implements Screen {
     const keyButton = (action: ActionId | MoveId) => h('button', { class: `ms-bind ${waitingFor(action, 'keys') ? 'ms-bind-wait' : ''}`, onclick: wait(action, 'keys') },
       waitingFor(action, 'keys') ? t('settings.pressKey') : keyLabel(b.keys[action]));
     const stick = (move: MoveId) => t(move === 'turnLeft' || move === 'turnRight' ? 'label.rightStick' : 'label.leftStick');
+    const s = this.values.sensitivity;
     return [
+      this.stepper('settings.driveSensitivity', s.drive, drive => this.set({ sensitivity: { ...s, drive } })),
+      this.stepper('settings.turnSensitivity', s.turn, turn => this.set({ sensitivity: { ...s, turn } })),
       h('div', { class: 'bind-table' },
         h('div', { class: 'bind-head' }, h('span', {}, t('settings.action')), h('span', {}, t('settings.gamepad')), h('span', {}, t('pad.keyboard'))),
         ...MOVES.map(m => h('div', { class: 'bind-row' }, h('span', {}, actionName(m)), h('span', { class: 'bind-fixed' }, stick(m)), keyButton(m))),
         ...ACTIONS.map(a => h('div', { class: 'bind-row' }, h('span', {}, actionName(a)), padButton(a), keyButton(a)))),
       h('p', { class: 'muted settings-note' }, t('settings.controlsNote')),
-      h('button', { class: 'ms-select settings-reset', onclick: () => this.set({ bindings: structuredClone(DEFAULT_BINDINGS) }) }, t('settings.resetControls')),
+      h('button', { class: 'ms-select settings-reset', onclick: () => this.set({ bindings: structuredClone(DEFAULT_BINDINGS), sensitivity: { ...DEFAULT_SENSITIVITY } }) }, t('settings.resetControls')),
     ];
   }
 
@@ -176,6 +211,7 @@ export class SettingsScreen implements Screen {
       this.row('settings.quality', t(`settings.quality.${g.quality}`), () => patch({ quality: QUALITY_ORDER[(QUALITY_ORDER.indexOf(g.quality) + 1) % QUALITY_ORDER.length] })),
       this.row('settings.shadows', onOff(g.shadows), () => patch({ shadows: !g.shadows })),
       this.row('settings.outlines', onOff(g.outlines), () => patch({ outlines: !g.outlines })),
+      this.row('settings.antialias', onOff(g.antialias), () => patch({ antialias: !g.antialias })),
       this.row('settings.fps', onOff(g.fps), () => patch({ fps: !g.fps })),
       h('p', { class: 'muted settings-note' }, t('settings.graphicsNote')),
     ];

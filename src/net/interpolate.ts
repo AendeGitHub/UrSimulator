@@ -49,17 +49,32 @@ export function lerpState(a: WorldState, b: WorldState, k: number): WorldState {
 }
 
 /**
- * Keeps recent snapshots and estimates the server clock, then renders slightly in the past
- * (INTERPOLATION_DELAY) so there is almost always a newer snapshot to blend toward.
+ * Keeps recent snapshots and estimates the server clock, then renders slightly in the past so
+ * there is almost always a newer snapshot to blend toward. How far back follows how evenly
+ * snapshots arrive: close behind on a steady connection, further back when they come in bursts
+ * (a busy server or Wi-Fi), so motion stays smooth instead of freezing and jumping.
  */
 export const INTERPOLATION_DELAY = 0.1;
+const MIN_DELAY = 0.07;
+const MAX_DELAY = 0.3;
+/** Arrival gaps remembered for the estimate */
+const GAP_WINDOW = 90;
 
 export class SnapshotBuffer {
   private readonly snaps: WorldState[] = [];
   /** server time − local time, seconds */
   private offset: number | null = null;
+  private delay = INTERPOLATION_DELAY;
+  private readonly gaps: number[] = [];
+  private lastArrival: number | null = null;
 
   push(s: WorldState, localNow: number): void {
+    if (this.lastArrival !== null) {
+      this.gaps.push(localNow - this.lastArrival);
+      if (this.gaps.length > GAP_WINDOW) this.gaps.shift();
+      if (this.gaps.length >= 20) this.delay += (this.targetDelay() - this.delay) * 0.05;
+    }
+    this.lastArrival = localNow;
     const sample = s.time - localNow;
     if (this.offset === null || Math.abs(sample - this.offset) > 0.5) this.offset = sample;
     else this.offset += (sample - this.offset) * 0.05;
@@ -72,11 +87,21 @@ export class SnapshotBuffer {
   clear(): void {
     this.snaps.length = 0;
     this.offset = null;
+    this.gaps.length = 0;
+    this.lastArrival = null;
+    this.delay = INTERPOLATION_DELAY;
+  }
+
+  /** Long enough to cover nearly every gap between snapshots. */
+  private targetDelay(): number {
+    const sorted = [...this.gaps].sort((a, b) => a - b);
+    const p95 = sorted[Math.floor(sorted.length * 0.95)];
+    return Math.min(MAX_DELAY, Math.max(MIN_DELAY, p95 + 0.02));
   }
 
   sample(localNow: number): WorldState | null {
     if (!this.snaps.length || this.offset === null) return null;
-    const t = localNow + this.offset - INTERPOLATION_DELAY;
+    const t = localNow + this.offset - this.delay;
     const last = this.snaps[this.snaps.length - 1];
     if (t >= last.time) return last;
     for (let i = this.snaps.length - 2; i >= 0; i--) {

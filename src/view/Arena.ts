@@ -96,7 +96,30 @@ export class Arena {
     this.buildBanners();
     this.mergeStatic();
     this.dim();
+    this.simplifyMaterials();
     scene.add(this.root);
+  }
+
+  /**
+   * The hall fills most of the screen but sits in the dark, so it gets the cheap Lambert shading
+   * instead of the physically based one (no reflections, which nobody sees there anyway).
+   */
+  private simplifyMaterials(): void {
+    const cheap = new Map<THREE.Material, THREE.MeshLambertMaterial>();
+    this.root.traverse(obj => {
+      if (!(obj instanceof THREE.Mesh) || !(obj.material instanceof THREE.MeshStandardMaterial)) return;
+      const m = obj.material;
+      let lambert = cheap.get(m);
+      if (!lambert) {
+        lambert = new THREE.MeshLambertMaterial({
+          color: m.color, map: m.map, emissive: m.emissive, emissiveIntensity: m.emissiveIntensity,
+          transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite,
+        });
+        cheap.set(m, lambert);
+        m.dispose();
+      }
+      obj.material = lambert;
+    });
   }
 
   /** The hall sits in the dark around the lit field: surfaces reflect much less light. */
@@ -134,16 +157,12 @@ export class Arena {
         m.removeFromParent();
         m.geometry.dispose();
       }
-      const mesh = new THREE.Mesh(merged, material);
-      mesh.receiveShadow = true;
-      this.root.add(mesh);
+      this.root.add(new THREE.Mesh(merged, material));
     }
   }
 
+  /** Hall parts take no shadows: the spotlight only reaches the field and the floor around it. */
   private add<T extends THREE.Object3D>(obj: T): T {
-    obj.traverse(o => {
-      if (o instanceof THREE.Mesh) o.receiveShadow = true;
-    });
     this.root.add(obj);
     return obj;
   }
@@ -158,6 +177,7 @@ export class Arena {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(HALL.halfX * 2, HALL.halfZ * 2), new THREE.MeshStandardMaterial({ map: carpetTexture(), roughness: 0.95 }));
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = FLOOR_Y;
+    floor.receiveShadow = true;
     this.add(floor);
   }
 
@@ -182,18 +202,18 @@ export class Arena {
 
   /**
    * Arena stand along one long side. `side` = +1 faces the field from +Z, -1 from -Z.
-   * Concrete steps, single plastic seats on pedestals, a glass front barrier with a rail and an
-   * LED strip, aisle stairs with handrails. Everything repeated is instanced, so a stand costs a
-   * handful of draw calls.
+   * Concrete steps, block plastic seats, a glass front barrier with a rail and an LED strip, aisle
+   * stairs with handrails. Kept simple (it is far away and dark) and everything repeated is
+   * instanced, so a stand costs a handful of draw calls.
    */
   private buildBleachers(z0: number, side: 1 | -1): void {
-    const rows = 10;
+    const rows = 8;
     const length = 22;
     const depth = 0.75;
     const rise = 0.4;
     const aisles = [-7.5, 0, 7.5];
     const aisleWidth = 1.2;
-    const seatPitch = 0.52;
+    const seatPitch = 0.6;
     const sections = [[-length / 2, aisles[0]], [aisles[0], aisles[1]], [aisles[1], aisles[2]], [aisles[2], length / 2]]
       .map(([a, b]) => [a + (a === -length / 2 ? 0.2 : aisleWidth / 2), b - (b === length / 2 ? 0.2 : aisleWidth / 2)]);
     // Seats face the field: -Z for the stand at +Z. Facing angle about Y for the instances.
@@ -217,11 +237,10 @@ export class Arena {
     }
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), facing);
 
-    // One stadium seat: pan and slightly reclined back in plastic, a dark pedestal under it.
-    const pan = new THREE.BoxGeometry(0.44, 0.05, 0.38).translate(0, 0.42, -0.02);
-    const back = new THREE.BoxGeometry(0.44, 0.4, 0.05).rotateX(-0.12).translate(0, 0.66, 0.19);
+    // One stadium seat: a block down to the step and a back.
+    const pan = new THREE.BoxGeometry(0.44, 0.44, 0.38).translate(0, 0.22, -0.02);
+    const back = new THREE.BoxGeometry(0.44, 0.4, 0.05).translate(0, 0.64, 0.19);
     const seatGeo = mergeGeometries([pan, back])!;
-    const pedestalGeo = new THREE.BoxGeometry(0.08, 0.4, 0.26).translate(0, 0.2, 0.04);
 
     const spots: THREE.Vector3[] = [];
     for (let i = 0; i < rows; i++) {
@@ -234,17 +253,9 @@ export class Arena {
     }
     const seatMat = new THREE.MeshStandardMaterial({ color: '#1f45d6', roughness: 0.45 });
     const seats = new THREE.InstancedMesh(seatGeo, seatMat, spots.length);
-    const pedestals = new THREE.InstancedMesh(pedestalGeo, this.metal, spots.length);
-    spots.forEach((p, i) => {
-      m.compose(p, q, s.set(1, 1, 1));
-      seats.setMatrixAt(i, m);
-      pedestals.setMatrixAt(i, m);
-    });
+    spots.forEach((p, i) => seats.setMatrixAt(i, m.compose(p, q, s.set(1, 1, 1))));
 
-    for (const mesh of [steps, nosing, seats, pedestals]) {
-      mesh.receiveShadow = true;
-      this.root.add(mesh);
-    }
+    for (const mesh of [steps, nosing, seats]) this.root.add(mesh);
 
     // Front of the stand: dark fascia with a glowing LED strip, glass barrier and top rail.
     const front = z0 - side * (depth / 2 + 0.02);

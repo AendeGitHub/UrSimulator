@@ -67,11 +67,11 @@ flowchart LR
 
 **Automatic referee.** Six rules from the game manual are judged from physics contacts and match state. Pinning (G421) checks the footprint corners of a robot held against a wall or field element for 3 seconds; ramming the HIVE (G417) uses the contact speed with its frame. Fouls go to the opponent's score, a second yellow card becomes a red one, and every call is listed on the results screen.
 
-**Rendering.** three.js with a post-processing chain: ambient occlusion (GTAO) at half resolution and black outlines from a Sobel filter over normals and depth, plus spotlights and fog for the arena look. When the frame rate drops below 50 FPS, an adaptive quality ladder lowers the resolution and effects. Merging static meshes cut draw calls from about 650 to about 370 per frame.
+**Rendering.** three.js with a post-processing chain: ambient occlusion (GTAO) at half resolution and black outlines from a Sobel filter over normals and depth, plus spotlights and fog for the arena look. Edges are smoothed by FXAA instead of rendering extra pixels, and when the frame rate drops below 50 FPS an adaptive quality ladder lowers the resolution and effects. Merging static meshes cut draw calls from about 650 to about 370 per frame, and simplifying the models (`tools/lighten-model.mjs`) cut the triangles drawn per frame from about 2 million to 0.7 million.
 
 **Desktop app and CI.** The same build runs in Electron, served over a custom `app://` protocol so that fetch, WebAssembly and localStorage work as on the website. GitHub Actions builds the Windows, macOS (universal) and Linux zips on native runners.
 
-**Tests.** 91 Vitest tests in 13 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules, server rooms and house rules, input bindings, high scores and translations.
+**Tests.** 92 Vitest tests in 13 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules, server rooms and house rules, input bindings, high scores and translations.
 
 | Area | Tools |
 |---|---|
@@ -184,8 +184,8 @@ The server address can be changed under **Online → Server address** or with a 
 
 **Settings** in the main menu (and in the pause menu):
 
-- **Controls**: any gamepad button and any key can be rebound: click it in the table, then press the button or key you want (Esc cancels). If it's already used by another action, the two swap. "Reset controls" restores the defaults below.
-- **Graphics**: quality (Auto / High / Medium / Low), shadows, black outlines, FPS counter. Auto lowers the resolution and ambient occlusion by itself when the frame rate drops below 50.
+- **Controls**: drive and turn sensitivity (30–200%), and any gamepad button and any key can be rebound: click it in the table, then press the button or key you want (Esc cancels). If it's already used by another action, the two swap. "Reset controls" restores the defaults below.
+- **Graphics**: quality (Auto / High / Medium / Low), shadows, black outlines, anti-aliasing, FPS counter. Auto lowers the resolution and ambient occlusion by itself when the frame rate drops below 50.
 - **Rules**: fouls, cards and the battery (voltage sag that slows the robot) can be turned off. Online games use the host's settings.
 - **Language**: English or Russian. The default comes from the browser: Russian for a Russian browser, English otherwise. FTC terms (POLLEN, NECTAR, HIVE, AUTO, TELEOP, MAJOR FOUL) stay as in the game manual in both.
 - **Gamepads**: which gamepad is gamepad1 and gamepad2, a button tester, and setup for non-standard gamepads.
@@ -265,6 +265,8 @@ Health check: `https://<address>/health`.
 
 - `Field/`, `Manual/`, `Logo/`, `Robot/`: source material (CAD, game manual, logo).
 - `tools/convert-balls.mjs`: POLLEN and NECTAR from the official CAD (`Field/am-5851…`, `am-5852…`) into `public/assets/balls.glb`.
+- `tools/lighten-model.mjs`: simplifies a finished model (fewer triangles, same moving parts) when the CAD isn't at hand.
+  The field was made with `error 0.003 --drop-normals`, the robot with `0.01`, the balls with `0.02`.
 - `tools/convert-field.mjs` turns the field CAD (STEP) into `public/assets/field.glb` and `field-layout.json`; `tools/build-colliders.mjs` builds the field colliders for the browser and the server (`field-colliders.bin`). Both: `npm run convert:field`.
 - `src/sim/`: the whole game without graphics: physics, robots, mechanisms, HIVEs, match, scoring, network snapshots. Runs in the browser (solo) and on the server.
 - `src/net/`: protocol, online session, smooth snapshot interpolation; `server/`: the game server with rooms.

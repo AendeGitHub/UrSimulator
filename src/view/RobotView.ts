@@ -195,7 +195,9 @@ export class RobotView {
     for (const [k, w] of this.wheels) spin(w, -s.powers[k] * SPIN.wheelMax * dt);
     for (const r of this.intake) spin(r, -s.intakeDir * SPIN.intake * dt);
     if (s.transfer) for (const r of this.transfer) spin(r, -SPIN.transfer * dt);
-    if (this.flywheel) spin(this.flywheel, -Math.min(1, s.flywheel * 2) * SPIN.flywheel * dt);
+    // The flywheel throws balls out of the side that faces the target, so it turns that way.
+    const throwSide = Math.cos(this.def.shooter.modelYaw) < 0 ? -1 : 1;
+    if (this.flywheel) spin(this.flywheel, throwSide * Math.min(1, s.flywheel * 2) * SPIN.flywheel * dt);
   }
 }
 

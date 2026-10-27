@@ -2,10 +2,14 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createTileTexture } from '../field/floorTexture';
 import type { FieldLayout } from '../field/layout';
 import type { Alliance } from '../robot/robotConfig';
 import { asset } from './assets';
+
+/** The field model stores no normals (tools/lighten-model.mjs); edges sharper than this stay sharp. */
+const CREASE_ANGLE = (32 * Math.PI) / 180;
 
 export class FieldView {
   readonly root = new THREE.Group();
@@ -35,6 +39,7 @@ export class FieldView {
 
     cad.traverse(obj => {
       if (!(obj instanceof THREE.Mesh)) return;
+      if (!obj.geometry.getAttribute('normal')) obj.geometry = toCreasedNormals(obj.geometry, CREASE_ANGLE);
       const mat = obj.material as THREE.MeshStandardMaterial;
       obj.castShadow = !mat.transparent;
       obj.receiveShadow = true;

@@ -17,6 +17,8 @@ const GROUND_CLEARANCE = 0.012;
 
 export class RobotSim {
   readonly body: RAPIER.RigidBody;
+  /** Kept: body.collider(0) makes a new wrapper object on every call. */
+  readonly collider: RAPIER.Collider;
   readonly alliance: Alliance;
   /** Yaw the simulated IMU reports as zero (set at init and by "reset heading"). */
   private imuZero = 0;
@@ -32,7 +34,7 @@ export class RobotSim {
         .setCanSleep(false),
     );
     const bodyHeight = cfg.height - GROUND_CLEARANCE;
-    world.createCollider(
+    this.collider = world.createCollider(
       RAPIER.ColliderDesc.cuboid(cfg.length / 2, bodyHeight / 2, cfg.width / 2)
         .setTranslation(0, GROUND_CLEARANCE + bodyHeight / 2, 0)
         .setMass(cfg.mass)
