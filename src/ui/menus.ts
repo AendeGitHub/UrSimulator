@@ -1,10 +1,8 @@
-// Main menu, pause menu and controls help.
+// Main menu and pause menu.
 
-import type { ControlId, PadModel } from '../input/gamepad';
 import { MODEL_NAMES } from '../input/gamepad';
 import type { InputManager } from '../input/InputManager';
 import { h } from './dom';
-import { keyChip } from './Hud';
 import { MenuNav } from './MenuNav';
 
 export interface Screen {
@@ -22,8 +20,7 @@ export interface MainMenuActions {
   practice(): void;
   online(): void;
   records(): void;
-  gamepads(): void;
-  help(): void;
+  settings(): void;
 }
 
 /** A big white menu entry, outlined when focused (MoSim style). */
@@ -46,7 +43,7 @@ export class MainMenu implements Screen {
       this.list,
       h('div', { class: 'menu-foot' },
         this.pads,
-        h('p', { class: 'menu-legal' }, 'Неофициальный фанатский симулятор. Не связан с FIRST®. BIOBUZZ™ — товарный знак FIRST.')),
+        h('p', { class: 'menu-legal' }, `UrSim v${__APP_VERSION__} · Неофициальный фанатский симулятор. Не связан с FIRST®. BIOBUZZ™ — товарный знак FIRST.`)),
     );
     this.nav = new MenuNav(this.el, () => this.page === 'play' && this.open('root'));
     this.open('root');
@@ -57,7 +54,7 @@ export class MainMenu implements Screen {
     this.page = page;
     const a = this.actions;
     this.list.replaceChildren(...(page === 'root'
-      ? [item('Играть', () => this.open('play')), item('Онлайн 2 на 2', a.online), item('Рекорды', a.records), item('Геймпады', a.gamepads), item('Управление', a.help)]
+      ? [item('Играть', () => this.open('play')), item('Онлайн 2 на 2', a.online), item('Рекорды', a.records), item('Настройки', a.settings)]
       : [h('div', { class: 'menu-heading' }, 'Играть'), item('Матч 2:30', a.match), item('Тренировка', a.practice), item('Назад', () => this.open('root'))]));
     this.nav.focusFirst();
   }
@@ -81,8 +78,7 @@ export class MainMenu implements Screen {
 export interface PauseActions {
   resume(): void;
   resetRobot(): void;
-  gamepads(): void;
-  help(): void;
+  settings(): void;
   /** Host only: everyone back to the room lobby */
   stopOnline(): void;
   exit(): void;
@@ -106,8 +102,7 @@ export class PauseMenu implements Screen {
         item('Продолжить', () => actions.resume()),
         this.reset,
         this.stop,
-        item('Геймпады', () => actions.gamepads()),
-        item('Управление', () => actions.help()),
+        item('Настройки', () => actions.settings()),
         this.exit,
       ),
     );
@@ -120,69 +115,5 @@ export class PauseMenu implements Screen {
     this.reset.hidden = online;
     this.stop.hidden = !(online && host);
     this.exit.textContent = online ? 'Выйти из комнаты' : 'В главное меню';
-  }
-}
-
-const CONTROLS: [ControlId, string][] = [
-  ['left_stick_y', 'Езда вперёд / назад и вбок (левый стик)'],
-  ['right_stick_x', 'Поворот (правый стик)'],
-  ['left_bumper', 'Захват: забрать мячи спереди (держать, до 4)'],
-  ['dpad_down', 'Выкинуть мячи обратно (держать)'],
-  ['left_trigger', 'Шутер включить'],
-  ['right_trigger', 'Шутер выключить (маховик садит аккумулятор)'],
-  ['right_bumper', 'Трансфер: мячи в шутер (держать); интейк тоже крутится и подбирает мячи прямо в шутер'],
-  ['left_stick_button', 'Медленный режим вкл / выкл'],
-  ['back', 'Field-centric ↔ Robot-centric'],
-  ['start', 'Сброс курса (IMU) для field-centric'],
-  ['right_stick_button', 'Камера «За роботом»: смотреть вперёд / назад'],
-  ['guide', 'Пауза'],
-];
-
-/** What the automatic referee calls during a match (sim/Referee.ts). */
-const RULES: [string, string][] = [
-  ['G402', 'В AUTO не трогать мячи и робота соперника на его половине — MAJOR FOUL'],
-  ['G405', 'Не выбрасывать мячи за поле (не путать с промахом) — MAJOR FOUL за мяч'],
-  ['G408', 'Не брать NECTAR соперника — предупреждение, затем жёлтая карточка'],
-  ['G410', 'NECTAR в цветок только в последнюю минуту — MAJOR FOUL за NECTAR'],
-  ['G417', 'Не таранить раму улья — предупреждение, затем MAJOR FOUL и жёлтая'],
-  ['G421', 'Не прижимать соперника дольше 3 с — MAJOR FOUL и ещё один каждые 3 с'],
-];
-
-export class HelpScreen implements Screen {
-  readonly el = h('div', { class: 'screen menu-help' });
-  readonly nav: MenuNav;
-  private model: PadModel | null = null;
-
-  constructor(private readonly input: InputManager, private readonly back: () => void) {
-    this.nav = new MenuNav(this.el, back);
-  }
-
-  onShow(): void {
-    this.model = null;
-    this.update();
-  }
-
-  update(): void {
-    const model = this.input.model1;
-    if (model === this.model) return;
-    this.model = model;
-    const rows = (m: PadModel) => CONTROLS.map(([c, text]) =>
-      h('tr', {}, h('td', {}, keyChip(m, c), c === 'right_stick_button' && (m === 'ps4' || m === 'ps5') ? keyChip(m, 'touchpad') : ''), h('td', {}, text)));
-    this.el.replaceChildren(
-      h('h2', {}, 'Управление'),
-      h('div', { class: 'help-cols' },
-        model !== 'keyboard'
-          ? h('div', { class: 'panel' }, h('h3', {}, MODEL_NAMES[model]), h('table', { class: 'controls' }, ...rows(model)))
-          : '',
-        h('div', { class: 'panel' }, h('h3', {}, 'Клавиатура'), h('table', { class: 'controls' }, ...rows('keyboard'),
-          h('tr', {}, h('td', {}, h('span', { class: 'key' }, 'R')), h('td', {}, 'Сбросить робота на старт'))))),
-      h('div', { class: 'panel help-rules' },
-        h('h3', {}, 'Правила, за которыми следит судья в матче'),
-        h('table', { class: 'controls' }, ...RULES.map(([id, text]) => h('tr', {}, h('td', {}, h('span', { class: 'key' }, id)), h('td', {}, text)))),
-        h('p', { class: 'muted' }, 'MINOR FOUL даёт сопернику 5 очков, MAJOR FOUL — 20. Вторая жёлтая карточка становится красной: 0 очков за матч.')),
-      h('p', { class: 'muted' }, 'Турель сама наводится на верхнюю ячейку своего улья и подбирает скорость. Твоя задача — встать там, куда смотрит отверстие ячейки. ',
-        'Механизмы слушаются и gamepad1, и gamepad2 — можно играть вдвоём, как в FTC.'),
-      h('div', { class: 'menu-buttons' }, h('button', { class: 'btn btn-secondary', onclick: this.back }, 'Назад')),
-    );
   }
 }

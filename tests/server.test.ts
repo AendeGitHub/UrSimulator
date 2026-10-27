@@ -104,6 +104,17 @@ describe('game server lobby', () => {
     expect(red.peer.snapshots.length).toBeLessThan(25);
   });
 
+  it("plays with the host's house rules, and ignores junk rules", () => {
+    const lobby = new Lobby(layout, colliders);
+    const host = connect(lobby, 'Host');
+    lobby.handle(host.id, { t: 'create' });
+    lobby.handle(host.id, { t: 'start', mode: 'match', rules: { fouls: false, cards: true, battery: false } });
+    expect(host.peer.room!.rules).toEqual({ fouls: false, cards: true, battery: false });
+    lobby.handle(host.id, { t: 'stop' });
+    lobby.handle(host.id, { t: 'start', mode: 'match', rules: { fouls: 'no', cards: 7 } as never });
+    expect(host.peer.room!.rules).toEqual({ fouls: true, cards: true, battery: true });
+  });
+
   it('plays a full online match to the end and returns the room to the lobby', () => {
     const lobby = new Lobby(layout, colliders);
     const host = connect(lobby, 'Host');

@@ -160,11 +160,13 @@ export class ScreenEffects {
   private readonly composer: EffectComposer;
   private readonly outline: OutlinePass;
   private readonly ao: AmbientOcclusionPass;
+  private readonly gbuffer: GBufferPass;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     // 4× MSAA on the colour image; the effects work on the shared normal/depth buffer.
     this.composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
     const gbuffer = new GBufferPass(scene, camera);
+    this.gbuffer = gbuffer;
     this.outline = new OutlinePass(camera, gbuffer.target);
     this.composer.addPass(new RenderPass(scene, camera));
     this.composer.addPass(gbuffer);
@@ -183,6 +185,17 @@ export class ScreenEffects {
   /** Ambient occlusion is the first thing to go on a slow computer. */
   setAmbientOcclusion(on: boolean): void {
     this.ao.enabled = on;
+    this.updateGBuffer();
+  }
+
+  setOutlines(on: boolean): void {
+    this.outline.enabled = on;
+    this.updateGBuffer();
+  }
+
+  /** With neither effect on, the extra normal/depth render of the scene is skipped entirely. */
+  private updateGBuffer(): void {
+    this.gbuffer.enabled = this.ao.enabled || this.outline.enabled;
   }
 
   render(dt: number): void {

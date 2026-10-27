@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { CAMERA_MODES, CameraRig, type CameraMode } from '../camera/CameraRig';
 import type { FieldLayout } from '../field/layout';
+import { withDefaults, type Bindings } from '../input/bindings';
 import { MODEL_NAMES } from '../input/gamepad';
 import { InputManager } from '../input/InputManager';
 import { NetSession, defaultServerUrl } from '../net/NetSession';
@@ -13,16 +14,18 @@ import type { Alliance } from '../robot/robotConfig';
 import { DEFAULT_ROBOT_ID, robotById } from '../robot/robots';
 import { parseColliders, type ColliderPart } from '../sim/colliders';
 import { matchClock } from '../sim/Match';
+import { cleanRules, type RuleOptions } from '../sim/Referee';
 import { initPhysics } from '../sim/Simulation';
 import type { WorldState } from '../sim/state';
 import { slotAlliance, type GameMode, type RobotInput, type Slot } from '../sim/types';
 import { GamepadScreen } from '../ui/GamepadScreen';
 import { Hud } from '../ui/Hud';
-import { HelpScreen, MainMenu, PauseMenu, type Screen } from '../ui/menus';
+import { MainMenu, PauseMenu, type Screen } from '../ui/menus';
 import { ConnectScreen, LobbyScreen } from '../ui/online';
 import { RecordsScreen } from '../ui/RecordsScreen';
 import { RobotSelectScreen, type SelectPurpose, type SelectSettings } from '../ui/RobotSelect';
 import { ResultsScreen, type ResultsTeam } from '../ui/ResultsScreen';
+import { DEFAULT_GRAPHICS, SettingsScreen, type GraphicsSettings, type QualityPreset, type SettingsValues } from '../ui/SettingsScreen';
 import { Arena } from '../view/Arena';
 import { asset } from '../view/assets';
 import { BallsView, loadBallShapes } from '../view/BallsView';
@@ -50,16 +53,31 @@ interface Settings {
   camera: CameraMode;
   name: string;
   server: string;
+  bindings: Bindings;
+  graphics: GraphicsSettings;
+  rules: RuleOptions;
 }
 
 function loadSettings(): Settings {
-  const defaults: Settings = { robot: DEFAULT_ROBOT_ID, alliance: 'red', fieldCentric: true, camera: 'driver', name: '', server: defaultServerUrl() };
+  let saved: Partial<Settings> = {};
   try {
-    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
-    return { ...defaults, ...saved, camera: CAMERA_MODES.includes(saved.camera) ? saved.camera : defaults.camera };
+    saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
   } catch {
-    return defaults;
+    // Unreadable settings: start from the defaults.
   }
+  return {
+    robot: DEFAULT_ROBOT_ID,
+    alliance: 'red',
+    fieldCentric: true,
+    name: '',
+    server: defaultServerUrl(),
+    ...saved,
+    camera: CAMERA_MODES.includes(saved.camera as CameraMode) ? saved.camera as CameraMode : 'driver',
+    // Nested settings are merged so options added in a later version get their defaults.
+    bindings: withDefaults(saved.bindings),
+    graphics: { ...DEFAULT_GRAPHICS, ...saved.graphics },
+    rules: cleanRules(saved.rules),
+  };
 }
 
 /** World positions of the balls inside each robot, so you can see how many it holds. */
@@ -85,9 +103,12 @@ function heldBallPositions(world: WorldState): Map<number, [number, number, numb
 const QUALITY = [
   { ratio: 1.5, ao: true },
   { ratio: 1.25, ao: true },
+  { ratio: 1, ao: true },
   { ratio: 1, ao: false },
-  { ratio: 0.8, ao: false },
+  { ratio: 0.75, ao: false },
 ];
+/** Fixed presets from Settings → Графика, as steps of the ladder above */
+const PRESET_LEVEL: Record<Exclude<QualityPreset, 'auto'>, number> = { high: 0, medium: 2, low: 4 };
 /** Below this frame rate quality steps down; above the upper one for a while it tries a step up. */
 const FPS_LOW = 50;
 const FPS_HIGH = 58;
@@ -119,9 +140,13 @@ export class Game {
   private state: State = 'menu';
   private screen: Screen | null = null;
   private readonly screens: {
-    main: MainMenu; select: RobotSelectScreen; pause: PauseMenu; help: HelpScreen; pads: GamepadScreen; results: ResultsScreen; connect: ConnectScreen; lobby: LobbyScreen; records: RecordsScreen;
+    main: MainMenu; select: RobotSelectScreen; pause: PauseMenu; settings: SettingsScreen; pads: GamepadScreen; results: ResultsScreen; connect: ConnectScreen; lobby: LobbyScreen; records: RecordsScreen;
   };
-  private returnTo: Screen | null = null;
+  /** Screens to go back to (main menu → settings → gamepads) */
+  private readonly stack: Screen[] = [];
+  private spot!: THREE.SpotLight;
+  private fpsAverage = 60;
+  private fpsShown = 0;
 
   private lastTime = 0;
   /** Index into QUALITY, and the best level that ran too slowly (never tried again). */
@@ -129,7 +154,6 @@ export class Game {
   private qualityFloor = 0;
   private perf = { time: 0, frames: 0, goodTime: 0 };
   private menuOrbit = 0;
-  private resetKeyWasDown = false;
   private lastPad1 = '';
   private slowMode = false;
   private lastSoloMode: GameMode = 'practice';
@@ -154,7 +178,11 @@ export class Game {
     container.append(this.hud.el, this.overlay);
     this.hud.el.hidden = true;
 
-    const back = () => this.show(this.returnTo);
+    const back = () => this.show(this.stack.pop() ?? this.screens.main);
+    const openSettings = () => {
+      this.screens.settings.open(this.settingsValues());
+      this.openSub(this.screens.settings);
+    };
     this.screens = {
       main: new MainMenu({
         match: () => this.openSelect('match'),
@@ -164,8 +192,7 @@ export class Game {
           this.screens.records.open(this.settings.robot);
           this.openSub(this.screens.records);
         },
-        gamepads: () => this.openSub(this.screens.pads),
-        help: () => this.openSub(this.screens.help),
+        settings: openSettings,
       }),
       select: new RobotSelectScreen(this.selectSettings(), {
         change: settings => this.applySelect(settings),
@@ -175,12 +202,19 @@ export class Game {
       pause: new PauseMenu({
         resume: () => this.resume(),
         resetRobot: () => this.startSolo(this.lastSoloMode),
-        gamepads: () => this.openSub(this.screens.pads),
-        help: () => this.openSub(this.screens.help),
+        settings: openSettings,
         stopOnline: () => this.net?.stop(),
         exit: () => this.toMenu(),
       }),
-      help: new HelpScreen(this.input, back),
+      settings: new SettingsScreen({
+        change: values => {
+          Object.assign(this.settings, values);
+          this.saveSettings();
+          this.applySettings();
+        },
+        gamepads: () => this.openSub(this.screens.pads),
+        back,
+      }),
       pads: new GamepadScreen(this.input, back),
       results: new ResultsScreen({
         again: () => (this.net ? this.showLobby() : this.startSolo(this.lastSoloMode)),
@@ -202,12 +236,13 @@ export class Game {
       }),
       lobby: new LobbyScreen({
         takeSlot: slot => this.net?.takeSlot(slot),
-        start: mode => this.net?.start(mode),
+        start: mode => this.net?.start(mode, this.settings.rules),
         leave: () => this.toMenu(),
       }),
     };
 
     this.setupLighting();
+    this.applySettings();
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => {
       // Solo games pause in the background; online games keep running on the server.
@@ -245,6 +280,7 @@ export class Game {
 
     this.scene.add(new THREE.HemisphereLight('#f2f5ff', '#5a6070', 0.13));
     const spot = new THREE.SpotLight('#ffffff', 4.8, 0, Math.atan(3.6 / 8.5), 0.75, 0);
+    this.spot = spot;
     spot.position.set(0.6, 8.5, 1.2);
     spot.target.position.set(0, 0, 0);
     spot.castShadow = true;
@@ -330,7 +366,7 @@ export class Game {
     this.endSession();
     this.lastSoloMode = mode;
     const slot: Slot = this.settings.alliance === 'red' ? 'red1' : 'blue1';
-    this.session = new LocalSession(this.layout, this.colliders, slot, this.settings.robot, mode, this.sessionEvents);
+    this.session = new LocalSession(this.layout, this.colliders, slot, this.settings.robot, mode, this.settings.rules, this.sessionEvents);
     this.enterPlay();
   }
 
@@ -407,11 +443,12 @@ export class Game {
   }
 
   private openSub(screen: Screen): void {
-    this.returnTo = this.screen;
+    if (this.screen) this.stack.push(this.screen);
     this.show(screen);
   }
 
   private resume(): void {
+    this.stack.length = 0;
     this.state = 'playing';
     this.show(null);
     (document.activeElement as HTMLElement | null)?.blur();
@@ -476,6 +513,7 @@ export class Game {
   }
 
   private toMenu(): void {
+    this.stack.length = 0;
     this.endSession();
     this.state = 'menu';
     this.hud.el.hidden = true;
@@ -505,11 +543,33 @@ export class Game {
     this.rig.resize(w, h);
   }
 
+  private settingsValues(): SettingsValues {
+    const { bindings, graphics, rules } = this.settings;
+    return structuredClone({ bindings, graphics, rules });
+  }
+
+  /** Controls, graphics and house rules from the settings (the rules apply from the next game). */
+  private applySettings(): void {
+    const g = this.settings.graphics;
+    this.input.bindings = this.settings.bindings;
+    this.spot.castShadow = g.shadows;
+    this.effects.setOutlines(g.outlines);
+    this.hud.showFps(g.fps);
+    if (g.quality !== 'auto') this.setQuality(PRESET_LEVEL[g.quality]);
+    else if (this.quality > this.qualityFloor) this.setQuality(this.qualityFloor);
+  }
+
   private frame(time: number): void {
     requestAnimationFrame(t => this.frame(t));
     const raw = this.lastTime ? (time - this.lastTime) / 1000 : 1 / 60;
     this.lastTime = time;
-    this.adaptQuality(raw);
+    if (raw > 0 && raw < 0.25) this.fpsAverage += (1 / raw - this.fpsAverage) * 0.05;
+    this.fpsShown -= raw;
+    if (this.fpsShown <= 0) {
+      this.fpsShown = 0.5;
+      this.hud.setFps(this.fpsAverage);
+    }
+    if (this.settings.graphics.quality === 'auto') this.adaptQuality(raw);
     this.tick(Math.min(0.1, raw));
   }
 
@@ -561,7 +621,7 @@ export class Game {
         screen.update?.(this.input);
         // A screen may have just switched to another one; that one starts reading input next frame.
         if (this.screen === screen && !screen.blocksNav) screen.nav.update(this.input);
-        if (this.state === 'paused' && this.screen === this.screens.pause && this.input.pressed(1, 'guide')) this.resume();
+        if (this.state === 'paused' && this.screen === this.screens.pause && this.input.triggered('pause')) this.resume();
       }
     }
 
@@ -615,45 +675,37 @@ export class Game {
         red: world.score.red.redCards ? 'red' : world.score.red.yellowCards ? 'yellow' : 'none',
         blue: world.score.blue.redCards ? 'red' : world.score.blue.yellowCards ? 'yellow' : 'none',
       },
-      battery: mine ? { voltage: mine.voltage, min: mine.minVoltage } : null,
+      // The battery block shows only when the battery rule is on (the host's choice online).
+      battery: mine && (this.net ? this.net.room?.rules.battery : this.settings.rules.battery) ? { voltage: mine.voltage, min: mine.minVoltage } : null,
     });
   }
 
   private handleGameplayButtons(): void {
     const input = this.input;
-    if (input.pressed(1, 'guide')) return this.pause();
+    if (input.triggered('pause')) return this.pause();
     // The camera is picked before the match; only the follow camera turns around during play.
-    if ((input.pressed(1, 'right_stick_button') || input.pressed(1, 'touchpad')) && this.rig.mode === 'follow') {
-      this.rig.flip();
-    }
-    if (input.pressed(1, 'back')) {
+    if (input.triggered('camera') && this.rig.mode === 'follow') this.rig.flip();
+    if (input.triggered('fieldCentric')) {
       this.settings.fieldCentric = !this.settings.fieldCentric;
       this.saveSettings();
     }
-    if (input.pressed(1, 'left_stick_button')) this.slowMode = !this.slowMode;
-    const resetDown = input.keyboard.isDown('KeyR');
-    if (resetDown && !this.resetKeyWasDown && !this.session?.online) this.startSolo(this.lastSoloMode);
-    this.resetKeyWasDown = resetDown;
+    if (input.triggered('slow')) this.slowMode = !this.slowMode;
+    if (input.keyboard.pressed('KeyR') && !this.session?.online) this.startSolo(this.lastSoloMode);
   }
 
   /** gamepad1 drives; mechanisms listen to both gamepads, so a second driver can run them as in FTC. */
   private readDriverInput(): RobotInput {
     const input = this.input;
-    const g1 = input.gamepad1;
-    const g2 = input.gamepad2;
     return {
-      lx: g1.left_stick_x,
-      ly: g1.left_stick_y,
-      rx: g1.right_stick_x,
+      ...input.driveSticks(),
       fieldCentric: this.settings.fieldCentric,
       slow: this.slowMode,
-      intake: g1.left_bumper || g2.left_bumper,
-      eject: g1.dpad_down || g2.dpad_down,
-      transfer: g1.right_bumper || g2.right_bumper,
-      // L2 starts the flywheel, R2 stops it.
-      shooterOn: input.triggerPressed(1, 'left_trigger') || input.triggerPressed(2, 'left_trigger'),
-      shooterOff: input.triggerPressed(1, 'right_trigger') || input.triggerPressed(2, 'right_trigger'),
-      imuReset: input.pressed(1, 'start'),
+      intake: input.held('intake'),
+      eject: input.held('eject'),
+      transfer: input.held('transfer'),
+      shooterOn: input.triggered('shooterOn'),
+      shooterOff: input.triggered('shooterOff'),
+      imuReset: input.triggered('imuReset'),
     };
   }
 

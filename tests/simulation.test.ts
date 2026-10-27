@@ -309,6 +309,21 @@ describe('referee (manual 11.4)', () => {
     expect(sim.match.score.blue.foulPoints).toBe(40);
   });
 
+  it('house rules: with fouls off no points change hands, with cards off no cards', () => {
+    const { sim } = makeSim();
+    sim.addRobot('red1', 'test');
+    sim.setRules({ fouls: false, cards: false, battery: true });
+    sim.start('match');
+    const ref = sim.match.referee;
+    ref.earlyFlowerNectar('red1');
+    ref.hiveFrameHit('red1', 2, 1);
+    ref.opponentNectar('red1');
+    ref.opponentNectar('red1');
+    const red = sim.match.score.red;
+    expect([red.majorFouls, red.warnings, red.yellowCards, red.redCards, sim.match.score.blue.foulPoints]).toEqual([0, 0, 0, 0, 0]);
+    expect(red.calls).toHaveLength(0);
+  });
+
   it('calls nothing in practice', () => {
     const { sim } = makeSim();
     const p = sim.addRobot('red1', 'test');
@@ -432,6 +447,22 @@ describe('turret wiring and battery', () => {
     expect(fresh.volts).toBeGreaterThan(13);
     expect(tired.volts).toBeLessThan(13);
     expect(tired.best).toBeLessThan(fresh.best * 0.95);
+  });
+});
+
+describe('battery off (house rule)', () => {
+  beforeAll(() => initPhysics());
+
+  it('stays at 14 V with the flywheel running, so the robot keeps full speed', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test');
+    sim.setRules({ fouls: true, cards: true, battery: false });
+    sim.start('practice');
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    run(sim, 60);
+    expect(p.robot.battery.voltage).toBe(14);
+    expect(p.robot.battery.minVoltage).toBe(14);
+    expect(p.robot.battery.speedScale).toBe(1);
   });
 });
 

@@ -3,6 +3,7 @@
 
 import type { AllianceScore } from '../game/scoring';
 import type { Alliance } from '../robot/robotConfig';
+import type { RuleOptions } from '../sim/Referee';
 import type { GameMode, RobotInput, Slot } from '../sim/types';
 
 export const DEFAULT_PORT = 8787;
@@ -25,6 +26,8 @@ export interface RoomInfo {
   players: RoomPlayer[];
   /** What is being played right now, or null in the lobby */
   running: GameMode | null;
+  /** The host's house rules for the current or last game */
+  rules: RuleOptions;
 }
 
 export type ClientMessage =
@@ -32,7 +35,7 @@ export type ClientMessage =
   | { t: 'create' }
   | { t: 'join'; code: string }
   | { t: 'slot'; slot: Slot | null }
-  | { t: 'start'; mode: GameMode }
+  | { t: 'start'; mode: GameMode; rules?: RuleOptions }
   | { t: 'stop' }
   | { t: 'input'; input: RobotInput }
   | { t: 'leave' };

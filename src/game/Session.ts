@@ -8,6 +8,7 @@ import { robotById } from '../robot/robots';
 import type { ColliderPart } from '../sim/colliders';
 import { PHYSICS_DT, Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/state';
+import type { RuleOptions } from '../sim/Referee';
 import type { GameMode, RobotInput, Slot } from '../sim/types';
 
 export interface SessionEvents {
@@ -37,13 +38,14 @@ export class LocalSession implements Session {
 
   private readonly team: string;
 
-  constructor(layout: FieldLayout, colliders: ColliderPart[], readonly localSlot: Slot, robotId: string, mode: GameMode, events: SessionEvents) {
+  constructor(layout: FieldLayout, colliders: ColliderPart[], readonly localSlot: Slot, robotId: string, mode: GameMode, rules: RuleOptions, events: SessionEvents) {
     this.sim = new Simulation(layout, colliders, {
       toast: text => events.toast(text),
       finished: () => events.finished(structuredClone(this.sim.match.score)),
     });
     this.team = robotById(robotId).team;
     this.sim.addRobot(localSlot, this.team, robotId);
+    this.sim.setRules(rules);
     this.sim.start(mode);
   }
 

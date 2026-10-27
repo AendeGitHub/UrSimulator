@@ -4,6 +4,7 @@ import type { Session, SessionEvents } from '../game/Session';
 import { decodeState, type WorldState } from '../sim/state';
 import type { GameMode, RobotInput, Slot } from '../sim/types';
 import { SnapshotBuffer } from './interpolate';
+import type { RuleOptions } from '../sim/Referee';
 import { DEFAULT_PORT, type ClientMessage, type RoomInfo, type ServerMessage } from './protocol';
 
 export interface NetEvents extends SessionEvents {
@@ -97,8 +98,9 @@ export class NetSession implements Session {
     this.send({ t: 'slot', slot });
   }
 
-  start(mode: GameMode): void {
-    this.send({ t: 'start', mode });
+  /** Host only: starts the game with the host's house rules. */
+  start(mode: GameMode, rules: RuleOptions): void {
+    this.send({ t: 'start', mode, rules });
   }
 
   stop(): void {

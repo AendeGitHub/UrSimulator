@@ -27,6 +27,26 @@ import { SLOT_NAMES, slotAlliance, type Slot } from './types';
 export type RuleId = 'G402' | 'G405' | 'G408' | 'G410' | 'G417' | 'G421';
 
 export const FOUL_POINTS = { minor: 5, major: 20 };
+
+/** House rules (Settings → Правила): penalties and the battery can be switched off. */
+export interface RuleOptions {
+  /** FOULS give points to the opponent */
+  fouls: boolean;
+  /** The battery sags and drains, and a tired battery makes a slow robot (sim/Battery.ts) */
+  battery: boolean;
+  /** VERBAL WARNINGS, YELLOW and RED CARDS */
+  cards: boolean;
+}
+
+export const DEFAULT_RULES: RuleOptions = { fouls: true, cards: true, battery: true };
+
+/** Rule options from an untrusted source (a network message), with defaults for anything odd. */
+export function cleanRules(value: unknown): RuleOptions {
+  const v = (value ?? {}) as Partial<RuleOptions>;
+  const flag = (key: keyof RuleOptions) => (typeof v[key] === 'boolean' ? v[key] : DEFAULT_RULES[key]);
+  return { fouls: flag('fouls'), cards: flag('cards'), battery: flag('battery') };
+}
+
 /** Two moderate hits on the HIVE frame within this time count as ramming it on purpose, s */
 const HIVE_HIT_WINDOW = 10;
 
@@ -39,6 +59,7 @@ export class Referee {
   private readonly yellow = new Set<Slot>();
   private readonly red = new Set<Slot>();
   private readonly hiveHits = new Map<Slot, number[]>();
+  options: RuleOptions = { ...DEFAULT_RULES };
 
   constructor(private readonly score: Record<Alliance, AllianceScore>) {}
 
@@ -93,6 +114,7 @@ export class Referee {
 
   /** MINOR or MAJOR FOUL: the points go to the opposing alliance. */
   private foul(slot: Slot, rule: RuleId, kind: 'minor' | 'major'): void {
+    if (!this.options.fouls) return;
     const a = slotAlliance(slot);
     if (kind === 'major') this.score[a].majorFouls++;
     else this.score[a].minorFouls++;
@@ -101,13 +123,14 @@ export class Referee {
   }
 
   private warning(slot: Slot, rule: RuleId): void {
+    if (!this.options.cards) return;
     this.score[slotAlliance(slot)].warnings++;
     this.call(slot, rule, 'предупреждение');
   }
 
   /** A second YELLOW CARD is a RED CARD (10.6.1). */
   private yellowCard(slot: Slot, rule: RuleId): void {
-    if (this.red.has(slot)) return;
+    if (!this.options.cards || this.red.has(slot)) return;
     if (this.yellow.has(slot)) return this.redCard(slot, rule);
     this.yellow.add(slot);
     this.score[slotAlliance(slot)].yellowCards++;

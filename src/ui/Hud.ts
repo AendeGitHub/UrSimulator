@@ -49,12 +49,14 @@ export class Hud {
   private readonly batteryNow = h('div', { class: 'battery-now' });
   private readonly batteryMin = h('div', { class: 'battery-min' });
   private readonly toasts = h('div', { class: 'toasts' });
+  private readonly fps = h('div', { class: 'hud-fps' });
 
   constructor() {
     this.battery.append(batteryIcon(), h('div', { class: 'battery-text' }, this.batteryNow, this.batteryMin));
     this.el.append(
       h('div', { class: 'hud-top' },
         h('div', { class: 'scoreboard' }, this.scoreRed, h('div', { class: 'clock' }, this.clock, this.clockLabel), this.scoreBlue)),
+      this.fps,
       h('div', { class: 'hud-bottom' }, this.battery),
       this.toasts,
     );
@@ -77,6 +79,15 @@ export class Hud {
       this.batteryNow.textContent = volts(s.battery.voltage);
       this.batteryMin.textContent = `( ${volts(s.battery.min)} )`;
     }
+  }
+
+  /** Frame rate counter in the corner (Settings → Графика). */
+  showFps(on: boolean): void {
+    this.fps.hidden = !on;
+  }
+
+  setFps(fps: number): void {
+    this.fps.textContent = `${Math.round(fps)} FPS`;
   }
 
   toast(text: string): void {

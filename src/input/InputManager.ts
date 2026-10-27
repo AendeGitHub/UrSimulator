@@ -2,8 +2,9 @@
 
 import {
   STANDARD_MAPPING, detectModel, emptyGamepad, mergeGamepads, readGamepad,
-  type ButtonId, type FtcGamepad, type Mapping, type PadModel,
+  type ButtonId, type ControlId, type FtcGamepad, type Mapping, type PadModel,
 } from './gamepad';
+import { DEFAULT_BINDINGS, MECHANISM_ACTIONS, type ActionId, type Bindings } from './bindings';
 import { KeyboardPad } from './keyboard';
 
 export interface PadInfo {
@@ -36,6 +37,8 @@ function storeMappings(all: Record<string, Mapping>): void {
 
 export class InputManager {
   readonly keyboard = new KeyboardPad();
+  /** What each button and key does (Settings → Управление) */
+  bindings: Bindings = DEFAULT_BINDINGS;
   readonly gamepad1 = emptyGamepad();
   readonly gamepad2 = emptyGamepad();
   /** Every connected controller, supported or not. */
@@ -47,10 +50,10 @@ export class InputManager {
   private readonly prev2 = emptyGamepad();
   private readonly prevMenu = emptyGamepad();
   private readonly menu = emptyGamepad();
-  private readonly scratch = emptyGamepad();
   private mappings = loadMappings();
 
   update(): void {
+    this.keyboard.update();
     Object.assign(this.prev1, this.gamepad1);
     Object.assign(this.prev2, this.gamepad2);
     Object.assign(this.prevMenu, this.menu);
@@ -85,8 +88,60 @@ export class InputManager {
     // Menus read controllers only: the keyboard already drives buttons natively (Tab / Enter / Space).
     Object.assign(this.menu, this.gamepad1);
     mergeGamepads(this.menu, this.gamepad2);
+  }
 
-    mergeGamepads(this.gamepad1, this.keyboard.read(this.scratch));
+  private padDown(pad: FtcGamepad, control: ControlId): boolean {
+    const v = pad[control];
+    return typeof v === 'number' ? Math.abs(v) > 0.5 : v;
+  }
+
+  /** The pads an action listens to: mechanisms both, driving and the rest only gamepad1. */
+  private padsFor(action: ActionId): [FtcGamepad, FtcGamepad][] {
+    const pads: [FtcGamepad, FtcGamepad][] = [[this.gamepad1, this.prev1]];
+    if (MECHANISM_ACTIONS.has(action)) pads.push([this.gamepad2, this.prev2]);
+    return pads;
+  }
+
+  /** The action's button or key is held. */
+  held(action: ActionId): boolean {
+    const control = this.bindings.pad[action];
+    return this.keyboard.isDown(this.bindings.keys[action]) || this.padsFor(action).some(([now]) => this.padDown(now, control));
+  }
+
+  /** The action's button or key went down this frame. */
+  triggered(action: ActionId): boolean {
+    const control = this.bindings.pad[action];
+    return this.keyboard.pressed(this.bindings.keys[action])
+      || this.padsFor(action).some(([now, before]) => this.padDown(now, control) && !this.padDown(before, control));
+  }
+
+  /** gamepad1's sticks, or the movement keys when they are pressed. */
+  driveSticks(): { lx: number; ly: number; rx: number } {
+    const k = this.bindings.keys;
+    const key = (code: string) => (this.keyboard.isDown(code) ? 1 : 0);
+    let lx = key(k.right) - key(k.left);
+    let ly = key(k.backward) - key(k.forward);
+    // Diagonals on a keyboard would be faster than a stick can go.
+    const mag = Math.hypot(lx, ly);
+    if (mag > 1) {
+      lx /= mag;
+      ly /= mag;
+    }
+    const rx = key(k.turnRight) - key(k.turnLeft);
+    const g = this.gamepad1;
+    const pick = (stick: number, keys: number) => (Math.abs(keys) > Math.abs(stick) ? keys : stick);
+    return { lx: pick(g.left_stick_x, lx), ly: pick(g.left_stick_y, ly), rx: pick(g.right_stick_x, rx) };
+  }
+
+  /** First controller button or trigger that went down this frame on any pad (for rebinding). */
+  anyControlPressed(): ControlId | null {
+    for (const [now, before] of [[this.gamepad1, this.prev1], [this.gamepad2, this.prev2]] as const) {
+      for (const control of Object.keys(now) as ControlId[]) {
+        if (control.includes('stick_x') || control.includes('stick_y')) continue;
+        if (this.padDown(now, control) && !this.padDown(before, control)) return control;
+      }
+    }
+    return null;
   }
 
   private readSlot(slot: 0 | 1, raw: (Gamepad | null)[], out: FtcGamepad): void {

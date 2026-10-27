@@ -3,6 +3,7 @@
 import type { FieldLayout } from '../src/field/layout';
 import { CODE_LETTERS, MAX_PLAYERS, cleanName, type RoomInfo, type ServerMessage } from '../src/net/protocol';
 import type { ColliderPart } from '../src/sim/colliders';
+import { DEFAULT_RULES, type RuleOptions } from '../src/sim/Referee';
 import { PHYSICS_DT, Simulation } from '../src/sim/Simulation';
 import { encodeState } from '../src/sim/state';
 import { SLOTS, type GameMode, type RobotInput, type Slot } from '../src/sim/types';
@@ -35,6 +36,7 @@ export class Room {
   private hostId = -1;
   private sim: Simulation | null = null;
   private running: GameMode | null = null;
+  private rules: RuleOptions = { ...DEFAULT_RULES };
   private accumulator = 0;
   private snapshotTimer = 0;
 
@@ -50,6 +52,7 @@ export class Room {
       hostId: this.hostId,
       players: [...this.players.values()].map(p => ({ id: p.id, name: p.name, robot: p.robot, slot: p.slot })),
       running: this.running,
+      rules: this.rules,
     };
   }
 
@@ -95,7 +98,7 @@ export class Room {
     this.broadcastRoom();
   }
 
-  start(id: number, mode: GameMode): void {
+  start(id: number, mode: GameMode, rules: RuleOptions = DEFAULT_RULES): void {
     const p = this.players.get(id);
     if (!p) return;
     if (id !== this.hostId) return p.peer.sendText({ t: 'error', message: 'Начать может только хост комнаты' });
@@ -105,6 +108,8 @@ export class Room {
     });
     for (const slot of SLOTS) this.sim.removeRobot(slot);
     for (const pl of this.players.values()) if (pl.slot) this.sim.addRobot(pl.slot, pl.name, pl.robot);
+    this.rules = rules;
+    this.sim.setRules(rules);
     this.sim.start(mode);
     this.running = mode;
     this.accumulator = 0;

@@ -4,6 +4,7 @@ import type { FieldLayout } from '../src/field/layout';
 import { SNAPSHOT_RATE, normalizeCode, type ClientMessage } from '../src/net/protocol';
 import type { ColliderPart } from '../src/sim/colliders';
 import { DEFAULT_ROBOT_ID, robotById } from '../src/robot/robots';
+import { cleanRules } from '../src/sim/Referee';
 import { SLOTS } from '../src/sim/types';
 import { Room, randomCode, type Peer } from './Room';
 
@@ -66,7 +67,7 @@ export class Lobby {
         if (msg.slot === null || SLOTS.includes(msg.slot)) c.room?.setSlot(id, msg.slot);
         break;
       case 'start':
-        if (msg.mode === 'match' || msg.mode === 'practice') c.room?.start(id, msg.mode);
+        if (msg.mode === 'match' || msg.mode === 'practice') c.room?.start(id, msg.mode, cleanRules(msg.rules));
         break;
       case 'stop':
         c.room?.stop(id);

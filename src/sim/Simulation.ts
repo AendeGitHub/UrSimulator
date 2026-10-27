@@ -16,6 +16,7 @@ import { RobotSim, type Pose } from './RobotSim';
 import type { WorldState } from './state';
 import type { Vec3 } from '../field/layout';
 import type { Ball } from './BallSim';
+import { DEFAULT_RULES, type RuleOptions } from './Referee';
 import { SLOTS, idleInput, mergeInput, type GameMode, type RobotInput, type Slot } from './types';
 
 export const PHYSICS_DT = 1 / 120;
@@ -62,6 +63,7 @@ export class Simulation {
   readonly robots = new Map<Slot, PlayerRobot>();
   /** Simulated seconds since creation */
   time = 0;
+  private rules: RuleOptions = { ...DEFAULT_RULES };
   /** The HIVE frame (G417) and the outlines of field elements a robot can be pinned against (G421) */
   private hiveFrame: RAPIER.Collider | null = null;
   private readonly obstacles: { minX: number; maxX: number; minZ: number; maxZ: number }[] = [];
@@ -132,6 +134,7 @@ export class Simulation {
     const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter);
     mech.reset(this.balls.preloads(slot));
     mech.onPickup = (b, at) => this.judgePickup(robot, b, at);
+    robot.battery.enabled = this.rules.battery;
     const player = { robotId: def.id, robot, mech, input: idleInput(), name };
     this.robots.set(slot, player);
     return player;
@@ -156,6 +159,13 @@ export class Simulation {
       p.mech.reset(this.balls.preloads(slot));
       p.input = idleInput();
     }
+  }
+
+  /** House rules for the referee (fouls and cards on or off). */
+  setRules(rules: RuleOptions): void {
+    this.rules = { ...rules };
+    this.match.referee.options = { ...rules };
+    for (const p of this.robots.values()) p.robot.battery.enabled = rules.battery;
   }
 
   start(mode: GameMode): void {

@@ -236,8 +236,7 @@ body.pad-nav .btn.menu-item:focus {
   color: rgba(255, 255, 255, 0.38);
 }
 
-.menu-pads,
-.menu-help {
+.menu-pads {
   width: min(860px, 100%);
 }
 
@@ -386,23 +385,10 @@ body.pad-nav .btn.menu-item:focus {
 
 /* ---- help ---- */
 
-.help-cols {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-  width: 100%;
-  text-align: left;
-}
-
 table.controls {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
-}
-
-.help-rules {
-  width: 100%;
-  text-align: left;
 }
 
 table.controls td {
@@ -860,10 +846,6 @@ table.controls td.num {
 }
 
 .menu-select {
-  --ms-blue: #0b2cc4;
-  --ms-blue-hi: #2347e6;
-  --ms-panel: rgba(22, 22, 26, 0.94);
-  --ms-row: #121733;
   position: absolute;
   inset: 0;
   width: auto;
@@ -1581,3 +1563,178 @@ body.pad-nav .ms-card:focus {
   font-weight: 700;
 }
 
+/* ---- settings ---- */
+
+:root {
+  --ms-blue: #0b2cc4;
+  --ms-blue-hi: #2347e6;
+  --ms-panel: rgba(22, 22, 26, 0.94);
+  --ms-row: #121733;
+}
+
+.hud-fps {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.75);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-fps[hidden] {
+  display: none;
+}
+
+.overlay:has(.menu-settings) {
+  background: rgba(6, 8, 12, 0.45);
+}
+
+.menu-settings {
+  width: min(860px, 100%);
+  /* Pinned to the top so switching tabs does not make the panel jump. */
+  margin: 3vh auto auto;
+  align-items: stretch;
+  text-align: left;
+  gap: 1.4vh;
+}
+
+.menu-settings .ms-back {
+  align-self: flex-start;
+}
+
+.settings-panel {
+  max-height: calc(100vh - 120px);
+}
+
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ms-tab {
+  font: inherit;
+  font-size: clamp(14px, 2.2vh, 20px);
+  font-weight: 800;
+  color: #fff;
+  background: var(--ms-row);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 0.35em 0.9em;
+  cursor: pointer;
+}
+
+.ms-tab-on {
+  background: var(--ms-blue);
+}
+
+.ms-tab:hover,
+.ms-tab:focus-visible,
+body.pad-nav .ms-tab:focus {
+  outline: none;
+  border-color: #fff;
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1vh;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.bind-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bind-head,
+.bind-row {
+  display: grid;
+  grid-template-columns: 1fr 150px 150px;
+  gap: 10px;
+  align-items: center;
+}
+
+.bind-head {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 10px;
+}
+
+.bind-row {
+  padding: 5px 10px;
+  background: var(--ms-row);
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.bind-fixed {
+  color: var(--muted);
+  text-align: center;
+  font-size: 14px;
+}
+
+.ms-bind {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--ms-blue);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.ms-bind-wait {
+  background: #c89400;
+  color: #111;
+}
+
+.ms-bind:hover,
+.ms-bind:focus-visible,
+.ms-select:hover,
+.ms-select:focus-visible,
+body.pad-nav .ms-bind:focus,
+body.pad-nav .ms-select:focus {
+  outline: none;
+  border-color: #fff;
+}
+
+.settings-note {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.settings-reset {
+  align-self: flex-start;
+  width: auto;
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 2px;
+  font-size: 14px;
+}
+
+.rules-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .bind-head,
+  .bind-row {
+    grid-template-columns: 1fr 96px 96px;
+  }
+}

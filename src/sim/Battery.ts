@@ -18,6 +18,8 @@ export const BATTERY = {
 };
 
 export class Battery {
+  /** Off (Settings → Правила): always full, the robot always runs at full speed. */
+  enabled = true;
   /** Resting voltage: what is left of the charge */
   private rest = BATTERY.full;
   /** Voltage under the current load, as the Driver Station shows it */
@@ -31,6 +33,7 @@ export class Battery {
 
   /** `flywheel` and `drive` are loads from 0 (off) to 1 (full). */
   step(dt: number, flywheel: number, drive: number): void {
+    if (!this.enabled) return this.reset();
     this.rest = Math.max(BATTERY.empty, this.rest - (flywheel * BATTERY.flywheelDrain + drive * BATTERY.driveDrain) * dt);
     const target = Math.max(BATTERY.empty, this.rest - flywheel * BATTERY.flywheelSag - drive * BATTERY.driveSag);
     // The reading settles over a fraction of a second rather than jumping.

@@ -73,8 +73,6 @@ export class ResultsScreen implements Screen {
   private online = false;
   private model: PadModel | null = null;
   private shownAt = 0;
-  /** R must be pressed after the board appears, not still held from the match. */
-  private rWasDown = true;
 
   constructor(private readonly actions: ResultsActions) {
     this.nav = new MenuNav(this.el, actions.menu);
@@ -83,11 +81,8 @@ export class ResultsScreen implements Screen {
   update(input: InputManager): void {
     if (input.model1 !== this.model) this.renderHint(input.model1);
     this.clock.textContent = clockText(Math.max(0, NEXT_MATCH - (performance.now() - this.shownAt) / 1000));
-    const rDown = input.keyboard.isDown('KeyR');
-    const again = (rDown && !this.rWasDown) || input.menuPressed('a');
-    this.rWasDown = rDown;
-    if (again) this.actions.again();
-    else if (input.pressed(1, 'guide')) this.actions.menu();
+    if (input.keyboard.pressed('KeyR') || input.menuPressed('a')) this.actions.again();
+    else if (input.keyboard.pressed('Escape') || input.triggered('pause')) this.actions.menu();
   }
 
   private renderHint(model: PadModel): void {
@@ -108,7 +103,6 @@ export class ResultsScreen implements Screen {
   show(info: ResultsInfo): void {
     this.online = info.online;
     this.model = null;
-    this.rWasDown = true;
     this.shownAt = performance.now();
     this.clock.textContent = clockText(NEXT_MATCH);
     for (const a of SIDES) {
