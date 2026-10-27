@@ -228,21 +228,19 @@ npm run desktop
 A new release:
 
 1. Bump the version in `package.json` (it's shown in the game menu) and commit.
-2. Tag and push the tag; GitHub Actions ("Desktop app") builds the zips for Windows, macOS and Linux on its own machines:
+2. Tag and push the tag. GitHub Actions ("Desktop app") builds the zips for Windows, macOS and Linux on its own machines and attaches them to a draft release for that tag:
 
 ```bash
 git tag v1.0.1 && git push origin v1.0.1
 ```
 
-3. When the build finishes, download the zips and put them on the public page:
+3. When the build finishes, write the notes and publish the draft:
 
 ```bash
-gh run download --name UrSim-Windows --name UrSim-macOS --name UrSim-Linux --dir release
+gh release edit v1.0.1 --notes "What's new: …" --draft=false
 ```
 
-```bash
-gh release create v1.0.1 release/*/*.zip --repo AendeGitHub/UrSimulator --title "UrSim v1.0.1" --notes "What's new: …"
-```
+"Publish zips" in Actions attaches the zips of an earlier "Desktop app" run to a release without building again.
 
 The Mac build is signed without an Apple certificate, so macOS asks for permission on the first launch (see [How to start](#how-to-start)).
 

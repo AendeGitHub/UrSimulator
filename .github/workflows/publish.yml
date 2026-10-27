@@ -1,0 +1,44 @@
+# Puts the zips of a "Desktop app" run onto a release, creating it as a draft if it doesn't exist
+# yet. "Desktop app" calls it after building a tag; run it by hand (Actions → "Publish zips")
+# to attach an earlier run's zips without building again.
+
+name: Publish zips
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      run:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v1.1.0
+        required: true
+      run:
+        description: ID of the "Desktop app" run that built it
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run }}
+          github-token: ${{ github.token }}
+          path: release
+      - name: Upload to the release
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --title "UrSim $TAG" --notes "UrSim $TAG"
+          gh release upload "$TAG" release/*/*.zip --repo "$GITHUB_REPOSITORY" --clobber

@@ -228,21 +228,19 @@ npm run desktop
 Новый релиз:
 
 1. Подними версию в `package.json` (её видно в меню игры) и закоммить.
-2. Поставь тег и отправь его — GitHub Actions («Desktop app») соберёт zip для Windows, macOS и Linux на своих машинах:
+2. Поставь тег и отправь его. GitHub Actions («Desktop app») соберёт zip для Windows, macOS и Linux на своих машинах и прикрепит их к черновику релиза для этого тега:
 
 ```bash
 git tag v1.0.1 && git push origin v1.0.1
 ```
 
-3. Когда сборка закончится, скачай архивы и выложи их на публичную страницу:
+3. Когда сборка закончится, напиши, что нового, и опубликуй черновик:
 
 ```bash
-gh run download --name UrSim-Windows --name UrSim-macOS --name UrSim-Linux --dir release
+gh release edit v1.0.1 --notes "Что нового: …" --draft=false
 ```
 
-```bash
-gh release create v1.0.1 release/*/*.zip --repo AendeGitHub/UrSimulator --title "UrSim v1.0.1" --notes "Что нового: …"
-```
+«Publish zips» в Actions прикрепляет к релизу архивы из прошлой сборки «Desktop app», не собирая заново.
 
 Mac-версия подписана без сертификата Apple, поэтому при первом запуске macOS спросит разрешение (см. [Как запустить](#как-запустить)).
 

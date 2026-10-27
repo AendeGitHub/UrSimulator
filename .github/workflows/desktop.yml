@@ -1,7 +1,6 @@
 # Builds the desktop app on GitHub's own Windows, macOS and Linux machines.
-# Run it from Actions → "Desktop app" → Run workflow (or push a tag like v1.2.0). The zips are
-# the run's artifacts; README → "Desktop app and releases" shows how they go onto the public release
-# page (AendeGitHub/UrSimulator).
+# Run it from Actions → "Desktop app" → Run workflow, or push a tag like v1.2.0: then the zips
+# also go onto a draft release for that tag (publish.yml). README → "Desktop app and releases".
 
 name: Desktop app
 
@@ -46,3 +45,15 @@ jobs:
           if-no-files-found: error
           # The zips are already compressed.
           compression-level: 0
+
+  # A tag's zips go straight onto its release (a draft until someone publishes it).
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: ${{ github.ref_name }}
+      run: ${{ github.run_id }}
