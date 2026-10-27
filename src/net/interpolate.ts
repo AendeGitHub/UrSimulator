@@ -16,7 +16,7 @@ function lerpRobot(a: RobotState, b: RobotState, k: number): RobotState {
     z: lerp(a.z, b.z, k),
     yaw: lerpAngle(a.yaw, b.yaw, k),
     heading: lerpAngle(a.heading, b.heading, k),
-    // The turret stays within ±180° and unwinds through 0, so no wrap-around here.
+    // The turret stays within its limit and unwinds instead of wrapping, so no wrap-around here.
     turretYaw: lerp(a.turretYaw, b.turretYaw, k),
     pitch: lerp(a.pitch, b.pitch, k),
     flywheel: lerp(a.flywheel, b.flywheel, k),

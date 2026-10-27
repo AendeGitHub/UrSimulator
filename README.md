@@ -8,7 +8,7 @@
 
 ![Main menu](docs/menu.jpg)
 
-Drive **URAN V1**, a real competition robot built from its team's CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN, launch it into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. Play **online 1 vs 1 or 2 vs 2** with friends: they join your room with a 4-letter code. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
+Drive **URAN V1** or **Bumble V**, real competition robots built from their teams' CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN, launch it into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. Play **online 1 vs 1 or 2 vs 2** with friends: they join your room with a 4-letter code. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
 
 ![In game](docs/game.jpg)
 
@@ -101,16 +101,17 @@ Before a match, practice or online game you pick a robot: team, specs, alliance,
 - Shooter accuracy depends on the distance to the cell: within 1 m it almost always scores, at 2.2 m the spread is large.
 - The URAN V1 intake can't reach balls inside the flowers.
 - URAN V1 picks up and shoots only POLLEN; it drives over NECTAR (`intakes` in `src/robot/robots.ts`).
+- **Bumble V** (team SWB): model from the team's CAD, mecanum drive on 522 RPM motors with 96 mm wheels (≈2.6 m/s), 11 kg, 46 × 28 cm. A two-flywheel shooter on a turret that turns a full turn each way. Picks up and shoots only POLLEN.
 
 Adding a robot from CAD (STEP):
 
 ```bash
 pip install cascadio==0.1.1 numpy
-python3 -c "import cascadio; cascadio.step_to_glb('Robot/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.8, tol_angular=0.45, include_materials=True)"
+python3 -c "import cascadio; cascadio.step_to_glb('Robots/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.8, tol_angular=0.45, include_materials=True)"
 node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb tools/robots/uran-v1.json
 ```
 
-`tools/robots/uran-v1.json` describes the robot's moving parts: which CAD parts are the turret, flywheel, intake and transfer shafts and wheels, and which axis each one spins around. `fixed` lists parts that never move even when they sit next to a spinning one (for example, belts around the wheel pulleys); `triangles` and `error` set how much the model is simplified. For a new robot, copy this file and adjust the nodes and axes to its CAD, then add the robot to `src/robot/robots.ts`: size, motor, wheels, weight, shooter.
+`tools/robots/uran-v1.json` (and `bumble-v.json`) describes the robot's moving parts: which CAD axis is up (`up`: Fusion exports +y or +z) and forward, which CAD parts are the turret, flywheels, intake and transfer shafts and wheels, and which axis each one spins around (`reverse` for one that turns the other way). `fixed` lists parts that never move even when they sit next to a spinning one (for example, belts around the wheel pulleys); `triangles` and `error` set how much the model is simplified. For a new robot, copy this file and adjust the nodes and axes to its CAD, then add the robot to `src/robot/robots.ts`: size, motor, wheels, weight, shooter (including how far its turret turns), team logo in `public/assets/teams/`. A Fusion 360 `.f3z` can't be read without Fusion: export it as STEP with "Save to my computer".
 
 ## Modes
 
@@ -286,6 +287,6 @@ npm run build
 
 ## License
 
-The code is released under the [MIT License](LICENSE). The field, HIVE and game element models are converted from *FIRST*'s official BIOBUZZ CAD, and the BIOBUZZ logo is a *FIRST* trademark; the URAN V1 robot model and the URAN logo belong to team URAN92.
+The code is released under the [MIT License](LICENSE). The field, HIVE and game element models are converted from *FIRST*'s official BIOBUZZ CAD, and the BIOBUZZ logo is a *FIRST* trademark; the URAN V1 robot model and the URAN logo belong to team URAN92, the Bumble V model and the SWB logo to team SWB.
 
 Unofficial fan project, not affiliated with *FIRST*®. *FIRST*®, *FIRST*® Tech Challenge and BIOBUZZ™ are trademarks of *FIRST*.

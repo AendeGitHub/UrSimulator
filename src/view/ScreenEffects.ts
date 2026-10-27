@@ -69,8 +69,9 @@ class AmbientOcclusionPass extends GTAOPass {
   constructor(scene: THREE.Scene, camera: THREE.Camera, gbuffer: THREE.WebGLRenderTarget) {
     super(scene, camera, 1, 1);
     this.setGBuffer(gbuffer.depthTexture ?? undefined, gbuffer.texture);
-    // Radius in metres: robot-sized creases, not whole-field darkening.
-    this.updateGtaoMaterial({ radius: 0.16, distanceExponent: 1, thickness: 1, scale: 1.25, samples: 8 });
+    // Radius in metres: robot-sized creases, not whole-field darkening. Thin thickness: a thin part
+    // (FLOWER posts) doesn't darken the floor seen behind it, which drew a grey halo round them.
+    this.updateGtaoMaterial({ radius: 0.16, distanceExponent: 1, thickness: 0.05, scale: 1.25, samples: 8 });
     this.updatePdMaterial({ samples: 8 });
     this.blendIntensity = 0.85;
   }

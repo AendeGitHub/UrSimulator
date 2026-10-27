@@ -80,8 +80,6 @@ export class BallsView {
     this.lastPlace = new Array<string>(n).fill('');
     for (const [color, count] of used) {
       const mesh = new THREE.InstancedMesh(color === 'yellow' ? geo.pollen : geo.nectar, new THREE.MeshStandardMaterial({ color: BALL_COLORS[color], roughness: 0.5 }), count);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
       mesh.frustumCulled = false;
       scene.add(mesh);
       this.meshes.set(color, mesh);

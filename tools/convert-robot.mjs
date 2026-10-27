@@ -1,13 +1,16 @@
 // Turns a robot CAD export into a game model with moving parts.
 //
 // Step 1 (STEP → GLB, native OpenCASCADE; needs `pip install cascadio==0.1.1 numpy`):
-//   python3 -c "import cascadio; cascadio.step_to_glb('Robot/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.8, tol_angular=0.45, include_materials=True)"
+//   python3 -c "import cascadio; cascadio.step_to_glb('Robots/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.8, tol_angular=0.45, include_materials=True)"
 // Step 2 (this script, with the robot's part list):
 //   node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb tools/robots/uran-v1.json
 //
+// The spec says which CAD axis points up ("up": +y or +z, Fusion exports either) and forward.
 // The output faces +X (game "forward"), stands on y = 0 and is centered on its footprint.
 // Moving parts (turret, flywheel, wheels, rollers) become separate nodes whose origin is their
-// pivot; `extras.spin` names the game axis they turn around. Everything else is one "body" node.
+// pivot; `extras.spin` names the game axis they turn around (and `extras.reverse` marks one that
+// turns the other way, like the second wheel of a two-flywheel shooter). Everything else is one
+// "body" node.
 // Meshes carry no normals: CAD normals split every face into its own island, which blocks
 // simplification, so the game computes creased normals when it loads the model.
 
@@ -25,18 +28,25 @@ if (!input || !output || !specPath) {
 }
 const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
 
+const UNIT = { '+x': [1, 0, 0], '-x': [-1, 0, 0], '+y': [0, 1, 0], '-y': [0, -1, 0], '+z': [0, 0, 1], '-z': [0, 0, -1] };
+/** CAD → Y-up: a Z-up CAD turns -90° about X. */
+const UP = { '+y': p => p, '+z': ([x, y, z]) => [x, z, -y] }[spec.up ?? '+y'];
+if (!UP) throw new Error('"up" must be +y or +z');
+const [fx, fy, fz] = UP(UNIT[spec.forward] ?? [0, 1, 0]);
+if (Math.abs(fy) > 0.5) throw new Error('"forward" must be a horizontal CAD axis such as +x or -z');
 /** Yaw that turns the CAD's forward axis onto +X. */
-const YAW = { '+z': Math.PI / 2, '-z': -Math.PI / 2, '+x': 0, '-x': Math.PI }[spec.forward];
-if (YAW === undefined) throw new Error('"forward" must be +z, -z, +x or -x');
+const YAW = Math.atan2(fz, fx);
 const cosY = Math.cos(YAW);
 const sinY = Math.sin(YAW);
-/** CAD → game rotation (about +Y). */
-const rot = ([x, y, z]) => [cosY * x + sinY * z, y, -sinY * x + cosY * z];
-/** A CAD axis name expressed as a game axis name (the rotation is a multiple of 90°). */
+/** CAD → game rotation (up to +Y, then about +Y). */
+const rot = p => {
+  const [x, y, z] = UP(p);
+  return [cosY * x + sinY * z, y, -sinY * x + cosY * z];
+};
+/** A CAD axis name expressed as a game axis name (the rotations are multiples of 90°). */
 function gameAxis(axis) {
-  if (axis === 'y') return 'y';
-  const v = rot(axis === 'x' ? [1, 0, 0] : [0, 0, 1]);
-  return Math.abs(v[0]) > 0.5 ? 'x' : 'z';
+  const v = rot(UNIT[`+${axis}`]).map(Math.abs);
+  return 'xyz'[v.indexOf(Math.max(...v))];
 }
 
 const apply = (m, [x, y, z]) => [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
@@ -141,7 +151,7 @@ async function main() {
   root.addChild(nodes.body);
   for (const part of spec.parts) {
     pivots[part.name] = toGame(part.pivot);
-    nodes[part.name] = doc.createNode(part.name).setExtras({ spin: gameAxis(part.axis) });
+    nodes[part.name] = doc.createNode(part.name).setExtras({ spin: gameAxis(part.axis), ...(part.reverse ? { reverse: true } : {}) });
   }
   for (const part of spec.parts) {
     const parent = part.parent ?? 'body';

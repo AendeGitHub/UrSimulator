@@ -27,6 +27,8 @@ type Axis = 'x' | 'y' | 'z';
 interface Spinner {
   node: THREE.Object3D;
   axis: Axis;
+  /** -1 for a part that turns the other way (the second wheel of a two-flywheel shooter) */
+  sign: number;
 }
 
 const models = new Map<string, Promise<THREE.Group>>();
@@ -88,10 +90,7 @@ function mergePart(part: THREE.Object3D): void {
     src.dispose();
   }
   for (const { metalness, roughness, geometries } of groups.values()) {
-    const merged = new THREE.Mesh(mergeGeometries(geometries), new THREE.MeshStandardMaterial({ vertexColors: true, metalness, roughness }));
-    merged.castShadow = true;
-    merged.receiveShadow = true;
-    part.add(merged);
+    part.add(new THREE.Mesh(mergeGeometries(geometries), new THREE.MeshStandardMaterial({ vertexColors: true, metalness, roughness })));
     for (const g of geometries) g.dispose();
   }
 }
@@ -120,7 +119,7 @@ export class RobotView {
   private name: string;
   private disposed = false;
   private turret: THREE.Object3D | null = null;
-  private flywheel: Spinner | null = null;
+  private readonly flywheels: Spinner[] = [];
   private readonly wheels = new Map<keyof WheelPowers, Spinner>();
   private readonly intake: Spinner[] = [];
   private readonly transfer: Spinner[] = [];
@@ -147,13 +146,13 @@ export class RobotView {
       robot.traverse(node => {
         const axis = node.userData.spin as Axis | undefined;
         if (!axis) return;
-        const spinner = { node, axis };
+        const spinner = { node, axis, sign: node.userData.reverse ? -1 : 1 };
         if (node.name === 'turret') {
           this.turret = node;
           // Shooter facing forward until the robot starts aiming.
           node.rotation.y = def.shooter.modelYaw;
         }
-        else if (node.name === 'flywheel') this.flywheel = spinner;
+        else if (node.name.startsWith('flywheel')) this.flywheels.push(spinner);
         else if (node.name.startsWith('wheel_')) this.wheels.set(node.name.slice(6) as keyof WheelPowers, spinner);
         else if (node.name.startsWith('intake')) this.intake.push(spinner);
         else if (node.name.startsWith('transfer')) this.transfer.push(spinner);
@@ -197,10 +196,10 @@ export class RobotView {
     if (s.transfer) for (const r of this.transfer) spin(r, -SPIN.transfer * dt);
     // The flywheel throws balls out of the side that faces the target, so it turns that way.
     const throwSide = Math.cos(this.def.shooter.modelYaw) < 0 ? -1 : 1;
-    if (this.flywheel) spin(this.flywheel, throwSide * Math.min(1, s.flywheel * 2) * SPIN.flywheel * dt);
+    for (const f of this.flywheels) spin(f, throwSide * Math.min(1, s.flywheel * 2) * SPIN.flywheel * dt);
   }
 }
 
-function spin({ node, axis }: Spinner, angle: number): void {
-  node.rotation[axis] = (node.rotation[axis] + angle) % (Math.PI * 2);
+function spin({ node, axis, sign }: Spinner, angle: number): void {
+  node.rotation[axis] = (node.rotation[axis] + sign * angle) % (Math.PI * 2);
 }

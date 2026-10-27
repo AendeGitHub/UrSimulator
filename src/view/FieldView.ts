@@ -8,6 +8,8 @@ import type { FieldLayout } from '../field/layout';
 import type { Alliance } from '../robot/robotConfig';
 import { asset } from './assets';
 
+/** The only field parts that cast shadows */
+const SHADOW_CASTERS = ['hive_red', 'hive_blue', 'frame'];
 /** The field model stores no normals (tools/lighten-model.mjs); edges sharper than this stay sharp. */
 const CREASE_ANGLE = (32 * Math.PI) / 180;
 
@@ -41,10 +43,14 @@ export class FieldView {
       if (!(obj instanceof THREE.Mesh)) return;
       if (!obj.geometry.getAttribute('normal')) obj.geometry = toCreasedNormals(obj.geometry, CREASE_ANGLE);
       const mat = obj.material as THREE.MeshStandardMaterial;
-      obj.castShadow = !mat.transparent;
-      obj.receiveShadow = true;
       if (mat.transparent) mat.depthWrite = false;
     });
+    // Only the HIVE (its cells and the frame they turn on) casts a shadow, onto the floor.
+    for (const name of SHADOW_CASTERS) {
+      cad.getObjectByName(name)?.traverse(obj => {
+        if (obj instanceof THREE.Mesh) obj.castShadow = !(obj.material as THREE.Material).transparent;
+      });
+    }
 
     // Hives rotate around their pivot axle; wrap them so rotation.x tips them.
     for (const alliance of ['red', 'blue'] as const) {

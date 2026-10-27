@@ -6,9 +6,10 @@ dist-server/
 # Source CAD and the manual (large; the robot CAD is the team's own): the game uses public/assets.
 Field/*.step
 Manual/*.pdf
-Robot/**/*.stp
-Robot/**/*.step
-Robot/**/*.f3d
+Robots/**/*.stp
+Robots/**/*.step
+Robots/**/*.f3d
+Robots/**/*.f3z
 
 # High scores saved by a local server (npm run server).
 data/

@@ -17,6 +17,8 @@ export interface ShooterSpec {
   maxRange: number;
   /** Turret angle (rad) at which the model's shooter points straight forward */
   modelYaw: number;
+  /** How far the turret turns each way from straight ahead before its cables stop it, rad */
+  turretLimit: number;
 }
 
 export interface RobotDefinition {
@@ -64,14 +66,42 @@ export const URAN_V1: RobotDefinition = {
   // Flywheel shooter on a turret (axis measured from the CAD turret ring); balls leave on the side
   // that faces the front of the robot in the CAD. From the opening side of a cell the field allows
   // at most ~2.3 m, so the accuracy scale fits that.
-  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0 },
+  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: Math.PI },
   // URAN V1 plays POLLEN only: NECTAR stays on the field.
   intakes: ['pollen'],
   // A row under the transfer rollers, from the turret forward to the intake.
   storage: { first: [-0.075, 0.1, 0], step: [0.072, 0, 0] },
 };
 
-export const ROBOTS: RobotDefinition[] = [URAN_V1];
+export const BUMBLE_V: RobotDefinition = {
+  id: 'bumble-v',
+  name: 'Bumble V',
+  team: 'SWB',
+  teamLogo: 'assets/teams/swb.png',
+  model: 'assets/robots/bumble-v.glb',
+  // Sizes measured from the team CAD (Bumble V.step); the intake bar sticks out in front.
+  config: {
+    name: 'Bumble V',
+    length: 0.459,
+    width: 0.28,
+    height: 0.404,
+    mass: 11,
+    wheelRadius: 0.048,
+    // 96 mm mecanum wheels on 522 RPM motors.
+    drive: { maxWheelSpeed: wheelSpeed(522, 0.096), strafeEfficiency: 0.85, trackWidth: 0.214, wheelBase: 0.169 },
+    // Heavier than URAN V1, so a little less acceleration from the same traction.
+    maxAccel: 5.8,
+    maxTurnAccel: 30,
+  },
+  // Two flywheels on a turret that turns a full turn each way: the ball is squeezed between the
+  // low front wheel and the high back one and leaves forward over the front wheel (camera side).
+  shooter: { at: [-0.084, 0], height: 0.33, exit: 0.06, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: 2 * Math.PI },
+  intakes: ['pollen'],
+  // Up the transfer ramp, from under the turret forward to the intake rollers.
+  storage: { first: [-0.09, 0.13, 0], step: [0.06, 0, 0] },
+};
+
+export const ROBOTS: RobotDefinition[] = [URAN_V1, BUMBLE_V];
 export const DEFAULT_ROBOT_ID = URAN_V1.id;
 
 export function robotById(id: string | undefined): RobotDefinition {

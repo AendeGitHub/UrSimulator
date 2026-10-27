@@ -439,6 +439,21 @@ describe('turret wiring and battery', () => {
     expect(swings).toBeGreaterThan(0);
   });
 
+  it("Bumble V's turret turns a full turn each way, past the back, before it unwinds", () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', 'bumble-v');
+    sim.start('practice');
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    let max = 0;
+    for (let i = 0; i < Math.round(12 / PHYSICS_DT); i++) {
+      sim.setInput('red1', { ...idleInput(), rx: 0.5 });
+      sim.step();
+      max = Math.max(max, Math.abs(p.mech.turretYaw));
+    }
+    expect(max).toBeGreaterThan(Math.PI + 0.5);
+    expect(max).toBeLessThanOrEqual(2 * Math.PI + 1e-6);
+  });
+
   it('starts at 14 V; a flywheel left running drains it and the robot gets slower', () => {
     const top = (drain: boolean) => {
       const { sim } = makeSim();
