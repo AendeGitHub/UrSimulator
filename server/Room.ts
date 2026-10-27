@@ -2,7 +2,7 @@
 // rest watching, and its simulation.
 
 import type { FieldLayout } from '../src/field/layout';
-import { CODE_LETTERS, FORMAT_SLOTS, MAX_PLAYERS, cleanName, type RoomFormat, type RoomInfo, type ServerMessage } from '../src/net/protocol';
+import { FORMAT_SLOTS, MAX_PLAYERS, cleanName, type RoomFormat, type RoomInfo, type ServerMessage } from '../src/net/protocol';
 import type { ColliderPart } from '../src/sim/colliders';
 import { DEFAULT_RULES, type RuleOptions } from '../src/sim/Referee';
 import { PHYSICS_DT, Simulation } from '../src/sim/Simulation';
@@ -24,13 +24,6 @@ interface Player {
 }
 
 const MAX_STEPS_PER_TICK = 12;
-
-export function randomCode(taken: (code: string) => boolean): string {
-  for (;;) {
-    const code = Array.from({ length: 4 }, () => CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)]).join('');
-    if (!taken(code)) return code;
-  }
-}
 
 export class Room {
   private readonly players = new Map<number, Player>();

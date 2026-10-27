@@ -1,0 +1,28 @@
+# The UrSim game server as a systemd service (deploy/README.md):
+#   cp deploy/ursim.service /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now ursim
+
+[Unit]
+Description=UrSim game server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ursim
+WorkingDirectory=/opt/ursim
+ExecStart=/usr/bin/node dist-server/index.mjs
+# Players come in through Caddy (HTTPS); the game itself listens only on this machine.
+Environment=HOST=127.0.0.1
+Environment=PORT=8787
+Environment=RECORDS_FILE=/var/lib/ursim/records.json
+# Optional settings and secrets (ROOM_WORKERS, UPSTASH_REDIS_REST_URL, …), one NAME=value per line
+EnvironmentFile=-/etc/ursim.env
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ursim
+
+[Install]
+WantedBy=multi-user.target

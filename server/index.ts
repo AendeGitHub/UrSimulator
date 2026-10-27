@@ -3,25 +3,30 @@
 //
 //   npm run server          (development, next to `npm run dev`)
 //   PORT=8787 node dist-server/index.mjs   (after npm run build && npm run build:server)
+//
+// The rooms run in worker threads (RoomPool), one per CPU core unless ROOM_WORKERS says otherwise.
+// HOST=127.0.0.1 accepts only local connections, for a server behind a proxy such as Caddy.
 
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { FieldLayout } from '../src/field/layout';
 import { DEFAULT_PORT, type ClientMessage } from '../src/net/protocol';
-import { parseColliders } from '../src/sim/colliders';
-import { initPhysics } from '../src/sim/Simulation';
 import { Lobby } from './Lobby';
 import { MAX_SCORE, Records, createRecords } from './Records';
+import { RoomPool } from './RoomPool';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
 const PORT = Number(process.env.PORT) || DEFAULT_PORT;
-// Each wake-up costs CPU, and a free server only gets about 10 ms of it per 100 ms: waking every
-// 4 ms used that up early and froze the room for the rest of each 100 ms (snapshots in bursts).
-const TICK_MS = 15;
+const HOST = process.env.HOST || undefined;
+/** A hosting plan may have fewer cores than the machine shows (Render free: 0.1 CPU): set ROOM_WORKERS=1 there. */
+const ROOM_WORKERS = Math.max(1, Math.floor(Number(process.env.ROOM_WORKERS)) || os.availableParallelism());
+/** The worker next to this file: the built roomWorker.mjs, or under tsx (npm run server) a starter for roomWorker.ts. */
+const WORKER_URL = new URL(import.meta.url.endsWith('.ts') ? './roomWorker.dev.mjs' : './roomWorker.mjs', import.meta.url);
 /** Protects a small free server from overload. */
 const MAX_CONNECTIONS = 200;
 /** Inputs arrive 60 times a second; anything far above that is a broken or hostile client. */
@@ -156,11 +161,13 @@ function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, health
 }
 
 async function main(): Promise<void> {
-  await initPhysics();
   const layout: FieldLayout = JSON.parse(fs.readFileSync(assetPath('field-layout.json'), 'utf8'));
   const bin = fs.readFileSync(assetPath('field-colliders.bin'));
-  const colliders = parseColliders(bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer);
-  const lobby = new Lobby(layout, colliders);
+  const colliders = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer;
+  const pool = new RoomPool(WORKER_URL, ROOM_WORKERS, { layout, colliders }, code => lobby.closeRoom(code));
+  await pool.ready();
+  const lobby = new Lobby(pool.create, pool.maxRooms);
+  console.log(`Rooms: ${ROOM_WORKERS} worker threads, up to ${pool.maxRooms} rooms`);
   const { records, storage } = createRecords(ROOT);
   console.log(`High scores: ${storage}`);
   // Render sets RENDER; its free disk is wiped on every restart.
@@ -181,7 +188,7 @@ async function main(): Promise<void> {
       });
       return;
     }
-    serveStatic(req, res, () => ({ ok: true, rooms: lobby.roomCount, players: wss.clients.size, uptime: Math.round((Date.now() - started) / 1000), records: storage === 'upstash' ? 'upstash' : 'file' }));
+    serveStatic(req, res, () => ({ ok: true, rooms: lobby.roomCount, players: wss.clients.size, workers: pool.load, uptime: Math.round((Date.now() - started) / 1000), records: storage === 'upstash' ? 'upstash' : 'file' }));
   });
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
   const alive = new WeakMap<WebSocket, boolean>();
@@ -225,16 +232,10 @@ async function main(): Promise<void> {
     }
   }, HEARTBEAT_MS);
 
-  let last = performance.now();
-  setInterval(() => {
-    const now = performance.now();
-    lobby.tick(Math.min((now - last) / 1000, 0.25));
-    last = now;
-  }, TICK_MS);
-
-  server.listen(PORT, () => console.log(`UrSim server on http://localhost:${PORT} (WebSocket /ws)`));
+  server.listen(PORT, HOST, () => console.log(`UrSim server on http://${HOST ?? 'localhost'}:${PORT} (WebSocket /ws)`));
   // Hosting platforms stop the old version with SIGTERM during a deploy.
   process.on('SIGTERM', () => {
+    void pool.close();
     wss.close();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000).unref();

@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Lobby } from '../server/Lobby';
-import type { Peer } from '../server/Room';
+import { Room, type Peer } from '../server/Room';
 import type { FieldLayout } from '../src/field/layout';
-import type { RoomInfo, ServerMessage } from '../src/net/protocol';
+import { SNAPSHOT_RATE, type RoomInfo, type ServerMessage } from '../src/net/protocol';
 import { parseColliders } from '../src/sim/colliders';
 import { initPhysics } from '../src/sim/Simulation';
 import { decodeState, type WorldState } from '../src/sim/state';
@@ -12,6 +12,9 @@ import { idleInput } from '../src/sim/types';
 const layout: FieldLayout = JSON.parse(fs.readFileSync('public/assets/field-layout.json', 'utf8'));
 const bin = fs.readFileSync('public/assets/field-colliders.bin');
 const colliders = parseColliders(bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer);
+
+/** Rooms in this thread, ticked by the test */
+const newLobby = () => new Lobby((code, format) => new Room(code, layout, colliders, 1 / SNAPSHOT_RATE, format));
 
 class FakePeer implements Peer {
   readonly messages: ServerMessage[] = [];
@@ -50,7 +53,7 @@ describe('game server lobby', () => {
   beforeAll(() => initPhysics());
 
   it('creates a room and lets a friend join by code into the other alliance', () => {
-    const lobby = new Lobby(layout, colliders);
+    const lobby = newLobby();
     const host = connect(lobby, 'Max');
     lobby.handle(host.id, { t: 'create' });
     const code = host.peer.room!.code;
@@ -64,7 +67,7 @@ describe('game server lobby', () => {
   });
 
   it('makes 1 vs 1 rooms: two drivers, everyone else watches', () => {
-    const lobby = new Lobby(layout, colliders);
+    const lobby = newLobby();
     const host = connect(lobby, 'Max');
     lobby.handle(host.id, { t: 'create', format: '1v1' });
     const code = host.peer.room!.code;
@@ -85,7 +88,7 @@ describe('game server lobby', () => {
   });
 
   it('makes 2 vs 2 rooms for clients that send no format', () => {
-    const lobby = new Lobby(layout, colliders);
+    const lobby = newLobby();
     const host = connect(lobby, 'Max');
     lobby.handle(host.id, { t: 'create' });
     expect(host.peer.room!.format).toBe('2v2');
@@ -95,7 +98,7 @@ describe('game server lobby', () => {
   });
 
   it('rejects wrong codes, a fifth player and starts by guests', () => {
-    const lobby = new Lobby(layout, colliders);
+    const lobby = newLobby();
     const host = connect(lobby, 'A');
     lobby.handle(host.id, { t: 'create' });
     const code = host.peer.room!.code;
@@ -116,7 +119,7 @@ describe('game server lobby', () => {
   });
 
   it('runs a match: inputs move the right robot and everyone gets snapshots', () => {
-    const lobby = new Lobby(layout, colliders);
+    const lobby = newLobby();
     const red = connect(lobby, 'Red');
     lobby.handle(red.id, { t: 'create' });
     const blue = connect(lobby, 'Blue');
@@ -142,7 +145,7 @@ describe('game server lobby', () => {
   });
 
   it("plays with the host's house rules, and ignores junk rules", () => {
-    const lobby = new Lobby(layout, colliders);
+    const lobby = newLobby();
     const host = connect(lobby, 'Host');
     lobby.handle(host.id, { t: 'create' });
     lobby.handle(host.id, { t: 'start', mode: 'match', rules: { fouls: false, cards: true, battery: false } });
@@ -153,7 +156,7 @@ describe('game server lobby', () => {
   });
 
   it('plays a full online match to the end and returns the room to the lobby', () => {
-    const lobby = new Lobby(layout, colliders);
+    const lobby = newLobby();
     const host = connect(lobby, 'Host');
     lobby.handle(host.id, { t: 'create' });
     lobby.handle(host.id, { t: 'start', mode: 'match' });
@@ -172,7 +175,7 @@ describe('game server lobby', () => {
   });
 
   it('cleans hostile input and moves the host role when the host leaves', () => {
-    const lobby = new Lobby(layout, colliders);
+    const lobby = newLobby();
     const a = connect(lobby, 'A');
     lobby.handle(a.id, { t: 'create' });
     const b = connect(lobby, 'B');

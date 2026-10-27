@@ -71,7 +71,7 @@ flowchart LR
 
 **Desktop app and CI.** The same build runs in Electron, served over a custom `app://` protocol so that fetch, WebAssembly and localStorage work as on the website. GitHub Actions builds the Windows, macOS (universal) and Linux zips on native runners.
 
-**Tests.** 92 Vitest tests in 13 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules, server rooms and house rules, input bindings, high scores and translations.
+**Tests.** 112 Vitest tests in 14 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules, server rooms (also in worker threads) and house rules, input bindings, high scores and translations.
 
 | Area | Tools |
 |---|---|
@@ -161,7 +161,7 @@ Without a database the game still gets its own best scores back: each browser re
 
 The server runs the online game: players send only their inputs, and the server runs the physics, scoring and timer, so everyone sees the same field.
 
-WebSockets run over TCP, so a lost packet holds everything behind it until it is sent again. The game draws the field a little in the past and adapts how far to how evenly snapshots arrive; when they stop for a moment, robots keep moving the way they were going for up to 0.25 s instead of freezing. A 2 vs 2 match costs the server about 0.4 ms of CPU per physics step (120 steps a second, mostly Rapier), which is close to everything Render's free plan gives (0.1 CPU): a paid instance is the cure for stutter that hits everyone in a room at once.
+WebSockets run over TCP, so a lost packet holds everything behind it until it is sent again. The game draws the field a little in the past and adapts how far to how evenly snapshots arrive; when they stop for a moment, robots keep moving the way they were going for up to 0.25 s instead of freezing. A live 2 vs 2 match takes about 13% of a fast CPU core (Apple M2), mostly Rapier at 120 steps a second: more than Render's free plan gives (0.1 CPU), which is why everyone in a room stutters at once there. The rooms run in worker threads, one per core (`server/RoomPool.ts`), so a server with more cores runs more matches; on [your own server](deploy/README.md) 2 cores carry 8–10 matches at once.
 
 Running it locally (two terminals):
 
@@ -261,6 +261,10 @@ The server is in Frankfurt (change `region` in `render.yaml`). The free server s
 
 Health check: `https://<address>/health`.
 
+## Hosting on your own server (VPS)
+
+A small VPS (2 cores) has no CPU limit and does not sleep. `deploy/` has a systemd service, a Caddy config that gets the HTTPS certificate by itself, and an update script; [deploy/README.md](deploy/README.md) walks through it step by step (in Russian).
+
 ## Tuning
 
 - `TIP_LOAD`, `NECTAR_WEIGHT` and `TIP_DELAY` in `src/sim/HiveSim.ts`: a HIVE tips 3 s after its top cell holds the weight of 10 POLLEN (a NECTAR weighs as much as 2 POLLEN: 10 POLLEN = 5 NECTAR). At the start of a match the cell already holds 3 NECTAR (manual 10.3.1), so the first tip needs only 4 POLLEN.
@@ -277,7 +281,7 @@ Health check: `https://<address>/health`.
   The field was made with `error 0.003 --drop-normals`, the robot with `0.01`, the balls with `0.02`.
 - `tools/convert-field.mjs` turns the field CAD (STEP) into `public/assets/field.glb` and `field-layout.json`; `tools/build-colliders.mjs` builds the field colliders for the browser and the server (`field-colliders.bin`). Both: `npm run convert:field`.
 - `src/sim/`: the whole game without graphics: physics, robots, mechanisms, HIVEs, match, scoring, network snapshots. Runs in the browser (solo) and on the server.
-- `src/net/`: protocol, online session, smooth snapshot interpolation; `server/`: the game server with rooms.
+- `src/net/`: protocol, online session, smooth snapshot interpolation; `server/`: the game server with rooms (simulated in worker threads); `deploy/`: running it on your own server.
 - `src/view/`: draws the field, arena, balls and robots from the world state.
 - `src/input/`: gamepads (button names as in the FTC SDK), keyboard, button setup wizard.
 - `src/robot/`: mecanum drive math (as in an FTC TeleOp) and the robot list (`robots.ts`).

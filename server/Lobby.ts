@@ -1,30 +1,52 @@
 // All rooms on the server, and routing of client messages to them.
 
-import type { FieldLayout } from '../src/field/layout';
-import { SNAPSHOT_RATE, normalizeCode, type ClientMessage } from '../src/net/protocol';
-import type { ColliderPart } from '../src/sim/colliders';
+import { CODE_LETTERS, normalizeCode, type ClientMessage, type RoomFormat } from '../src/net/protocol';
 import { DEFAULT_ROBOT_ID, robotById } from '../src/robot/robots';
-import { cleanRules } from '../src/sim/Referee';
-import { SLOTS } from '../src/sim/types';
-import { Room, randomCode, type Peer } from './Room';
+import { cleanRules, type RuleOptions } from '../src/sim/Referee';
+import { SLOTS, type GameMode, type RobotInput, type Slot } from '../src/sim/types';
+import type { Peer } from './Room';
 
-/** Keeps one small server responsive (one full room uses about 4% of a CPU core). */
+/** When nothing sets a limit (tests); the server takes its limit from RoomPool. */
 const MAX_ROOMS = 40;
+
+/** What the lobby needs from a room: a Room in this thread (tests) or a room in a worker thread (RoomPool). */
+export interface LobbyRoom {
+  readonly code: string;
+  readonly size: number;
+  join(id: number, name: string, robot: string, peer: Peer): boolean;
+  leave(id: number): void;
+  setSlot(id: number, slot: Slot | null): void;
+  start(id: number, mode: GameMode, rules: RuleOptions): void;
+  stop(id: number): void;
+  input(id: number, input: RobotInput): void;
+  /** Advances a room in this thread; rooms in a worker thread are advanced there. */
+  tick(dt: number): void;
+  dispose(): void;
+}
+
+export type RoomFactory = (code: string, format: RoomFormat) => LobbyRoom;
+
+export function randomCode(taken: (code: string) => boolean): string {
+  for (;;) {
+    const code = Array.from({ length: 4 }, () => CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)]).join('');
+    if (!taken(code)) return code;
+  }
+}
 
 interface Client {
   id: number;
   name: string;
   robot: string;
   peer: Peer;
-  room: Room | null;
+  room: LobbyRoom | null;
 }
 
 export class Lobby {
-  private readonly rooms = new Map<string, Room>();
+  private readonly rooms = new Map<string, LobbyRoom>();
   private readonly clients = new Map<number, Client>();
   private nextId = 1;
 
-  constructor(private readonly layout: FieldLayout, private readonly colliders: ColliderPart[]) {}
+  constructor(private readonly createRoom: RoomFactory, private readonly maxRooms = MAX_ROOMS) {}
 
   connect(peer: Peer): number {
     const id = this.nextId++;
@@ -47,10 +69,10 @@ export class Lobby {
         c.robot = robotById(typeof msg.robot === 'string' ? msg.robot : undefined).id;
         break;
       case 'create': {
-        if (this.rooms.size >= MAX_ROOMS) return c.peer.sendText({ t: 'error', code: 'serverFull', message: 'Сервер заполнен, попробуй позже' });
+        if (this.rooms.size >= this.maxRooms) return c.peer.sendText({ t: 'error', code: 'serverFull', message: 'Сервер заполнен, попробуй позже' });
         this.leaveRoom(id);
         const code = randomCode(code => this.rooms.has(code));
-        const room = new Room(code, this.layout, this.colliders, 1 / SNAPSHOT_RATE, msg.format === '1v1' ? '1v1' : '2v2');
+        const room = this.createRoom(code, msg.format === '1v1' ? '1v1' : '2v2');
         this.rooms.set(code, room);
         this.enter(c, room);
         break;
@@ -82,7 +104,7 @@ export class Lobby {
     }
   }
 
-  private enter(c: Client, room: Room): void {
+  private enter(c: Client, room: LobbyRoom): void {
     if (!room.join(c.id, c.name, c.robot, c.peer)) return c.peer.sendText({ t: 'error', code: 'roomFull', message: 'Комната заполнена (4 игрока)' });
     c.room = room;
   }
@@ -97,6 +119,19 @@ export class Lobby {
       room.dispose();
       this.rooms.delete(room.code);
     }
+  }
+
+  /** A room that broke (its worker thread failed): its players go back to the menu. */
+  closeRoom(code: string): void {
+    const room = this.rooms.get(code);
+    if (!room) return;
+    for (const c of this.clients.values()) {
+      if (c.room !== room) continue;
+      c.room = null;
+      c.peer.sendText({ t: 'room', room: null });
+    }
+    room.dispose();
+    this.rooms.delete(code);
   }
 
   tick(dt: number): void {
