@@ -1,10 +1,89 @@
-# UrSim
+<p align="center"><img src="docs/icon.png" width="128" alt="UrSim"></p>
 
-A *FIRST* Tech Challenge simulator for the 2026–2027 season, **BIOBUZZ**. Unofficial, not affiliated with *FIRST*.
+<h1 align="center">UrSim</h1>
 
-[Русский](README.ru.md)
+<p align="center">A <i>FIRST</i> Tech Challenge simulator for the 2026–2027 season, <b>BIOBUZZ</b>, made by FTC team <b>URAN92</b></p>
 
-## Running
+<p align="center"><a href="../../releases/latest"><b>⬇ Download the latest version</b></a> · <a href="https://ursim.onrender.com">Play in the browser</a> · <a href="README.ru.md">Русский</a></p>
+
+![Main menu](docs/menu.jpg)
+
+Drive **URAN V1**, a real competition robot built from its team's CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN and NECTAR, launch them into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. Play **online 2 vs 2** with friends: up to four players join a room with a 4-letter code. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
+
+![In game](docs/game.jpg)
+
+## Download
+
+Every version is on the [Releases](../../releases) page. Pick the zip for your computer:
+
+| System | File |
+|---|---|
+| Windows 10 / 11 (64-bit) | `UrSim_<version>_Windows.zip` |
+| macOS 12 or newer (Intel and Apple Silicon) | `UrSim_<version>_Mac.zip` |
+| Linux (64-bit) | `UrSim_<version>_Linux.zip` |
+
+No install needed to play in the browser: **https://ursim.onrender.com** (Chrome, Edge, Firefox or Safari). The app and the website share the same online server, so they can play together.
+
+### How to start
+
+**Windows.** Unzip the archive (right-click → *Extract All*) and run `UrSim.exe`. If you see *"Windows protected your PC"*, click *More info* → *Run anyway*: the game is not signed with a paid Microsoft certificate.
+
+**macOS.** Unzip the archive and drag `UrSim` into *Applications*. The first time, right-click `UrSim` → *Open* → *Open* (the game is not signed by Apple). If macOS says the app *"is damaged"* or *"cannot be verified"*, open Terminal and run:
+
+```bash
+xattr -cr /Applications/UrSim.app
+```
+
+**Linux.** Unzip the archive and run `./ursim` from the unzipped folder. If it closes right away with a sandbox error (happens on Ubuntu 24.04 and newer), run this once in that folder:
+
+```bash
+sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox
+```
+
+Press `F11` for fullscreen. PS4, PS5 and Logitech F310 gamepads or the keyboard; see [Controls](#controls-like-an-ftc-teleop-defaults). If the game runs slowly, set **Settings → Graphics** to *Low* and turn shadows off.
+
+## How it works
+
+```mermaid
+flowchart LR
+  subgraph Client["Browser or desktop app"]
+    Input["Gamepads and keyboard<br/>src/input"] --> Game["Game loop and sessions<br/>src/game"]
+    Game --> View["three.js renderer<br/>src/view"]
+    Game -- solo --> LocalSim["Simulation<br/>src/sim"]
+  end
+  subgraph Server["Node server on Render"]
+    Rooms["Lobby and rooms<br/>server/"] --> ServerSim["Simulation<br/>src/sim"]
+    Rooms --> Records["High scores<br/>file or Upstash Redis"]
+  end
+  Game -- "inputs (JSON over WebSocket)" --> Rooms
+  Rooms -- "binary snapshots, 30 per second" --> Game
+```
+
+**One simulation, two places.** All game logic lives in `src/sim` without any graphics: Rapier physics stepped at 120 Hz, the mecanum drive, the mechanisms, HIVEs, scoring and the referee. In solo play it runs in the browser. Online, the same code runs on the server, which is authoritative: players send only their inputs, the server sends compact binary snapshots back 30 times a second, and the client interpolates between them so motion stays smooth.
+
+**From CAD to game.** The field, HIVEs and game elements are converted from the official BIOBUZZ CAD (STEP → GLB) by scripts in `tools/`, and the field colliders are baked into one binary file that the browser and the server both load. The robot comes from the team's own CAD: a JSON file marks which parts spin (wheels, intake, flywheel, turret) and around which axis, then the model is simplified and its parts are merged by material to cut draw calls.
+
+**Robot physics.** Mecanum kinematics as in an FTC TeleOp (robot-centric or field-centric with an IMU heading), with motor speed scaled by a battery model: 14 V at the start, drained by the flywheel, sagging under load. The turret aims by itself within ±180° (its cables would twist further) and unwinds through the front; the flywheel speed comes from a ballistic solution for the distance to the HIVE cell, and the spread grows with range.
+
+**Automatic referee.** Six rules from the game manual are judged from physics contacts and match state. Pinning (G421) checks the footprint corners of a robot held against a wall or field element for 3 seconds; ramming the HIVE (G417) uses the contact speed with its frame. Fouls go to the opponent's score, a second yellow card becomes a red one, and every call is listed on the results screen.
+
+**Rendering.** three.js with a post-processing chain: ambient occlusion (GTAO) at half resolution and black outlines from a Sobel filter over normals and depth, plus spotlights and fog for the arena look. When the frame rate drops below 50 FPS, an adaptive quality ladder lowers the resolution and effects. Merging static meshes cut draw calls from about 650 to about 370 per frame.
+
+**Desktop app and CI.** The same build runs in Electron, served over a custom `app://` protocol so that fetch, WebAssembly and localStorage work as on the website. GitHub Actions builds the Windows, macOS (universal) and Linux zips on native runners.
+
+**Tests.** 88 Vitest tests in 13 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules, server rooms and house rules, input bindings, high scores and translations.
+
+| Area | Tools |
+|---|---|
+| Language | TypeScript (about 7,700 lines in `src/` and `server/`) |
+| 3D graphics | three.js |
+| Physics | Rapier (WebAssembly) |
+| Build | Vite, esbuild |
+| Server | Node.js, WebSocket (`ws`), hosted on Render |
+| Desktop | Electron, electron-builder, GitHub Actions |
+| Tests | Vitest |
+
+## Running from source
 
 ```bash
 npm install
@@ -138,7 +217,7 @@ The F310 has a mode switch on the back: **X** on Windows, **D** on Mac. If the b
 
 ## Desktop app and releases
 
-The game also comes as an app for Windows, macOS and Linux (Electron, in `desktop/`): the same game in its own window, with online rooms and high scores going through the Render server. It's downloaded from the releases page of the public repository [AendeGitHub/UrSimulator](https://github.com/AendeGitHub/UrSimulator/releases); the game's code stays private.
+The game also comes as an app for Windows, macOS and Linux (Electron, in `desktop/`): the same game in its own window, with online rooms and high scores going through the Render server. Ready-made builds are on the [Releases](../../releases) page.
 
 Running the app locally:
 
@@ -165,12 +244,12 @@ gh run download --name UrSim-Windows --name UrSim-macOS --name UrSim-Linux --dir
 gh release create v1.0.1 release/*/*.zip --repo AendeGitHub/UrSimulator --title "UrSim v1.0.1" --notes "What's new: …"
 ```
 
-The Mac build is signed without an Apple certificate, so macOS asks for permission on the first launch (details in the public repository's README).
+The Mac build is signed without an Apple certificate, so macOS asks for permission on the first launch (see [How to start](#how-to-start)).
 
 ## Hosting online (Render, free)
 
-1. Create an empty **private** GitHub repository `ursim` and push the code to it.
-2. Go to [render.com](https://render.com), sign in with GitHub → **New → Blueprint** → pick the `ursim` repository → **Apply**.
+1. Push this repository to your own GitHub account (or fork it).
+2. Go to [render.com](https://render.com), sign in with GitHub → **New → Blueprint** → pick the repository → **Apply**.
 3. After 3–5 minutes the game is live at an address like `https://ursim-xxxx.onrender.com`. Send that link to your friends.
 
 The server is in Frankfurt (change `region` in `render.yaml`). The free server sleeps after 15 minutes without players; the first visit after that takes about a minute. Every `git push` to `main` updates the game automatically.
@@ -204,4 +283,8 @@ npm test
 npm run build
 ```
 
-The in-game interface is in English and Russian (**Settings → Language**).
+## License
+
+The code is released under the [MIT License](LICENSE). The field, HIVE and game element models are converted from *FIRST*'s official BIOBUZZ CAD, and the BIOBUZZ logo is a *FIRST* trademark; the URAN V1 robot model and the URAN logo belong to team URAN92.
+
+Unofficial fan project, not affiliated with *FIRST*®. *FIRST*®, *FIRST*® Tech Challenge and BIOBUZZ™ are trademarks of *FIRST*.
