@@ -69,9 +69,13 @@ describe('headless simulation', () => {
     expect(decoded.period).toBe('auto');
     expect(decoded.robots[2].x).toBeCloseTo(state.robots[2].x, 4);
     expect(decoded.robots.map(r => r.arm)).toEqual([0, 0, 0, 0]);
-    // A snapshot from a server before the arm (no arm bytes at the end) still reads.
-    const old = encodeState(state);
-    expect(decodeState(old.slice(0, old.byteLength - 4)).robots[0].arm).toBe(0);
+    // A snapshot from a server before the second turret (9 bytes a robot at the end), or before the
+    // arm too (1 more), still reads.
+    const full = encodeState(state);
+    const v11 = decodeState(full.slice(0, full.byteLength - 4 * 9));
+    expect(v11.robots[0].turretYaw2).toBe(0);
+    expect(v11.robots.map(r => r.arm)).toEqual([0, 0, 0, 0]);
+    expect(decodeState(full.slice(0, full.byteLength - 4 * 10)).robots[0].arm).toBe(0);
     for (let i = 0; i < state.balls.transforms.length; i += 7) {
       expect(decoded.balls.transforms[i]).toBeCloseTo(state.balls.transforms[i], 2);
     }
@@ -276,18 +280,23 @@ describe('referee (manual 11.4)', () => {
     expect(p.mech.intakeDir).toBe(1);
   });
 
-  it('fires one ball every 0.2 s (URAN V1) or 0.4 s (Bumble V)', () => {
-    for (const [robot, shots] of [['uran-v1', 3], ['bumble-v', 2]] as const) {
+  it('rapid fire: URAN V1 empties its 4 balls in 0.4 s, Bumble V in 0.7 s (first to last ball)', () => {
+    for (const [robot, seconds] of [['uran-v1', 0.4], ['bumble-v', 0.7]] as const) {
       const { sim } = makeSim();
       const p = sim.addRobot('red1', 'test', robot);
       sim.start('practice');
       sim.setInput('red1', { ...idleInput(), shooterOn: true });
       run(sim, 1);
-      const before = p.mech.stored.length;
-      // Shots at 0 and every interval after: 0, 0.2, 0.4 s or 0, 0.4 s within 0.5 s.
       sim.setInput('red1', { ...idleInput(), transfer: true });
-      run(sim, 0.5);
-      expect(before - p.mech.stored.length, robot).toBe(shots);
+      const shots: number[] = [];
+      for (let i = 0; i < 120 && p.mech.stored.length; i++) {
+        const before = p.mech.stored.length;
+        sim.step();
+        if (p.mech.stored.length < before) shots.push(sim.time);
+      }
+      expect(shots, robot).toHaveLength(4);
+      expect(shots[3] - shots[0], robot).toBeCloseTo(seconds, 1);
+      expect(Math.abs(shots[3] - shots[0] - seconds), robot).toBeLessThan(PHYSICS_DT * 1.5);
     }
   });
 
@@ -312,6 +321,68 @@ describe('referee (manual 11.4)', () => {
     // Raised, the frame stops short of the ball; lowered, the arm pushes it.
     expect(moved(false)).toBeLessThan(0.01);
     expect(moved(true)).toBeGreaterThan(0.02);
+  });
+
+  it("Bumble V's arm rests on a FLOWER or the wall instead of throwing the robot back, and goes down as it backs away", () => {
+    for (const target of ['flower', 'wall'] as const) {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', 'bumble-v');
+      sim.start('practice');
+      p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+      // Drive slowly nose first into the FLOWER near the red wall, or into the audience wall.
+      if (target === 'flower') {
+        const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
+        p.robot.setPose({ x: fx, z: fz + 0.6, yaw: Math.PI / 2 });
+      } else p.robot.setPose({ x: 0.6, z: sim.zones.wall - 0.6, yaw: -Math.PI / 2 });
+      sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.4 });
+      run(sim, 2);
+      sim.setInput('red1', idleInput());
+      run(sim, 0.3);
+      const [x0, , z0] = p.robot.position;
+      sim.setInput('red1', { ...idleInput(), armDown: true });
+      let moved = 0;
+      for (let i = 0; i < 120; i++) {
+        sim.step();
+        moved = Math.max(moved, Math.hypot(p.robot.position[0] - x0, p.robot.position[2] - z0));
+      }
+      // It stays put; the arm swings down only until it touches.
+      expect(moved, target).toBeLessThan(0.005);
+      expect(p.mech.arm, target).toBeGreaterThan(0);
+      expect(p.mech.arm, target).toBeLessThan(0.3);
+      expect(p.robot.armCollider!.isEnabled(), target).toBe(false);
+      // Backing away a little lets it all the way down, and the robot drives off freely.
+      sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: 0.3 });
+      run(sim, 0.4);
+      sim.setInput('red1', idleInput());
+      run(sim, 0.4);
+      expect(p.mech.arm, target).toBe(1);
+      expect(p.robot.armCollider!.isEnabled(), target).toBe(true);
+      sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: 1 });
+      run(sim, 0.5);
+      expect(Math.hypot(p.robot.position[0] - x0, p.robot.position[2] - z0), target).toBeGreaterThan(0.6);
+    }
+  });
+
+  it("Bumble V's arm at rest on a FLOWER drops once there is room and empties it", () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', 'bumble-v');
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
+    p.robot.setPose({ x: fx, z: fz + 0.6, yaw: Math.PI / 2 });
+    sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.4 });
+    run(sim, 2);
+    sim.setInput('red1', { ...idleInput(), armDown: true });
+    run(sim, 0.5);
+    // Creep back until the arm is down, then wait.
+    for (let i = 0; i < 240 && p.mech.arm < 1; i++) {
+      sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: 0.15 });
+      sim.step();
+    }
+    sim.setInput('red1', idleInput());
+    run(sim, 1.5);
+    expect(p.mech.arm).toBe(1);
+    expect(p.mech.stored.length).toBeGreaterThanOrEqual(2);
   });
 
   it('URAN V1 has no arm: the arm buttons change nothing', () => {
@@ -519,6 +590,151 @@ describe('balls hit by a robot', () => {
       // It ends up just ahead of the robot, not at the far wall.
       expect(Math.hypot(x - rx, z - rz), robot).toBeLessThan(0.7);
     }
+  });
+});
+
+describe('Silver Bullet Blaster', () => {
+  beforeAll(() => initPhysics());
+  const SBB = 'silver-bullet-blaster';
+
+  it('takes POLLEN and NECTAR off the floor with the arm up', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', SBB);
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    const mouth = robotById(SBB).intakeFront!;
+    for (const kind of ['pollen', 'nectar'] as const) {
+      const b = sim.balls.all.find(x => x.kind === kind && x.color !== 'blue' && x.state !== 'held' && !p.mech.stored.includes(x))!;
+      p.robot.setPose({ x: -1.0, z: 0.2, yaw: 0 });
+      sim.balls.release(b, [-1.0 + mouth + 0.04, b.radius, 0.2], [0, 0, 0]);
+      sim.setInput('red1', { ...idleInput(), intake: true });
+      run(sim, 0.4);
+      expect(p.mech.stored, kind).toContain(b);
+    }
+  });
+
+  it('shoots POLLEN from its left turret and NECTAR from its right one, both at once', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', SBB);
+    sim.start('practice');
+    p.robot.setPose({ x: -0.6, z: 1.2, yaw: 0 });
+    // Swap two pre-loaded POLLEN for red NECTAR.
+    const nectar = sim.balls.all.filter(b => b.kind === 'nectar' && b.color === 'red').slice(0, 2);
+    p.mech.stored.splice(2, 2).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    for (const b of nectar) {
+      sim.balls.hold(b);
+      p.mech.stored.push(b);
+    }
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    run(sim, 1);
+    expect(p.mech.turrets).toHaveLength(2);
+    sim.setInput('red1', { ...idleInput(), transfer: true });
+    const side = new Map<number, number>();
+    for (let i = 0; i < 60 && p.mech.stored.length; i++) {
+      const before = new Set(p.mech.stored);
+      sim.step();
+      for (const b of before) {
+        if (p.mech.stored.includes(b)) continue;
+        // Right of the robot (+Z at yaw 0) where the ball left.
+        side.set(b.id, sim.balls.position(b)[2] - p.robot.position[2]);
+      }
+    }
+    expect(p.mech.stored).toHaveLength(0);
+    const pollen = [...side.keys()].filter(id => !nectar.some(b => b.id === id));
+    expect(pollen).toHaveLength(2);
+    // The turrets stand 20 cm apart.
+    for (const b of nectar) for (const id of pollen) expect(side.get(b.id)! - side.get(id)!).toBeGreaterThan(0.15);
+    for (const b of nectar) expect(side.get(b.id)!).toBeGreaterThan(0.02);
+  });
+
+  it('rapid fire: 4 POLLEN in 1 s', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', SBB);
+    sim.start('practice');
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    run(sim, 1);
+    sim.setInput('red1', { ...idleInput(), transfer: true });
+    const shots: number[] = [];
+    for (let i = 0; i < 240 && p.mech.stored.length; i++) {
+      const before = p.mech.stored.length;
+      sim.step();
+      if (p.mech.stored.length < before) shots.push(sim.time);
+    }
+    expect(shots).toHaveLength(4);
+    expect(Math.abs(shots[3] - shots[0] - 1)).toBeLessThan(PHYSICS_DT * 1.5);
+  });
+
+  it('Flower Mode: lowered, the arm blocks the floor and pulls POLLEN out of a FLOWER', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', SBB);
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    p.robot.setPose({ x: -1.0, z: 0.2, yaw: 0 });
+    sim.setInput('red1', { ...idleInput(), armDown: true });
+    run(sim, 0.7);
+    expect(p.mech.arm).toBe(1);
+    const floor = sim.balls.all.find(b => b.kind === 'pollen' && b.state === 'field' && sim.balls.position(b)[1] < 0.06)!;
+    sim.balls.release(floor, [-1.0 + 0.32, floor.radius, 0.2], [0, 0, 0]);
+    sim.setInput('red1', { ...idleInput(), intake: true });
+    run(sim, 0.4);
+    expect(p.mech.stored).not.toContain(floor);
+    // Nose up to the FLOWER near the red wall, arm already down.
+    const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
+    p.robot.setPose({ x: fx, z: fz + 0.6, yaw: Math.PI / 2 });
+    sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.3 });
+    run(sim, 1.5);
+    sim.setInput('red1', idleInput());
+    run(sim, 1.5);
+    expect(p.mech.stored.length).toBeGreaterThanOrEqual(2);
+    expect(p.mech.stored.every(b => b.kind === 'pollen')).toBe(true);
+  });
+});
+
+describe('balls pressed against the wall', () => {
+  beforeAll(() => initPhysics());
+
+  it('stop a robot backing or strafing into them at full speed instead of squeezing out of the field', () => {
+    for (const robot of ['uran-v1', 'bumble-v']) {
+      for (const [ly, lx, yaw] of [[1, 0, Math.PI / 2], [0, 1, 0]] as const) {
+        const { sim } = makeSim();
+        const p = sim.addRobot('red1', 'test', robot);
+        sim.start('practice');
+        const wall = sim.zones.wall;
+        // The back (or the right side) faces the audience wall, a POLLEN and a NECTAR against it.
+        p.robot.setPose({ x: 0.3, z: wall - 1, yaw });
+        const pollen = sim.balls.all.find(b => b.kind === 'pollen' && b.state === 'field' && sim.balls.position(b)[1] < 0.06)!;
+        const nectar = sim.balls.all.find(b => b.kind === 'nectar' && b.state === 'field')!;
+        sim.balls.release(pollen, [0.24, pollen.radius, wall - pollen.radius - 0.005], [0, 0, 0]);
+        sim.balls.release(nectar, [0.37, nectar.radius, wall - nectar.radius - 0.005], [0, 0, 0]);
+        sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly, lx });
+        let deepest = 0;
+        for (let i = 0; i < 240; i++) {
+          sim.step();
+          for (const b of [pollen, nectar]) deepest = Math.max(deepest, sim.balls.position(b)[2] + b.radius - wall);
+        }
+        const label = `${robot} ${lx ? 'side' : 'back'}`;
+        expect(deepest, label).toBeLessThan(0.025);
+        // Driven away, the balls are ordinary again: the robot can push them along.
+        sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -ly, lx: -lx });
+        run(sim, 0.5);
+        expect(pollen.body.dominanceGroup(), label).toBe(0);
+        expect(nectar.body.dominanceGroup(), label).toBe(0);
+      }
+    }
+  });
+
+  it('can still be pushed along the wall', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test');
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    const wall = sim.zones.wall;
+    p.robot.setPose({ x: -0.6, z: wall - 0.16, yaw: 0 });
+    const b = sim.balls.all.find(x => x.kind === 'nectar' && x.state === 'field')!;
+    sim.balls.release(b, [-0.2, b.radius, wall - b.radius - 0.002], [0, 0, 0]);
+    sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.6 });
+    run(sim, 1);
+    expect(sim.balls.position(b)[0]).toBeGreaterThan(0.4);
   });
 });
 

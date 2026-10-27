@@ -1,0 +1,22 @@
+{
+  "comment": "Silver Bullet Blaster (SWB, Fusion 360 STEP export). Coordinates are in the CAD frame (meters, Z up, front = +X, left = +Y). Parts are matched in order: the first rule that fits a CAD part wins. Two turrets: _P (left, POLLEN) is the main one, _N (right, NECTAR) the second. The FLOWER arm (Lapatka_Kit) is lowered in the CAD and turns about the front intake axle.",
+  "up": "+z",
+  "forward": "+x",
+  "triangles": 80000,
+  "error": 0.01,
+  "dropSmallerThan": 0.008,
+  "translucent": [{ "color": [0.35, 0.2, 0.1], "opacity": 0.35 }],
+  "parts": [
+    { "name": "flywheel", "parent": "turret", "ancestor": "2HogbackWheels&Gruzik_Kit:2", "pivot": [0.237, 0.280, 0.350], "axis": "y" },
+    { "name": "flywheel2", "parent": "turret2", "ancestor": "2HogbackWheels&Gruzik_Kit:1", "pivot": [0.239, 0.076, 0.350], "axis": "y" },
+    { "name": "turret", "ancestor": "Full_Shooter_P:3", "pivot": [0.1685, 0.2835, 0.300], "axis": "z" },
+    { "name": "turret2", "ancestor": "Full_Shooter_N:3", "pivot": [0.1685, 0.080, 0.300], "axis": "z" },
+    { "name": "arm", "ancestor": "Lapatka_Kit:1", "pivot": [0.3945, 0.182, 0.1235], "axis": "y" },
+    { "name": "intake_front", "ancestorPrefix": "(4.5 Diameter 7mm Hex)", "within": { "x": [0.35, 0.45] }, "pivot": [0.395, 0.182, 0.123], "axis": "y" },
+    { "name": "intake_back", "ancestorPrefix": "(4.5 Diameter 7mm Hex)", "within": { "x": [0.25, 0.34] }, "pivot": [0.295, 0.182, 0.170], "axis": "y" },
+    { "name": "wheel_fl", "ancestorPrefix": "Mecanum_Kit", "within": { "x": [0.22, 0.35], "y": [0.29, 0.37] }, "pivot": [0.283, 0.331, 0.052], "axis": "y" },
+    { "name": "wheel_fr", "ancestorPrefix": "Mecanum_Kit", "within": { "x": [0.22, 0.35], "y": [-0.01, 0.07] }, "pivot": [0.283, 0.035, 0.052], "axis": "y" },
+    { "name": "wheel_bl", "ancestorPrefix": "Mecanum_Kit", "within": { "x": [-0.01, 0.12], "y": [0.29, 0.37] }, "pivot": [0.054, 0.331, 0.052], "axis": "y" },
+    { "name": "wheel_br", "ancestorPrefix": "Mecanum_Kit", "within": { "x": [-0.01, 0.12], "y": [-0.01, 0.07] }, "pivot": [0.054, 0.035, 0.052], "axis": "y" }
+  ]
+}

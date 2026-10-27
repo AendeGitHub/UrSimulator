@@ -21,6 +21,37 @@ function lerpRobot(a: RobotState, b: RobotState, k: number): RobotState {
     pitch: lerp(a.pitch, b.pitch, k),
     flywheel: lerp(a.flywheel, b.flywheel, k),
     arm: lerp(a.arm, b.arm, k),
+    turretYaw2: lerp(a.turretYaw2, b.turretYaw2, k),
+    pitch2: lerp(a.pitch2, b.pitch2, k),
+    flywheel2: lerp(a.flywheel2, b.flywheel2, k),
+  };
+}
+
+/**
+ * `b` carried `dt` seconds further at the rate robots moved since `a`. Balls stay where they are:
+ * a ball in flight curves, and a wrong guess about it shows more than a short pause.
+ */
+export function extrapolateState(a: WorldState, b: WorldState, dt: number): WorldState {
+  const span = b.time - a.time;
+  if (span <= 0 || dt <= 0) return b;
+  const k = dt / span;
+  const turn = (from: number, to: number) => to + Math.atan2(Math.sin(to - from), Math.cos(to - from)) * k;
+  return {
+    ...b,
+    time: b.time + dt,
+    robots: b.robots.map(rb => {
+      const ra = a.robots.find(r => r.slot === rb.slot);
+      if (!ra) return rb;
+      return {
+        ...rb,
+        x: rb.x + (rb.x - ra.x) * k,
+        z: rb.z + (rb.z - ra.z) * k,
+        yaw: turn(ra.yaw, rb.yaw),
+        heading: turn(ra.heading, rb.heading),
+        turretYaw: rb.turretYaw + (rb.turretYaw - ra.turretYaw) * k,
+        turretYaw2: rb.turretYaw2 + (rb.turretYaw2 - ra.turretYaw2) * k,
+      };
+    }),
   };
 }
 
@@ -60,6 +91,12 @@ const MIN_DELAY = 0.07;
 const MAX_DELAY = 0.3;
 /** Arrival gaps remembered for the estimate */
 const GAP_WINDOW = 90;
+/**
+ * A lost packet stalls a WebSocket until it is sent again (TCP), then the late snapshots arrive
+ * together. Meanwhile robots carry on the way they were moving for up to this long instead of
+ * freezing and jumping, s.
+ */
+export const MAX_EXTRAPOLATION = 0.25;
 
 export class SnapshotBuffer {
   private readonly snaps: WorldState[] = [];
@@ -104,7 +141,10 @@ export class SnapshotBuffer {
     if (!this.snaps.length || this.offset === null) return null;
     const t = localNow + this.offset - this.delay;
     const last = this.snaps[this.snaps.length - 1];
-    if (t >= last.time) return last;
+    if (t >= last.time) {
+      const prev = this.snaps[this.snaps.length - 2];
+      return prev ? extrapolateState(prev, last, Math.min(t - last.time, MAX_EXTRAPOLATION)) : last;
+    }
     for (let i = this.snaps.length - 2; i >= 0; i--) {
       const a = this.snaps[i];
       if (a.time <= t) {

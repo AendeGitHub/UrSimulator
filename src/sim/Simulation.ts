@@ -80,6 +80,8 @@ export class Simulation {
   private readonly pins = new Map<string, { time: number; fouls: number; apart: number }>();
   /** 1 for each ball (by id) that touched a robot at the last step */
   private readonly onRobot: Uint8Array;
+  /** 1 for each ball (by id) a robot presses against the wall or a field element */
+  private readonly pressed: Uint8Array;
 
   /** Call initPhysics() first. */
   constructor(readonly layout: FieldLayout, colliders: ColliderPart[], events: MatchEvents) {
@@ -89,6 +91,7 @@ export class Simulation {
     this.buildField(colliders);
     this.balls = new BallSim(this.world, layout);
     this.onRobot = new Uint8Array(this.balls.all.length);
+    this.pressed = new Uint8Array(this.balls.all.length);
     const hive = (a: Alliance) => {
       const shape = colliders.find(c => c.kind === `hive_${a}`);
       if (!shape) throw new Error(`field-colliders.bin has no hive_${a}`);
@@ -142,7 +145,7 @@ export class Simulation {
     this.removeRobot(slot);
     const def = robotById(robotId);
     const robot = new RobotSim(this.world, slot, def.config, this.startPose(slot, def.config.length), def.arm);
-    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter, def.intakes, def.arm, def.intakeFront ?? def.config.length / 2);
+    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter, def.intakes, def.arm, def.intakeFront ?? def.config.length / 2, def.second && { spec: def.second.shooter, kinds: def.second.kinds });
     mech.reset(this.balls.preloads(slot));
     mech.onPickup = (b, at) => this.judgePickup(robot, b, at);
     robot.battery.enabled = this.rules.battery;
@@ -206,7 +209,7 @@ export class Simulation {
         robot.drive(0, 0, 0, dt);
       }
       mech.step(dt, input, enabled);
-      robot.setArmDown(mech.arm > 0.5);
+      robot.setArmDown(mech.arm >= 1);
       const { fl, fr, bl, br } = robot.powers;
       robot.battery.step(dt, mech.flywheel, (Math.abs(fl) + Math.abs(fr) + Math.abs(bl) + Math.abs(br)) / 4);
       input.shooterOn = input.shooterOff = input.imuReset = input.armUp = input.armDown = false;
@@ -242,6 +245,33 @@ export class Simulation {
     return contact;
   }
 
+  /** Direction a contact pushes from `a` onto `b` (world space), or null if they don't touch. */
+  private contactNormal(a: RAPIER.Collider, b: RAPIER.Collider): RAPIER.Vector | null {
+    let normal: RAPIER.Vector | null = null;
+    this.world.contactPair(a, b, (manifold, flipped) => {
+      if (manifold.numContacts() === 0) return;
+      const n = manifold.normal();
+      normal = flipped ? { x: -n.x, y: -n.y, z: -n.z } : n;
+    });
+    return normal;
+  }
+
+  /**
+   * A robot pressing a ball against the wall, a FLOWER or the HIVE: the light ball would give way to
+   * the heavy robot and squeeze through the wall. Squeezed like that a real ball stops the robot, so
+   * the ball becomes something robots can't push (a higher dominance group) until no robot touches it.
+   */
+  private pressedAgainstField(b: Ball, push: RAPIER.Vector): boolean {
+    let pressed = false;
+    this.world.contactPairsWith(b.collider, other => {
+      const body = other.parent();
+      if (pressed || !body || !(body.isFixed() || body.isKinematic())) return;
+      const n = this.contactNormal(b.collider, other);
+      if (n && n.x * push.x + n.y * push.y + n.z * push.z > 0.5) pressed = true;
+    });
+    return pressed;
+  }
+
   /**
    * Bumpers and hollow plastic soak up a hit: a ball pushed or struck by a robot rolls off slowly
    * instead of shooting across the field. It loses the speed as it leaves the robot, so the robot
@@ -256,9 +286,26 @@ export class Simulation {
       let touching = false;
       if (b.state === 'field' && !b.body.isSleeping() && !(b.launch?.kind === 'shot' && b.launch.age < ROBOT_HIT.shotClear)) {
         const [x, , z] = this.balls.position(b);
-        touching = robots.some(({ robot, x: rx, z: rz, reach }) =>
-          Math.hypot(x - rx, z - rz) < reach + b.radius + 0.02
-          && (this.touching(robot.collider, b.collider) || (!!robot.armCollider?.isEnabled() && this.touching(robot.armCollider, b.collider))));
+        for (const { robot, x: rx, z: rz, reach } of robots) {
+          if (Math.hypot(x - rx, z - rz) > reach + b.radius + 0.02) continue;
+          const push = this.contactNormal(robot.collider, b.collider) ?? (robot.armCollider?.isEnabled() ? this.contactNormal(robot.armCollider, b.collider) : null);
+          if (!push) continue;
+          touching = true;
+          if (!this.pressed[b.id] && this.pressedAgainstField(b, push)) {
+            this.pressed[b.id] = 1;
+            b.body.setDominanceGroup(1);
+          }
+          if (this.pressed[b.id]) {
+            // Pushed back out of the wall it just rests there: it must not shove the robot away.
+            const v = b.body.linvel();
+            const back = v.x * push.x + v.y * push.y + v.z * push.z;
+            if (back < 0) b.body.setLinvel({ x: v.x - back * push.x, y: v.y - back * push.y, z: v.z - back * push.z }, true);
+          }
+        }
+      }
+      if (this.pressed[b.id] && !touching) {
+        this.pressed[b.id] = 0;
+        b.body.setDominanceGroup(0);
       }
       if (this.onRobot[b.id] && !touching && b.state === 'field') {
         const v = b.body.linvel();
@@ -385,7 +432,10 @@ export class Simulation {
           speed: robot.speed,
           turretYaw: mech.turretYaw,
           pitch: mech.shot?.pitch ?? 0.9,
-          flywheel: mech.flywheel,
+          flywheel: mech.turret.flywheel,
+          turretYaw2: mech.turrets[1]?.yaw ?? 0,
+          pitch2: mech.turrets[1]?.shot?.pitch ?? 0.9,
+          flywheel2: mech.turrets[1]?.flywheel ?? 0,
           intakeDir: mech.intakeDir,
           transfer: input.transfer && this.match.robotEnabled,
           status: mech.status,

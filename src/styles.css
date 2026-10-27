@@ -962,6 +962,43 @@ table.controls td.num {
   border-color: #fff;
 }
 
+.ms-info {
+  padding: 1vh 0.8vw;
+  background: var(--ms-row);
+  border-radius: 8px;
+  font-size: clamp(13px, 2vh, 19px);
+}
+
+.ms-info-name {
+  font-size: clamp(16px, 2.6vh, 26px);
+  font-weight: 800;
+  margin-bottom: 0.6vh;
+}
+
+.ms-info-name span {
+  color: #9aa3b5;
+  font-size: 0.7em;
+  font-weight: 600;
+}
+
+.ms-info dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5vh 1vw;
+  margin: 0;
+}
+
+.ms-info dt {
+  color: #9aa3b5;
+  font-weight: 600;
+}
+
+.ms-info dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
 .ms-start {
   margin-top: auto;
   font: inherit;
@@ -1011,6 +1048,12 @@ body.pad-nav .ms-start:focus {
   cursor: pointer;
   font-size: clamp(16px, 2.6vh, 26px);
   font-weight: 800;
+}
+
+.ms-card span {
+  text-align: center;
+  line-height: 1.1;
+  font-size: 0.75em;
 }
 
 .ms-card img {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyScore } from '../src/game/scoring';
-import { INTERPOLATION_DELAY, SnapshotBuffer, lerpState } from '../src/net/interpolate';
+import { INTERPOLATION_DELAY, MAX_EXTRAPOLATION, SnapshotBuffer, lerpState } from '../src/net/interpolate';
 import type { WorldState } from '../src/sim/state';
 
 function world(time: number, x: number, yaw: number, ballX: number, ballState = 0): WorldState {
@@ -13,7 +13,7 @@ function world(time: number, x: number, yaw: number, ballX: number, ballState = 
     score: { red: emptyScore(), blue: emptyScore() },
     robots: [{
       slot: 'red1', robot: 'uran-v1', x, z: 0, yaw, heading: yaw, speed: 0, turretYaw: 0, pitch: 1, flywheel: 0, intakeDir: 0, transfer: false,
-      status: 'off', shotSpeed: 0, shotDistance: 0, powers: { fl: 0, fr: 0, bl: 0, br: 0 }, stored: [], voltage: 14, minVoltage: 14, arm: 0,
+      status: 'off', shotSpeed: 0, shotDistance: 0, powers: { fl: 0, fr: 0, bl: 0, br: 0 }, stored: [], voltage: 14, minVoltage: 14, arm: 0, turretYaw2: 0, pitch2: 1, flywheel2: 0,
     }],
     balls: { states: new Uint8Array([ballState]), transforms: new Float32Array([ballX, 0.04, 0, 0, 0, 0, 1]) },
   };
@@ -60,5 +60,16 @@ describe('snapshot interpolation', () => {
     const bursts = lag(i => (i % 3 === 0 ? 0.1 : 0));
     expect(steady).toBeLessThan(3);
     expect(bursts).toBeGreaterThan(steady + 2);
+  });
+
+  it('keeps robots moving through a stall in the snapshots (a lost packet), for a moment', () => {
+    const buf = new SnapshotBuffer();
+    // 1 m/s along x, then nothing arrives.
+    for (let i = 0; i <= 30; i++) buf.push(world(i / 30, i / 30, 0, 0), 100 + i / 30);
+    const at = (late: number) => buf.sample(100 + 1 + INTERPOLATION_DELAY + late)!.robots[0].x;
+    expect(at(0.1)).toBeCloseTo(1.1, 1);
+    // Not further than MAX_EXTRAPOLATION past the last snapshot, and the ball stays put.
+    expect(at(2)).toBeCloseTo(1 + MAX_EXTRAPOLATION, 2);
+    expect(buf.sample(100 + 3)!.balls.transforms[0]).toBe(0);
   });
 });

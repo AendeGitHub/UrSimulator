@@ -6,9 +6,9 @@
 import { CAMERA_MODES, cameraName, type CameraMode } from '../camera/CameraRig';
 import { cleanName } from '../net/protocol';
 import type { Alliance } from '../robot/robotConfig';
-import { ROBOTS, robotById } from '../robot/robots';
-import { h } from './dom';
-import { ht, t, type TextKey } from './i18n';
+import { ROBOTS, robotById, wheelSpeed, type RobotDefinition } from '../robot/robots';
+import { clear, h } from './dom';
+import { ht, language, t, type TextKey } from './i18n';
 import type { Screen } from './menus';
 import { MenuNav } from './MenuNav';
 
@@ -45,6 +45,8 @@ export class RobotSelectScreen implements Screen {
   private readonly nameRow: HTMLElement;
   private readonly nameInput: HTMLInputElement;
   private readonly start: HTMLButtonElement;
+  /** What the picked robot can do: the team's figures */
+  private readonly info = h('div', { class: 'ms-info' });
   private readonly cards = new Map<string, HTMLButtonElement>();
 
   constructor(private settings: SelectSettings, private readonly actions: SelectActions) {
@@ -68,7 +70,8 @@ export class RobotSelectScreen implements Screen {
     for (const r of ROBOTS) {
       this.cards.set(r.id, h('button', { class: 'ms-card', onclick: () => this.set({ robot: r.id }) },
         h('img', { src: r.teamLogo, alt: r.team, style: r.logoBackground ? `background: ${r.logoBackground}` : '' }),
-        h('span', {}, r.team)));
+        // The robot's name: a team can bring more than one.
+        h('span', {}, r.name)));
     }
 
     this.el = h('div', { class: 'screen menu-select' },
@@ -80,6 +83,7 @@ export class RobotSelectScreen implements Screen {
         row('select.camera', this.camera),
         row('select.drive', this.drive),
         this.nameRow,
+        this.info,
         this.start),
       h('div', { class: 'ms-panel ms-robots' },
         ht('div', { class: 'ms-title ms-title-left' }, 'select.robots'),
@@ -114,5 +118,26 @@ export class RobotSelectScreen implements Screen {
     this.nameRow.hidden = this.purpose !== 'match';
     this.start.textContent = t(online ? 'select.next' : 'select.start');
     for (const [id, card] of this.cards) card.classList.toggle('ms-card-on', id === def.id);
+    this.showInfo(def);
+  }
+
+  private showInfo(def: RobotDefinition): void {
+    const num = (v: number, digits = 0) => v.toLocaleString(language(), { maximumFractionDigits: digits });
+    const rows: [TextKey, string][] = [
+      ['robot.rapidFire', t('robot.rapidFireValue', { s: num(def.shooter.rapidFire, 2) })],
+      ['robot.mass', t('robot.massValue', { kg: num(def.config.mass, 1) })],
+      ['robot.drive', t('robot.driveValue', { rpm: def.drive.rpm, mm: num(def.drive.wheel * 1000) })],
+      ['robot.speed', t('robot.speedValue', { v: num(wheelSpeed(def.drive), 1) })],
+      def.second
+        ? ['robot.turrets', t('robot.turretsValue', { deg: num((def.shooter.turretLimit * 180) / Math.PI) })]
+        : ['robot.turret', t('robot.turretValue', { deg: num((def.shooter.turretLimit * 180) / Math.PI) })],
+      ['robot.intakes', def.intakes.length > 1 ? t('robot.bothKinds') : def.intakes[0].toUpperCase()],
+      ['robot.flowerMode', t(def.arm ? 'robot.flowerModeYes' : 'robot.flowerModeNo')],
+    ];
+    clear(this.info);
+    this.info.append(
+      h('div', { class: 'ms-info-name' }, def.name, h('span', {}, ` · ${def.team} ${def.number}`)),
+      h('dl', {}, ...rows.flatMap(([label, value]) => [h('dt', {}, t(label)), h('dd', {}, value)])),
+    );
   }
 }

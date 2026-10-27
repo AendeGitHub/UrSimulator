@@ -29,12 +29,12 @@ export class RobotSim {
   /** A folding arm's box, solid only while the arm is down */
   readonly armCollider: RAPIER.Collider | null = null;
 
-  constructor(private readonly world: RAPIER.World, readonly slot: Slot, readonly cfg: RobotConfig, pose: Pose, arm?: ArmSpec) {
+  constructor(private readonly world: RAPIER.World, readonly slot: Slot, readonly cfg: RobotConfig, pose: Pose, private readonly arm?: ArmSpec) {
     this.alliance = slotAlliance(slot);
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .enabledRotations(false, true, false) // FTC robots rarely tip; keeps driving stable
-        .setCcdEnabled(true)
+        // No CCD: at full speed a robot moves 2 cm per step, far less than its own size or a wall.
         .setCanSleep(false),
     );
     const bodyHeight = cfg.height - GROUND_CLEARANCE;
@@ -72,6 +72,28 @@ export class RobotSim {
   /** The arm's box pushes balls and robots only while the arm is down. */
   setArmDown(down: boolean): void {
     if (this.armCollider && this.armCollider.isEnabled() !== down) this.armCollider.setEnabled(down);
+  }
+
+  /**
+   * Whether the arm, swung down to `progress` (0 raised .. 1 lowered), stays clear of walls, field
+   * elements and other robots. Balls don't count: the arm pushes them aside.
+   */
+  armFits(progress: number): boolean {
+    if (!this.arm) return true;
+    const { reach, box } = this.arm;
+    const k = Math.max(0, Math.min(1, progress)) * (reach.length - 1);
+    const i = Math.min(reach.length - 2, Math.floor(k));
+    const front = reach[i] + (reach[i + 1] - reach[i]) * (k - i);
+    const frame = this.cfg.frame ?? { length: this.cfg.length, offset: 0 };
+    const back = frame.offset + frame.length / 2;
+    if (front <= back) return true;
+    const along = (back + front) / 2;
+    const t = this.body.translation();
+    const yaw = this.yaw;
+    const shape = new RAPIER.Cuboid((front - back) / 2, (box.y[1] - box.y[0]) / 2, this.cfg.width / 2);
+    const at = { x: t.x + Math.cos(yaw) * along, y: t.y + (box.y[0] + box.y[1]) / 2, z: t.z - Math.sin(yaw) * along };
+    const hit = this.world.intersectionWithShape(at, this.body.rotation(), shape, undefined, undefined, undefined, this.body, c => c.shapeType() !== RAPIER.ShapeType.Ball);
+    return !hit;
   }
 
   remove(): void {

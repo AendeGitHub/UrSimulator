@@ -48,6 +48,12 @@ const BALL_FRICTION = 0.55;
 /** Balls fly almost freely but roll to a stop on the foam tiles. */
 const AIR_DAMPING = 0.02;
 const FLOOR_DAMPING = 0.6;
+/**
+ * Continuous collision detection costs server CPU on every moving ball, and only a fast ball can
+ * jump through a thin HIVE cell wall in one step (a shot covers 7 cm per step). Slower balls go
+ * without it.
+ */
+const CCD_SPEED = 3;
 
 export function ballSpecs(layout: FieldLayout): BallSpec[] {
   const wall = layout.wallInnerHalf;
@@ -84,7 +90,7 @@ export class BallSim {
   constructor(world: RAPIER.World, layout: FieldLayout) {
     this.all = ballSpecs(layout).map((spec, id) => {
       const body = world.createRigidBody(
-        RAPIER.RigidBodyDesc.dynamic().setTranslation(...spec.pos).setLinearDamping(AIR_DAMPING).setAngularDamping(0.9).setCcdEnabled(true),
+        RAPIER.RigidBodyDesc.dynamic().setTranslation(...spec.pos).setLinearDamping(AIR_DAMPING).setAngularDamping(0.9),
       );
       const collider = world.createCollider(RAPIER.ColliderDesc.ball(spec.radius).setMass(MASS[spec.kind]).setRestitution(BALL_RESTITUTION).setFriction(BALL_FRICTION), body);
       return { ...spec, id, body, collider, state: spec.homeState, returned: false, launch: null };
@@ -157,6 +163,7 @@ export class BallSim {
     b.body.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, true);
     b.body.setLinvel({ x: vel[0], y: vel[1], z: vel[2] }, true);
     b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    b.body.enableCcd(Math.hypot(...vel) > CCD_SPEED);
     b.body.setEnabled(true);
     b.body.wakeUp();
     this.store(b);
@@ -175,7 +182,7 @@ export class BallSim {
     this.store(b);
   }
 
-  /** Rolling resistance on the floor only, so it does not slow shots in the air. */
+  /** Rolling resistance on the floor only, so it does not slow shots in the air; CCD only when fast. */
   step(dt: number): void {
     for (const b of this.all) {
       if (b.launch) b.launch.age += dt;
@@ -183,6 +190,9 @@ export class BallSim {
       const onFloor = this.transforms[b.id * 7 + 1] < b.radius + 0.01;
       const damping = onFloor ? FLOOR_DAMPING : AIR_DAMPING;
       if (b.body.linearDamping() !== damping) b.body.setLinearDamping(damping);
+      const v = b.body.linvel();
+      const fast = v.x * v.x + v.y * v.y + v.z * v.z > CCD_SPEED * CCD_SPEED;
+      if (b.body.isCcdEnabled() !== fast) b.body.enableCcd(fast);
     }
   }
 }

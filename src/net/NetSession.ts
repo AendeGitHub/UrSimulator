@@ -2,7 +2,7 @@
 
 import type { Session, SessionEvents } from '../game/Session';
 import { decodeState, type WorldState } from '../sim/state';
-import type { GameMode, RobotInput, Slot } from '../sim/types';
+import { mergeInput, type GameMode, type RobotInput, type Slot } from '../sim/types';
 import { SnapshotBuffer } from './interpolate';
 import type { RuleOptions } from '../sim/Referee';
 import { t } from '../ui/i18n';
@@ -114,10 +114,8 @@ export class NetSession implements Session {
 
   update(dt: number, input: RobotInput | null): void {
     if (!input || !this.room?.running || !this.localSlot) return;
-    // Keep one-shot presses until they are sent.
-    this.pendingInput = this.pendingInput
-      ? { ...input, shooterOn: this.pendingInput.shooterOn || input.shooterOn, shooterOff: this.pendingInput.shooterOff || input.shooterOff, imuReset: this.pendingInput.imuReset || input.imuReset }
-      : input;
+    // Keep one-shot presses (shooter, IMU, Flower Mode) until they are sent.
+    this.pendingInput = this.pendingInput ? mergeInput(this.pendingInput, input) : input;
     this.inputTimer -= dt;
     if (this.inputTimer > 0) return;
     this.inputTimer = INPUT_INTERVAL;

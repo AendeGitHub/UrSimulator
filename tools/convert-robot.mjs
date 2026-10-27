@@ -13,6 +13,8 @@
 // "body" node.
 // Meshes carry no normals: CAD normals split every face into its own island, which blocks
 // simplification, so the game computes creased normals when it loads the model.
+// STEP exports lose transparency: `translucent` lists CAD colors (clear polycarbonate panels)
+// that become see-through again, each with its opacity.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -170,10 +172,14 @@ async function main() {
       P[i + 2] = p[2] - pivot[2];
     }
     const { metal, rough } = surface(g.color);
+    const clear = (spec.translucent ?? []).find(t => t.color.every((v, k) => Math.abs(v - g.color[k]) < 0.01));
+    const material = doc.createMaterial().setMetallicFactor(metal).setRoughnessFactor(rough);
+    if (clear) material.setBaseColorFactor([...g.color.slice(0, 3), clear.opacity]).setAlphaMode('BLEND');
+    else material.setBaseColorFactor(g.color);
     const prim = doc.createPrimitive()
       .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(P).setBuffer(buffer))
       .setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint32Array(g.idx)).setBuffer(buffer))
-      .setMaterial(doc.createMaterial().setBaseColorFactor(g.color).setMetallicFactor(metal).setRoughnessFactor(rough));
+      .setMaterial(material);
     nodes[g.part].addChild(doc.createNode().setMesh(doc.createMesh().addPrimitive(prim)));
   }
 

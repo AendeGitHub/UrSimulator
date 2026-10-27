@@ -1,4 +1,5 @@
-// Intake → storage (4 balls) → transfer → flywheel shooter on an auto-aiming turret.
+// Intake → storage (4 balls) → transfer → flywheel shooter on an auto-aiming turret (or two, one
+// for each kind of ball).
 
 import type { Vec3 } from '../field/layout';
 import { FLOWER_VOLUME } from '../field/zones';
@@ -72,18 +73,40 @@ function noise(sigma: number): number {
   return sigma * Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
 }
 
+/** A turret with its flywheel. A robot with two shoots each kind of ball from its own. */
+export class Turret {
+  /** Flywheel speed as a fraction of maximum */
+  flywheel = 0;
+  /** Turret angle relative to the robot, CCW positive, within ±spec.turretLimit */
+  yaw = 0;
+  shot: ShotSolution | null = null;
+  status: ShooterStatus = 'off';
+  feedTimer = 0;
+
+  /** `kinds`: the balls it shoots; undefined for a robot's only turret, which shoots everything. */
+  constructor(readonly spec: ShooterSpec, readonly kinds?: readonly BallKind[]) {}
+
+  shoots(b: Ball): boolean {
+    return !this.kinds || this.kinds.includes(b.kind);
+  }
+
+  reset(): void {
+    this.flywheel = 0;
+    this.yaw = 0;
+    this.shot = null;
+    this.status = 'off';
+    this.feedTimer = 0;
+  }
+}
+
 export class Mechanisms {
   /** Front of the queue goes to the shooter next; the back is nearest the intake. */
   readonly stored: Ball[] = [];
   shooterOn = false;
-  /** Flywheel speed as a fraction of maximum */
-  flywheel = 0;
-  /** Turret angle relative to the robot, CCW positive, within ±spec.turretLimit */
-  turretYaw = 0;
+  /** The main turret first; Silver Bullet Blaster's second one shoots its NECTAR. */
+  readonly turrets: Turret[];
   /** -1 ejecting, 0 idle, 1 intaking — for the roller animation */
   intakeDir = 0;
-  shot: ShotSolution | null = null;
-  status: ShooterStatus = 'off';
   /** Front arm: 0 raised .. 1 lowered (robots without one stay at 0) */
   arm = 0;
   private armLowered = false;
@@ -91,19 +114,46 @@ export class Mechanisms {
   onPickup?: (ball: Ball, at: Vec3) => void;
   private intakeTimer = 0;
   private ejectTimer = 0;
-  private feedTimer = 0;
 
   constructor(
     private readonly robot: RobotSim,
     private readonly balls: BallSim,
     private readonly target: () => Vec3,
     private readonly flowers: [number, number][],
-    private readonly spec: ShooterSpec,
+    spec: ShooterSpec,
     private readonly intakes: readonly BallKind[],
     private readonly armSpec: ArmSpec | undefined,
     /** Forward distance of the intake's mouth from the footprint center, m */
     private readonly intakeFront: number,
-  ) {}
+    /** A second turret and the balls it takes from the main one */
+    second?: { spec: ShooterSpec; kinds: readonly BallKind[] },
+  ) {
+    this.turrets = second
+      ? [new Turret(spec, intakes.filter(k => !second.kinds.includes(k))), new Turret(second.spec, second.kinds)]
+      : [new Turret(spec)];
+  }
+
+  /** The main turret, as the HUD, the battery and the referee see the robot's shooter */
+  get turret(): Turret {
+    return this.turrets[0];
+  }
+
+  get turretYaw(): number {
+    return this.turret.yaw;
+  }
+
+  get shot(): ShotSolution | null {
+    return this.turret.shot;
+  }
+
+  get status(): ShooterStatus {
+    return this.turret.status;
+  }
+
+  /** Flywheel load on the battery: every flywheel that is spinning */
+  get flywheel(): number {
+    return this.turrets.reduce((sum, t) => sum + t.flywheel, 0);
+  }
 
   reset(preloads: Ball[]): void {
     this.stored.length = 0;
@@ -112,10 +162,7 @@ export class Mechanisms {
       this.stored.push(b);
     }
     this.shooterOn = false;
-    this.flywheel = 0;
-    this.turretYaw = 0;
-    this.shot = null;
-    this.status = 'off';
+    for (const t of this.turrets) t.reset();
     this.arm = 0;
     this.armLowered = false;
   }
@@ -126,18 +173,18 @@ export class Mechanisms {
     this.stored.splice(0).forEach((b, i) => this.balls.release(b, [px + (i % 2) * 0.08, 0.1 + i * 0.08, pz], [0, 0, 0]));
   }
 
-  /** World position where balls leave the shooter. */
-  launchPoint(): Vec3 {
+  /** World position where balls leave a turret's shooter. */
+  launchPoint(turret = this.turret): Vec3 {
     const [px, , pz] = this.robot.position;
     const yaw = this.robot.yaw;
     const [fx, fz] = [Math.cos(yaw), -Math.sin(yaw)];
     const [rx, rz] = [Math.sin(yaw), Math.cos(yaw)];
-    const [tf, tr] = this.spec.at;
-    const aim = yaw + this.turretYaw;
+    const [tf, tr] = turret.spec.at;
+    const aim = yaw + turret.yaw;
     return [
-      px + fx * tf + rx * tr + Math.cos(aim) * this.spec.exit,
-      this.spec.height,
-      pz + fz * tf + rz * tr - Math.sin(aim) * this.spec.exit,
+      px + fx * tf + rx * tr + Math.cos(aim) * turret.spec.exit,
+      turret.spec.height,
+      pz + fz * tf + rz * tr - Math.sin(aim) * turret.spec.exit,
     ];
   }
 
@@ -146,8 +193,10 @@ export class Mechanisms {
       // No powered movement between periods or after the match (G403 / G404).
       this.shooterOn = false;
       this.intakeDir = 0;
-      this.spinFlywheel(0, dt);
-      this.updateStatus(false);
+      for (const t of this.turrets) {
+        this.spinFlywheel(t, 0, dt);
+        this.updateStatus(t, false);
+      }
       return;
     }
     if (input.shooterOn) this.shooterOn = true;
@@ -156,7 +205,15 @@ export class Mechanisms {
       if (input.armDown) this.armLowered = true;
       if (input.armUp) this.armLowered = false;
       const step = dt / this.armSpec.travel;
-      this.arm = Math.max(0, Math.min(1, this.arm + (this.armLowered ? step : -step)));
+      if (!this.armLowered) this.arm = Math.max(0, this.arm - step);
+      else if (this.arm < 1) {
+        // It swings down only as far as there is room: against a wall, a FLOWER or a robot it rests
+        // there and goes on down as the robot backs away; driven further in, it is pushed back up.
+        // Once all the way down its box is solid and stops the robot instead.
+        const next = Math.min(1, this.arm + step);
+        if (this.robot.armFits(next)) this.arm = next;
+        else while (this.arm > 0 && !this.robot.armFits(this.arm)) this.arm = Math.max(0, this.arm - step);
+      }
     }
 
     // The transfer runs the intake too, so balls picked up while feeding go straight to the shooter.
@@ -167,9 +224,11 @@ export class Mechanisms {
     if (this.intakeDir === 1) this.runIntake(dt, flower);
     if (this.intakeDir === -1) this.runEject(dt);
 
-    this.aim(dt);
-    if (input.transfer) this.runTransfer(dt);
-    else this.feedTimer = Math.min(this.feedTimer, 0);
+    for (const t of this.turrets) {
+      this.aim(t, dt);
+      if (input.transfer) this.runTransfer(t, dt);
+      else t.feedTimer = Math.min(t.feedTimer, 0);
+    }
   }
 
   private runIntake(dt: number, flower: [number, number] | undefined): void {
@@ -252,55 +311,61 @@ export class Mechanisms {
     this.ejectTimer = EJECT.interval;
   }
 
-  private aim(dt: number): void {
-    const launch = this.launchPoint();
-    this.shot = solveShot(launch, this.target(), SHOOTER.descent, this.robot.velocity);
+  private aim(turret: Turret, dt: number): void {
+    const launch = this.launchPoint(turret);
+    const shot = solveShot(launch, this.target(), SHOOTER.descent, this.robot.velocity);
+    turret.shot = shot;
     // The turret cannot spin round and round (its wires would wind up): it turns at most
     // turretLimit either way. It takes the short way to the target while that stays within the
     // limit, otherwise it unwinds the long way round.
-    const limit = this.spec.turretLimit;
-    const target = wrapAngle(this.shot.yaw - this.robot.yaw);
-    let desired = this.turretYaw + wrapAngle(target - this.turretYaw);
+    const limit = turret.spec.turretLimit;
+    const target = wrapAngle(shot.yaw - this.robot.yaw);
+    let desired = turret.yaw + wrapAngle(target - turret.yaw);
     const past = Math.abs(desired) - limit;
     // Just past the stop: wait there instead of swinging all the way round for a few degrees.
     if (past > 0) desired = past < SHOOTER.unwindMargin ? Math.sign(desired) * limit : desired - Math.sign(desired) * 2 * Math.PI;
     const maxStep = SHOOTER.turretRate * dt;
-    const step = Math.max(-maxStep, Math.min(maxStep, desired - this.turretYaw));
-    this.turretYaw = Math.max(-limit, Math.min(limit, this.turretYaw + step));
-    const err = wrapAngle(target - this.turretYaw);
+    const step = Math.max(-maxStep, Math.min(maxStep, desired - turret.yaw));
+    turret.yaw = Math.max(-limit, Math.min(limit, turret.yaw + step));
+    const err = wrapAngle(target - turret.yaw);
 
     // Auto speed: the flywheel targets exactly the speed this distance needs.
-    const needed = this.shot.speed / SHOOTER.maxSpeed;
-    this.spinFlywheel(this.shooterOn ? Math.min(needed, 1) : 0, dt);
-    this.updateStatus(Math.abs(err) < SHOOTER.aimTolerance);
+    const needed = shot.speed / SHOOTER.maxSpeed;
+    this.spinFlywheel(turret, this.shooterOn ? Math.min(needed, 1) : 0, dt);
+    this.updateStatus(turret, Math.abs(err) < SHOOTER.aimTolerance);
   }
 
-  private spinFlywheel(target: number, dt: number): void {
-    const rate = (target > this.flywheel ? SHOOTER.spinUpRate : SHOOTER.spinDownRate) * dt;
-    this.flywheel += Math.max(-rate, Math.min(rate, target - this.flywheel));
+  private spinFlywheel(turret: Turret, target: number, dt: number): void {
+    const rate = (target > turret.flywheel ? SHOOTER.spinUpRate : SHOOTER.spinDownRate) * dt;
+    turret.flywheel += Math.max(-rate, Math.min(rate, target - turret.flywheel));
   }
 
-  private updateStatus(aimed: boolean): void {
-    if (!this.shooterOn) this.status = 'off';
-    else if (this.shot && this.shot.speed > SHOOTER.maxSpeed) this.status = 'tooFar';
-    else if (aimed && this.shot && Math.abs(this.flywheel - this.shot.speed / SHOOTER.maxSpeed) < 0.02) this.status = 'ready';
-    else this.status = 'spinning';
+  private updateStatus(turret: Turret, aimed: boolean): void {
+    const { shot } = turret;
+    if (!this.shooterOn) turret.status = 'off';
+    else if (shot && shot.speed > SHOOTER.maxSpeed) turret.status = 'tooFar';
+    else if (aimed && shot && Math.abs(turret.flywheel - shot.speed / SHOOTER.maxSpeed) < 0.02) turret.status = 'ready';
+    else turret.status = 'spinning';
   }
 
-  private runTransfer(dt: number): void {
-    this.feedTimer -= dt;
-    if (this.feedTimer > 0 || !this.stored.length || !this.shot) return;
-    const b = this.stored.shift()!;
-    const spread = shotSpread(this.shot.distance, this.spec);
-    const yaw = this.robot.yaw + this.turretYaw + noise(spread.angle);
-    const pitch = this.shot.pitch + noise(spread.angle);
+  /** Feeds the turret the next ball of its kind, `rapidFire` paced. */
+  private runTransfer(turret: Turret, dt: number): void {
+    turret.feedTimer -= dt;
+    const i = this.stored.findIndex(b => turret.shoots(b));
+    if (turret.feedTimer > 0 || i < 0 || !turret.shot) return;
+    const [b] = this.stored.splice(i, 1);
+    const spread = shotSpread(turret.shot.distance, turret.spec);
+    const yaw = this.robot.yaw + turret.yaw + noise(spread.angle);
+    const pitch = turret.shot.pitch + noise(spread.angle);
     // A stopped flywheel just lets the ball drop out of the shooter.
-    const speed = Math.max(0.6, this.flywheel * SHOOTER.maxSpeed * (1 + noise(spread.speed)));
+    const speed = Math.max(0.6, turret.flywheel * SHOOTER.maxSpeed * (1 + noise(spread.speed)));
     const v = launchVelocity(yaw, pitch, speed);
     const [rvx, rvz] = this.robot.velocity;
-    this.balls.release(b, this.launchPoint(), [v[0] + rvx, v[1], v[2] + rvz]);
+    this.balls.release(b, this.launchPoint(turret), [v[0] + rvx, v[1], v[2] + rvz]);
     b.launch = { by: this.robot.slot, kind: 'shot', age: 0 };
-    this.flywheel *= SHOOTER.shotDrop;
-    this.feedTimer = this.spec.fireInterval;
+    turret.flywheel *= SHOOTER.shotDrop;
+    // Rapid fire: the 4 balls of a full load leave evenly spaced over `rapidFire` seconds (the
+    // leftover fraction of a step carries over so the spacing doesn't drift).
+    turret.feedTimer = Math.max(turret.feedTimer, -dt) + turret.spec.rapidFire / (CAPACITY - 1);
   }
 }

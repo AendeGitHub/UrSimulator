@@ -67,7 +67,7 @@ function loadModel(url: string): Promise<THREE.Group> {
  * colours kept as vertex colours: about 25 draw calls per robot instead of ~80.
  */
 function mergePart(part: THREE.Object3D): void {
-  const groups = new Map<string, { metalness: number; roughness: number; geometries: THREE.BufferGeometry[] }>();
+  const groups = new Map<string, { metalness: number; roughness: number; opacity: number; geometries: THREE.BufferGeometry[] }>();
   const meshes = part.children.filter((c): c is THREE.Mesh => c instanceof THREE.Mesh);
   for (const mesh of meshes) {
     const mat = mesh.material as THREE.MeshStandardMaterial;
@@ -92,16 +92,20 @@ function mergePart(part: THREE.Object3D): void {
     geo.setAttribute('position', new THREE.BufferAttribute(p, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(n, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
-    const key = `${mat.metalness.toFixed(2)}|${mat.roughness.toFixed(2)}`;
-    const group = groups.get(key) ?? { metalness: mat.metalness, roughness: mat.roughness, geometries: [] };
+    // See-through panels (clear polycarbonate) stay a mesh of their own.
+    const opacity = mat.transparent ? mat.opacity : 1;
+    const key = `${mat.metalness.toFixed(2)}|${mat.roughness.toFixed(2)}|${opacity.toFixed(2)}`;
+    const group = groups.get(key) ?? { metalness: mat.metalness, roughness: mat.roughness, opacity, geometries: [] };
     group.geometries.push(geo);
     groups.set(key, group);
     mesh.removeFromParent();
     mesh.geometry.dispose();
     src.dispose();
   }
-  for (const { metalness, roughness, geometries } of groups.values()) {
-    part.add(new THREE.Mesh(mergeGeometries(geometries), new THREE.MeshStandardMaterial({ vertexColors: true, metalness, roughness })));
+  for (const { metalness, roughness, opacity, geometries } of groups.values()) {
+    const clear = opacity < 1;
+    const material = new THREE.MeshStandardMaterial({ vertexColors: true, metalness, roughness, transparent: clear, opacity, depthWrite: !clear });
+    part.add(new THREE.Mesh(mergeGeometries(geometries), material));
     for (const g of geometries) g.dispose();
   }
 }
@@ -131,6 +135,9 @@ export class RobotView {
   private disposed = false;
   private turret: THREE.Object3D | null = null;
   private readonly flywheels: Spinner[] = [];
+  /** Silver Bullet Blaster's second (NECTAR) turret and its flywheel */
+  private turret2: THREE.Object3D | null = null;
+  private readonly flywheels2: Spinner[] = [];
   private arm: Spinner | null = null;
   private readonly wheels = new Map<keyof WheelPowers, Spinner>();
   private readonly intake: Spinner[] = [];
@@ -169,6 +176,11 @@ export class RobotView {
           // Shooter facing forward until the robot starts aiming.
           node.rotation.y = def.shooter.modelYaw;
         }
+        else if (node.name === 'turret2') {
+          this.turret2 = node;
+          node.rotation.y = def.second?.shooter.modelYaw ?? 0;
+        }
+        else if (node.name.startsWith('flywheel2')) this.flywheels2.push(spinner);
         else if (node.name.startsWith('flywheel')) this.flywheels.push(spinner);
         else if (node.name === 'arm') this.arm = spinner;
         else if (node.name.startsWith('wheel_')) this.wheels.set(node.name.slice(6) as keyof WheelPowers, spinner);
@@ -215,6 +227,8 @@ export class RobotView {
     // The flywheel throws balls out of the side that faces the target, so it turns that way.
     const throwSide = Math.cos(this.def.shooter.modelYaw) < 0 ? -1 : 1;
     for (const f of this.flywheels) spin(f, throwSide * Math.min(1, s.flywheel * 2) * SPIN.flywheel * dt);
+    if (this.turret2 && this.def.second) this.turret2.rotation.y = s.turretYaw2 + this.def.second.shooter.modelYaw;
+    for (const f of this.flywheels2) spin(f, throwSide * Math.min(1, s.flywheel2 * 2) * SPIN.flywheel * dt);
     // The model's arm is lowered; raising swings its front end up about the hinge.
     if (this.arm && this.def.arm) this.arm.node.rotation[this.arm.axis] = (1 - s.arm) * this.def.arm.upAngle;
   }

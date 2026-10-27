@@ -12,6 +12,7 @@ import { cleanName, type RoomInfo } from '../net/protocol';
 import { submitRecord } from '../net/records';
 import type { Alliance } from '../robot/robotConfig';
 import { DEFAULT_ROBOT_ID, robotById } from '../robot/robots';
+import type { BallKind } from '../sim/BallSim';
 import { parseColliders, type ColliderPart } from '../sim/colliders';
 import { matchClock } from '../sim/Match';
 import { cleanRules, type RuleOptions } from '../sim/Referee';
@@ -86,17 +87,24 @@ export function loadSettings(): Settings {
   };
 }
 
-/** World positions of the balls inside each robot, so you can see how many it holds. */
-function heldBallPositions(world: WorldState): Map<number, HeldBall> {
+/**
+ * World positions of the balls inside each robot, so you can see how many it holds. A robot with
+ * two turrets keeps each kind of ball in the lane of the turret that shoots it.
+ */
+function heldBallPositions(world: WorldState, kindOf: (id: number) => BallKind): Map<number, HeldBall> {
   const held = new Map<number, HeldBall>();
   for (const r of world.robots) {
-    const { first, step } = robotById(r.robot).storage;
+    const def = robotById(r.robot);
     const cos = Math.cos(r.yaw);
     const sin = Math.sin(r.yaw);
-    r.stored.forEach((id, i) => {
+    const inLane = [0, 0];
+    r.stored.forEach((id, n) => {
+      const lane = def.second?.kinds.includes(kindOf(id)) ? 1 : 0;
+      const { first, step } = lane ? def.second!.storage : def.storage;
+      const i = def.second ? inLane[lane]++ : n;
       const [fx, y, rz] = [first[0] + step[0] * i, first[1] + step[1] * i, first[2] + step[2] * i];
       // Same rotation as the robot model (about +Y by yaw).
-      held.set(id, { pos: [r.x + fx * cos + rz * sin, y, r.z - fx * sin + rz * cos], place: `${r.slot}:${i}` });
+      held.set(id, { pos: [r.x + fx * cos + rz * sin, y, r.z - fx * sin + rz * cos], place: `${r.slot}:${lane}:${i}` });
     });
   }
   return held;
@@ -661,7 +669,7 @@ export class Game {
 
   private draw(world: WorldState, dt: number): void {
     this.field.setHiveAngles(world.hiveAngles);
-    this.ballsView.update(world.balls, heldBallPositions(world), dt);
+    this.ballsView.update(world.balls, heldBallPositions(world, id => this.ballsView.specs[id].kind), dt);
     const names = this.session?.names() ?? {};
     const present = new Set(world.robots.map(r => r.slot));
     for (const [slot, view] of this.robotViews) {

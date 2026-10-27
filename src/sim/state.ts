@@ -34,6 +34,10 @@ export interface RobotState {
   minVoltage: number;
   /** Front arm: 0 raised .. 1 lowered (0 for robots without one) */
   arm: number;
+  /** The second turret (Silver Bullet Blaster's NECTAR one); 0 for robots without */
+  turretYaw2: number;
+  pitch2: number;
+  flywheel2: number;
 }
 
 export interface WorldState {
@@ -130,6 +134,12 @@ export function encodeState(s: WorldState): ArrayBuffer {
   }
   // Added after the balls so apps from before the arm, which stop reading there, still work.
   for (const r of s.robots) w.u8(Math.round(r.arm * 255));
+  // Then the second turrets, which older apps don't read either.
+  for (const r of s.robots) {
+    w.f32(r.turretYaw2);
+    w.f32(r.pitch2);
+    w.u8(Math.round(Math.min(1, r.flywheel2) * 255));
+  }
   return w.done();
 }
 
@@ -162,7 +172,7 @@ export function decodeState(buf: ArrayBuffer): WorldState {
     const stored = Array.from({ length: r.u8() }, () => r.u8());
     const voltage = r.u16() / 100;
     const minVoltage = r.u16() / 100;
-    robots.push({ slot, robot, x, z, yaw, heading, speed, turretYaw, pitch, flywheel, intakeDir, transfer, status, shotSpeed, shotDistance, powers: { fl, fr, bl, br }, stored, voltage, minVoltage, arm: 0 });
+    robots.push({ slot, robot, x, z, yaw, heading, speed, turretYaw, pitch, flywheel, intakeDir, transfer, status, shotSpeed, shotDistance, powers: { fl, fr, bl, br }, stored, voltage, minVoltage, arm: 0, turretYaw2: 0, pitch2: 0.9, flywheel2: 0 });
   }
   const n = r.u16();
   const states = new Uint8Array(n);
@@ -174,5 +184,12 @@ export function decodeState(buf: ArrayBuffer): WorldState {
   }
   // Servers from before the arm send no arm positions.
   if (r.left >= robots.length) for (const robot of robots) robot.arm = r.u8() / 255;
+  if (r.left >= robots.length * 9) {
+    for (const robot of robots) {
+      robot.turretYaw2 = r.f32();
+      robot.pitch2 = r.f32();
+      robot.flywheel2 = r.u8() / 255;
+    }
+  }
   return { time, period, periodTime, hiveAngles, tips, score, robots, balls: { states, transforms } };
 }
