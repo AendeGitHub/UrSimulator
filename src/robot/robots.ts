@@ -94,29 +94,31 @@ export interface RobotDefinition {
 /** Wheel surface speed: motor RPM / 60 · π · wheel diameter. */
 export const wheelSpeed = ({ rpm, wheel }: DriveSpec) => (rpm / 60) * Math.PI * wheel;
 
-const URAN_V1_DRIVE: DriveSpec = { rpm: 518, wheel: 0.082 };
+const URAN_DRIVE: DriveSpec = { rpm: 518, wheel: 0.082 };
 const BUMBLE_V_DRIVE: DriveSpec = { rpm: 522, wheel: 0.096 };
 const SILVER_BULLET_DRIVE: DriveSpec = { rpm: 435, wheel: 0.104 };
 
-export const URAN_V1: RobotDefinition = {
-  id: 'uran-v1',
-  name: 'URAN V1',
+export const URAN_V2: RobotDefinition = {
+  id: 'uran-v2',
+  name: 'URAN V2',
   team: 'URAN92',
   number: '25300',
   teamLogo: 'assets/teams/uran.svg',
-  model: 'assets/robots/uran-v1.glb',
-  lowModel: 'assets/robots/uran-v1-low.glb',
-  drive: URAN_V1_DRIVE,
-  // Sizes measured from the team CAD (Jedi92.stp).
+  model: 'assets/robots/uran-v2.glb',
+  lowModel: 'assets/robots/uran-v2-low.glb',
+  drive: URAN_DRIVE,
+  // Sizes measured from the team CAD (Jedi92.step); the lowered arm sticks out in front.
   config: {
-    name: 'URAN V1',
-    length: 0.44,
+    name: 'URAN V2',
+    length: 0.533,
+    // The frame up to the front intake wheels: the arm's part of the footprint only collides while it is down.
+    frame: { length: 0.44, offset: -0.0465 },
     width: 0.316,
     height: 0.305,
     mass: 9,
     wheelRadius: 0.041,
-    // 82 mm mecanum wheels on 518 RPM motors.
-    drive: { maxWheelSpeed: wheelSpeed(URAN_V1_DRIVE), strafeEfficiency: 0.85, trackWidth: 0.258, wheelBase: 0.215 },
+    // The team's 82 mm mecanum wheels on 518 RPM motors.
+    drive: { maxWheelSpeed: wheelSpeed(URAN_DRIVE), strafeEfficiency: 0.85, trackWidth: 0.226, wheelBase: 0.215 },
     // Light and fast: traction allows more acceleration than a heavy robot.
     maxAccel: 6.5,
     maxTurnAccel: 34,
@@ -125,11 +127,21 @@ export const URAN_V1: RobotDefinition = {
   // that faces the front of the robot in the CAD. From the opening side of a cell the field allows
   // at most ~2.3 m, so the accuracy scale fits that. The turret turns 200° each way, a little past the back.
   // Rapid fire (the team's figure): all 4 balls in 0.4 s.
-  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: (200 * Math.PI) / 180, rapidFire: 0.4 },
-  // URAN V1 plays POLLEN only: NECTAR stays on the field.
+  shooter: { at: [-0.0685, 0], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: (200 * Math.PI) / 180, rapidFire: 0.4 },
+  // URAN plays POLLEN only: NECTAR stays on the field.
   intakes: ['pollen'],
+  // Flower Mode: the U-shaped push-back arm on bearings in front of the intake. Raised it stands
+  // up over the intake; lowered it blocks the floor but pulls POLLEN out of the bottom of a FLOWER.
+  arm: {
+    travel: 0.4,
+    upAngle: 1.9,
+    box: { x: [0.1735, 0.267], y: [0.025, 0.09] },
+    reach: [0.138, 0.158, 0.179, 0.207, 0.231, 0.251, 0.266, 0.275, 0.278, 0.276, 0.267],
+  },
+  // The intake wheels at the front of the frame, behind the arm.
+  intakeFront: 0.1735,
   // A row under the transfer rollers, from the turret forward to the intake.
-  storage: { first: [-0.075, 0.1, 0], step: [0.072, 0, 0] },
+  storage: { first: [-0.1215, 0.1, 0], step: [0.072, 0, 0] },
 };
 
 export const BUMBLE_V: RobotDefinition = {
@@ -156,7 +168,7 @@ export const BUMBLE_V: RobotDefinition = {
     wheelRadius: 0.048,
     // 96 mm mecanum wheels on 522 RPM motors.
     drive: { maxWheelSpeed: wheelSpeed(BUMBLE_V_DRIVE), strafeEfficiency: 0.85, trackWidth: 0.214, wheelBase: 0.169 },
-    // Heavier than URAN V1, so a little less acceleration from the same traction.
+    // Heavier than URAN V2, so a little less acceleration from the same traction.
     maxAccel: 5.8,
     maxTurnAccel: 30,
   },
@@ -232,10 +244,11 @@ export const SILVER_BULLET_BLASTER: RobotDefinition = {
   storage: { first: [-0.075, 0.27, -0.101], step: [0.075, -0.035, 0] },
 };
 
-// New robots go at the end: snapshots name a robot by its place in this list.
-export const ROBOTS: RobotDefinition[] = [URAN_V1, BUMBLE_V, SILVER_BULLET_BLASTER];
-export const DEFAULT_ROBOT_ID = URAN_V1.id;
+// New robots go at the end: snapshots name a robot by its place in this list. URAN V2 took
+// URAN V1's place, so older apps show it as their V1.
+export const ROBOTS: RobotDefinition[] = [URAN_V2, BUMBLE_V, SILVER_BULLET_BLASTER];
+export const DEFAULT_ROBOT_ID = URAN_V2.id;
 
 export function robotById(id: string | undefined): RobotDefinition {
-  return ROBOTS.find(r => r.id === id) ?? URAN_V1;
+  return ROBOTS.find(r => r.id === id) ?? URAN_V2;
 }

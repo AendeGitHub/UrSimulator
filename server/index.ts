@@ -163,6 +163,8 @@ async function main(): Promise<void> {
   const lobby = new Lobby(layout, colliders);
   const { records, storage } = createRecords(ROOT);
   console.log(`High scores: ${storage}`);
+  // Render sets RENDER; its free disk is wiped on every restart.
+  if (storage !== 'upstash' && process.env.RENDER) console.warn('High scores are kept in a file that Render wipes on every restart: set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN (README → High scores).');
 
   const started = Date.now();
   const server = http.createServer((req, res) => {
@@ -179,7 +181,7 @@ async function main(): Promise<void> {
       });
       return;
     }
-    serveStatic(req, res, () => ({ ok: true, rooms: lobby.roomCount, players: wss.clients.size, uptime: Math.round((Date.now() - started) / 1000) }));
+    serveStatic(req, res, () => ({ ok: true, rooms: lobby.roomCount, players: wss.clients.size, uptime: Math.round((Date.now() - started) / 1000), records: storage === 'upstash' ? 'upstash' : 'file' }));
   });
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
   const alive = new WeakMap<WebSocket, boolean>();

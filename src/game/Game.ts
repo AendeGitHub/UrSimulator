@@ -9,9 +9,9 @@ import { modelName } from '../input/gamepad';
 import { InputManager } from '../input/InputManager';
 import { NetSession, defaultServerUrl } from '../net/NetSession';
 import { cleanName, type RoomInfo } from '../net/protocol';
-import { submitRecord } from '../net/records';
+import { rememberRecord, restoreRecords, submitRecord } from '../net/records';
 import type { Alliance } from '../robot/robotConfig';
-import { DEFAULT_ROBOT_ID, robotById } from '../robot/robots';
+import { DEFAULT_ROBOT_ID, ROBOTS, robotById } from '../robot/robots';
 import type { BallKind } from '../sim/BallSim';
 import { parseColliders, type ColliderPart } from '../sim/colliders';
 import { matchClock } from '../sim/Match';
@@ -280,6 +280,20 @@ export class Game {
     game.showHomeField();
     game.show(game.screens.main);
     requestAnimationFrame(t => game.frame(t));
+    // A server that restarted lost its high scores: give it back this player's. Bests from older
+    // versions were kept here without a name; they go under the player's name.
+    if (game.settings.name) {
+      for (const { id } of ROBOTS) {
+        let best = 0;
+        try {
+          best = Number(localStorage.getItem(`ursim.best.${id}`) ?? 0);
+        } catch {
+          // No storage
+        }
+        if (best > 0) rememberRecord(id, game.settings.name, best);
+      }
+    }
+    restoreRecords(game.settings.server || defaultServerUrl(), ROBOTS.map(r => r.id)).catch(() => undefined);
     return game;
   }
 
@@ -529,6 +543,7 @@ export class Game {
       if (points > localBest && points > 0) this.screens.results.setRecord(alliance, t('results.personalBest'));
       return;
     }
+    rememberRecord(robot, name, points);
     submitRecord(this.settings.server || defaultServerUrl(), robot, name, points)
       .then(r => {
         if (this.state !== 'results' || !r.improved) return;

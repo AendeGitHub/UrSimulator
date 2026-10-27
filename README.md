@@ -8,7 +8,7 @@
 
 ![Main menu](docs/menu.jpg)
 
-Drive **URAN V1**, **Bumble V** or **Silver Bullet Blaster**, real competition robots built from their teams' CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN, launch it into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. Play **online 1 vs 1 or 2 vs 2** with friends: they join your room with a 4-letter code. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
+Drive **URAN V2**, **Bumble V** or **Silver Bullet Blaster**, real competition robots built from their teams' CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN, launch it into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. Play **online 1 vs 1 or 2 vs 2** with friends: they join your room with a 4-letter code. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
 
 ![In game](docs/game.jpg)
 
@@ -63,7 +63,7 @@ flowchart LR
 
 **From CAD to game.** The field, HIVEs and game elements are converted from the official BIOBUZZ CAD (STEP → GLB) by scripts in `tools/`, and the field colliders are baked into one binary file that the browser and the server both load. The robot comes from the team's own CAD: a JSON file marks which parts spin (wheels, intake, flywheel, turret) and around which axis, then the model is simplified and its parts are merged by material to cut draw calls.
 
-**Robot physics.** Mecanum kinematics as in an FTC TeleOp (robot-centric or field-centric with an IMU heading), with motor speed scaled by a battery model: 14 V at the start, drained by the flywheel, sagging under load. The turret aims by itself within its cable limit (URAN V1 ±200°, Bumble V and Silver Bullet Blaster a full turn each way) and unwinds through the front; the flywheel speed comes from a ballistic solution for the distance to the HIVE cell, and the spread grows with range.
+**Robot physics.** Mecanum kinematics as in an FTC TeleOp (robot-centric or field-centric with an IMU heading), with motor speed scaled by a battery model: 14 V at the start, drained by the flywheel, sagging under load. The turret aims by itself within its cable limit (URAN V2 ±200°, Bumble V and Silver Bullet Blaster a full turn each way) and unwinds through the front; the flywheel speed comes from a ballistic solution for the distance to the HIVE cell, and the spread grows with range.
 
 **Automatic referee.** Six rules from the game manual are judged from physics contacts and match state. Pinning (G421) checks the footprint corners of a robot held against a wall or field element for 3 seconds; ramming the HIVE (G417) uses the contact speed with its frame. Fouls go to the opponent's score, a second yellow card becomes a red one, and every call is listed on the results screen.
 
@@ -96,11 +96,11 @@ Open http://localhost:5173, connect a gamepad (PS4, PS5 or Logitech F310) and pr
 
 Before a match, practice or online game you pick a robot: alliance, camera and drive mode, with a card of the robot's figures (rapid fire, weight, drive, top speed, turret, what it picks up, Flower Mode).
 
-- **URAN V1** (team URAN92): model from the team's CAD, mecanum drive on 518 RPM motors with 82 mm wheels (≈2.2 m/s), 9 kg, 44 × 32 cm. Rapid fire: all 4 balls in 0.4 s.
+- **URAN V2** (team URAN92; it replaced URAN V1): model from the team's CAD, mecanum drive on 518 RPM motors with 82 mm wheels (≈2.2 m/s), 9 kg, 44 × 32 cm (53 cm with the arm down). Rapid fire: all 4 balls in 0.4 s. Flower Mode: the U-shaped push-back arm in front of the intake, like Bumble V's.
 - The turret turns to the target by itself; the wheels, intake, transfer and flywheel spin like on the real robot.
 - Shooter accuracy depends on the distance to the cell: within 1 m it almost always scores, at 2.2 m the spread is large.
-- The URAN V1 intake can't reach balls inside the flowers.
-- URAN V1 picks up and shoots only POLLEN; it drives over NECTAR (`intakes` in `src/robot/robots.ts`).
+- With the arm up, the URAN V2 intake can't reach balls inside the flowers.
+- URAN V2 picks up and shoots only POLLEN; it drives over NECTAR (`intakes` in `src/robot/robots.ts`).
 - **Bumble V** (team SWB): model from the team's CAD, mecanum drive on 522 RPM motors with 96 mm wheels (≈2.6 m/s), 11 kg, 46 × 28 cm. A two-flywheel shooter on a turret that turns a full turn each way. Picks up and shoots only POLLEN. Rapid fire: 4 balls in 0.7 s. Its front arm (Flower Mode): lowered at a FLOWER, it pulls the POLLEN out of the bottom by itself, straight into the intake, no intake button needed. Lowered right up against a FLOWER, a wall or a robot, the arm swings down only until it touches and rests there; it goes the rest of the way as the robot backs off.
 - **Silver Bullet Blaster** (team SWB): model from the team's CAD, mecanum drive on 435 RPM motors with 104 mm wheels (≈2.4 m/s), 12.5 kg, 42 × 37 cm (55 cm with the arm down). Picks up both POLLEN and NECTAR and has **two turrets**, each fed by its own lane: the left one shoots POLLEN, the right one NECTAR, both at once. Rapid fire: 4 balls in 1 s. Flower Mode like Bumble V's: a U-shaped arm on the front intake axle, lifted by a servo winch; lowered, it can't take balls off the floor but pulls POLLEN out of a FLOWER.
 
@@ -108,11 +108,11 @@ Adding a robot from CAD (STEP):
 
 ```bash
 pip install cascadio==0.1.1 numpy
-python3 -c "import cascadio; cascadio.step_to_glb('Robots/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.8, tol_angular=0.45, include_materials=True)"
-node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb tools/robots/uran-v1.json
+python3 -c "import cascadio; cascadio.step_to_glb('Robots/Uran 92 V2/Jedi92.step', 'robot-raw.glb', tol_linear=0.8, tol_angular=0.45, include_materials=True)"
+node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v2.glb tools/robots/uran-v2.json
 ```
 
-`tools/robots/uran-v1.json` (and the others) describes the robot's moving parts: which CAD axis is up (`up`: Fusion exports +y or +z) and forward, which CAD parts are the turret, flywheels, intake and transfer shafts and wheels, and which axis each one spins around (`reverse` for one that turns the other way). `fixed` lists parts that never move even when they sit next to a spinning one (for example, belts around the wheel pulleys); `triangles` and `error` set how much the model is simplified, and `translucent` lists CAD colors of clear panels to show see-through (STEP files lose transparency). For a new robot, copy this file and adjust the nodes and axes to its CAD, then add the robot to `src/robot/robots.ts`: size, motor, wheels, weight, shooter (including how far its turret turns), team logo in `public/assets/teams/`; for a folding arm, `node tools/arm-reach.mjs <model.glb> <upAngle>` measures `arm.reach`. A Fusion 360 `.f3z` can't be read without Fusion: export it as STEP with "Save to my computer".
+`tools/robots/uran-v2.json` (and the others) describes the robot's moving parts: which CAD axis is up (`up`: Fusion exports +y or +z) and forward, assemblies to leave out (`drop`), which CAD parts are the turret, flywheels, intake and transfer shafts and wheels, and which axis each one spins around (`reverse` for one that turns the other way). `fixed` lists parts that never move even when they sit next to a spinning one (for example, belts around the wheel pulleys); `triangles` and `error` set how much the model is simplified, and `translucent` lists CAD colors of clear panels to show see-through (STEP files lose transparency). For a new robot, copy this file and adjust the nodes and axes to its CAD, then add the robot to `src/robot/robots.ts`: size, motor, wheels, weight, shooter (including how far its turret turns), team logo in `public/assets/teams/`; for a folding arm, `node tools/arm-reach.mjs <model.glb> <upAngle>` measures `arm.reach`. A Fusion 360 `.f3z` can't be read without Fusion: export it as STEP with "Save to my computer".
 
 ## Modes
 
@@ -124,7 +124,7 @@ A ball that leaves the field comes back after 5 seconds (manual 10.8.2): POLLEN 
 
 During play the screen shows only the timer with the score and the robot battery, like on a Driver Station: a green block with the current voltage and the lowest one this match in brackets. A match starts at 14 V; a flywheel left spinning drains the battery and the robot drives slower (motor speed is proportional to voltage).
 
-The turret can't spin endlessly (its wires would twist): URAN V1's turns at most 200° each way (Bumble V's and Silver Bullet Blaster's a full turn), and when the target moves past that, the turret swings back around through the front.
+The turret can't spin endlessly (its wires would twist): URAN V2's turns at most 200° each way (Bumble V's and Silver Bullet Blaster's a full turn), and when the target moves past that, the turret swings back around through the front.
 
 The camera is chosen before the game: **driver view**, **audience view** (from the stands) or **follow robot** (behind the robot). It can't be changed during a match; only the follow camera looks forward or back with R3 (it doesn't rotate with the robot, it just follows it).
 
@@ -153,7 +153,9 @@ The server keeps the high scores. With no setup it writes them to `data/records.
 2. On the database page, open the **REST API** tab and copy `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
 3. In Render: service `ursim` → **Environment** → **Add Environment Variable** → add both variables with those values → **Save Changes**.
 
-After the restart the server log shows `High scores: upstash`.
+After the restart the server log shows `High scores: upstash`, and `https://<address>/health` shows `"records": "upstash"` (`"file"` means the tables are lost on the next restart).
+
+Without a database the game still gets its own best scores back: each browser remembers the bests it sent and sends them again when a restarted server no longer has them (at start and when High scores opens).
 
 ## Online
 
@@ -263,7 +265,7 @@ Health check: `https://<address>/health`.
 
 - `TIP_LOAD`, `NECTAR_WEIGHT` and `TIP_DELAY` in `src/sim/HiveSim.ts`: a HIVE tips 3 s after its top cell holds the weight of 10 POLLEN (a NECTAR weighs as much as 2 POLLEN: 10 POLLEN = 5 NECTAR). At the start of a match the cell already holds 3 NECTAR (manual 10.3.1), so the first tip needs only 4 POLLEN.
 - `SHOOTER` in `src/sim/Mechanisms.ts`: flywheel speed, entry angle.
-- `shooter.rapidFire` in `src/robot/robots.ts`: seconds from the first to the last of 4 balls (URAN V1 0.4 s, Bumble V 0.7 s, Silver Bullet Blaster 1 s per turret).
+- `shooter.rapidFire` in `src/robot/robots.ts`: seconds from the first to the last of 4 balls (URAN V2 0.4 s, Bumble V 0.7 s, Silver Bullet Blaster 1 s per turret).
 - `ROBOT_HIT` in `src/sim/Simulation.ts`: how much speed a ball keeps as it leaves a robot that hit it.
 - `shooter.sweetSpot` / `shooter.maxRange` in `src/robot/robots.ts`: the robot's accurate shooting range.
 
@@ -292,6 +294,6 @@ npm run build
 
 ## License
 
-The code is released under the [MIT License](LICENSE). The field, HIVE and game element models are converted from *FIRST*'s official BIOBUZZ CAD, and the BIOBUZZ logo is a *FIRST* trademark; the URAN V1 robot model and the URAN logo belong to team URAN92, the Bumble V and Silver Bullet Blaster models and the SWB logo to team SWB.
+The code is released under the [MIT License](LICENSE). The field, HIVE and game element models are converted from *FIRST*'s official BIOBUZZ CAD, and the BIOBUZZ logo is a *FIRST* trademark; the URAN V2 robot model and the URAN logo belong to team URAN92, the Bumble V and Silver Bullet Blaster models and the SWB logo to team SWB.
 
 Unofficial fan project, not affiliated with *FIRST*®. *FIRST*®, *FIRST*® Tech Challenge and BIOBUZZ™ are trademarks of *FIRST*.

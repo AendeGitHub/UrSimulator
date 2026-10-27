@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { URAN_V1 } from '../src/robot/robots';
+import { URAN_V2 } from '../src/robot/robots';
 import { shotRange, shotSpread } from '../src/sim/Mechanisms';
 
 describe('shooting accuracy by distance', () => {
-  const acc = URAN_V1.shooter;
+  const acc = URAN_V2.shooter;
 
   it('is tight inside the sweet spot and scatters far away', () => {
     const near = shotSpread(0.9, acc);

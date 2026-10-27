@@ -1,9 +1,9 @@
 // Turns a robot CAD export into a game model with moving parts.
 //
 // Step 1 (STEP → GLB, native OpenCASCADE; needs `pip install cascadio==0.1.1 numpy`):
-//   python3 -c "import cascadio; cascadio.step_to_glb('Robots/Uran 92 V1/Jedi92.stp', 'robot-raw.glb', tol_linear=0.8, tol_angular=0.45, include_materials=True)"
+//   python3 -c "import cascadio; cascadio.step_to_glb('Robots/Uran 92 V2/Jedi92.step', 'robot-raw.glb', tol_linear=0.8, tol_angular=0.45, include_materials=True)"
 // Step 2 (this script, with the robot's part list):
-//   node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb tools/robots/uran-v1.json
+//   node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v2.glb tools/robots/uran-v2.json
 //
 // The spec says which CAD axis points up ("up": +y or +z, Fusion exports either) and forward.
 // The output faces +X (game "forward"), stands on y = 0 and is centered on its footprint.
@@ -13,6 +13,8 @@
 // "body" node.
 // Meshes carry no normals: CAD normals split every face into its own island, which blocks
 // simplification, so the game computes creased normals when it loads the model.
+// `drop` names CAD assemblies left out entirely (old parts kept in the file); a rule's `ancestor`
+// may be a list when one moving part is spread over several CAD nodes.
 // STEP exports lose transparency: `translucent` lists CAD colors (clear polycarbonate panels)
 // that become see-through again, each with its opacity.
 
@@ -67,7 +69,7 @@ function classify(node, center) {
   const lower = names.map(n => n.toLowerCase());
   if ((spec.fixed ?? []).some(f => lower.some(n => n.includes(f.toLowerCase())))) return 'body';
   for (const part of spec.parts) {
-    if (part.ancestor && !names.includes(part.ancestor)) continue;
+    if (part.ancestor && ![part.ancestor].flat().some(a => names.includes(a))) continue;
     if (part.ancestorPrefix && !names.some(n => n.startsWith(part.ancestorPrefix))) continue;
     if (part.within && !Object.entries(part.within).every(([axis, [lo, hi]]) => {
       const v = center['xyz'.indexOf(axis)];
@@ -107,7 +109,7 @@ async function main() {
     const tris = mesh.listPrimitives().reduce((t, p) => t + (p.getIndices()?.getCount() ?? 0) / 3, 0);
     total += tris;
     // Screws, nuts and pins add triangles but nothing visible at game distance.
-    if (size < spec.dropSmallerThan) {
+    if (size < spec.dropSmallerThan || (spec.drop ?? []).some(d => ancestors(node).includes(d))) {
       dropped += tris;
       continue;
     }

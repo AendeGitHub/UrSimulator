@@ -304,7 +304,8 @@ export class Mechanisms {
     const [px, , pz] = this.robot.position;
     const yaw = this.robot.yaw;
     const [fx, fz] = [Math.cos(yaw), -Math.sin(yaw)];
-    const out = this.robot.cfg.length / 2 + b.radius + 0.03;
+    // Out of the intake's mouth, or past the arm while it is (partly) down.
+    const out = (this.arm > 0 ? this.robot.cfg.length / 2 : this.intakeFront) + b.radius + 0.03;
     const [vx, vz] = this.robot.velocity;
     this.balls.release(b, [px + fx * out, b.radius + 0.01, pz + fz * out], [vx + fx * EJECT.speed, 0, vz + fz * EJECT.speed]);
     b.launch = { by: this.robot.slot, kind: 'eject', age: 0 };
