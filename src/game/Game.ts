@@ -225,7 +225,7 @@ export class Game {
         menu: () => this.toMenu(),
       }),
       connect: new ConnectScreen({ name: this.settings.name, server: this.settings.server }, {
-        create: (name, server) => this.connect(name, server, net => net.create()),
+        create: (name, server, format) => this.connect(name, server, net => net.create(format)),
         join: (name, server, code) => this.connect(name, server, net => net.join(code)),
         // Also drops a connection still on its way, so its room can't open the lobby over the menu.
         back: () => this.toMenu(),

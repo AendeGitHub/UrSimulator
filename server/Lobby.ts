@@ -50,7 +50,7 @@ export class Lobby {
         if (this.rooms.size >= MAX_ROOMS) return c.peer.sendText({ t: 'error', code: 'serverFull', message: 'Сервер заполнен, попробуй позже' });
         this.leaveRoom(id);
         const code = randomCode(code => this.rooms.has(code));
-        const room = new Room(code, this.layout, this.colliders, 1 / SNAPSHOT_RATE);
+        const room = new Room(code, this.layout, this.colliders, 1 / SNAPSHOT_RATE, msg.format === '1v1' ? '1v1' : '2v2');
         this.rooms.set(code, room);
         this.enter(c, room);
         break;

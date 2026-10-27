@@ -11,6 +11,14 @@ export const MAX_PLAYERS = 4;
 /** Snapshots per second sent to every player */
 export const SNAPSHOT_RATE = 30;
 
+/** One or two robots per alliance; everyone else in the room watches. */
+export type RoomFormat = '1v1' | '2v2';
+/** The driver spots of each format, in the order players fill them (alliances alternate). */
+export const FORMAT_SLOTS: Record<RoomFormat, Slot[]> = {
+  '1v1': ['red1', 'blue1'],
+  '2v2': ['red1', 'blue1', 'red2', 'blue2'],
+};
+
 export interface RoomPlayer {
   id: number;
   name: string;
@@ -23,6 +31,7 @@ export interface RoomPlayer {
 export interface RoomInfo {
   code: string;
   hostId: number;
+  format: RoomFormat;
   players: RoomPlayer[];
   /** What is being played right now, or null in the lobby */
   running: GameMode | null;
@@ -32,7 +41,8 @@ export interface RoomInfo {
 
 export type ClientMessage =
   | { t: 'hello'; name: string; robot?: string }
-  | { t: 'create' }
+  // No format (clients before 1 vs 1) makes a 2 vs 2 room.
+  | { t: 'create'; format?: RoomFormat }
   | { t: 'join'; code: string }
   | { t: 'slot'; slot: Slot | null }
   | { t: 'start'; mode: GameMode; rules?: RuleOptions }
@@ -41,7 +51,7 @@ export type ClientMessage =
   | { t: 'leave' };
 
 /** Why the server refused something; the browser shows it in the player's language (ui/i18n.ts). */
-export type ErrorCode = 'serverFull' | 'noRoom' | 'roomFull' | 'slotTaken' | 'matchRunning' | 'hostOnly';
+export type ErrorCode = 'serverFull' | 'noRoom' | 'roomFull' | 'slotTaken' | 'slotClosed' | 'matchRunning' | 'hostOnly';
 
 export type ServerMessage =
   | { t: 'welcome'; id: number }

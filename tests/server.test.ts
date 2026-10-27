@@ -63,6 +63,37 @@ describe('game server lobby', () => {
     expect(room.hostId).toBe(host.id);
   });
 
+  it('makes 1 vs 1 rooms: two drivers, everyone else watches', () => {
+    const lobby = new Lobby(layout, colliders);
+    const host = connect(lobby, 'Max');
+    lobby.handle(host.id, { t: 'create', format: '1v1' });
+    const code = host.peer.room!.code;
+    const friend = connect(lobby, 'Anya');
+    lobby.handle(friend.id, { t: 'join', code });
+    const third = connect(lobby, 'Lev');
+    lobby.handle(third.id, { t: 'join', code });
+    expect(host.peer.room!.format).toBe('1v1');
+    expect(host.peer.room!.players.map(p => [p.name, p.slot])).toEqual([['Max', 'red1'], ['Anya', 'blue1'], ['Lev', null]]);
+
+    lobby.handle(third.id, { t: 'slot', slot: 'red2' });
+    expect(third.peer.errorCodes).toEqual(['slotClosed']);
+    expect(third.peer.room!.players.find(p => p.id === third.id)!.slot).toBeNull();
+
+    lobby.handle(host.id, { t: 'start', mode: 'match' });
+    runFor(lobby, 0.1);
+    expect(third.peer.snapshots.at(-1)!.robots.map(r => r.slot)).toEqual(['red1', 'blue1']);
+  });
+
+  it('makes 2 vs 2 rooms for clients that send no format', () => {
+    const lobby = new Lobby(layout, colliders);
+    const host = connect(lobby, 'Max');
+    lobby.handle(host.id, { t: 'create' });
+    expect(host.peer.room!.format).toBe('2v2');
+    lobby.handle(host.id, { t: 'slot', slot: 'blue2' });
+    expect(host.peer.room!.players[0].slot).toBe('blue2');
+    expect(host.peer.errorCodes).toEqual([]);
+  });
+
   it('rejects wrong codes, a fifth player and starts by guests', () => {
     const lobby = new Lobby(layout, colliders);
     const host = connect(lobby, 'A');

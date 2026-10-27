@@ -6,7 +6,7 @@ import type { GameMode, RobotInput, Slot } from '../sim/types';
 import { SnapshotBuffer } from './interpolate';
 import type { RuleOptions } from '../sim/Referee';
 import { t } from '../ui/i18n';
-import { DEFAULT_PORT, type ClientMessage, type RoomInfo, type ServerMessage } from './protocol';
+import { DEFAULT_PORT, type ClientMessage, type RoomFormat, type RoomInfo, type ServerMessage } from './protocol';
 
 export interface NetEvents extends SessionEvents {
   room(room: RoomInfo | null): void;
@@ -91,8 +91,8 @@ export class NetSession implements Session {
     return this.room?.players.find(p => p.id === this.myId)?.slot ?? null;
   }
 
-  create(): void {
-    this.send({ t: 'create' });
+  create(format: RoomFormat): void {
+    this.send({ t: 'create', format });
   }
 
   join(code: string): void {

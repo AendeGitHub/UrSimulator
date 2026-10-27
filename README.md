@@ -8,7 +8,7 @@
 
 ![Main menu](docs/menu.jpg)
 
-Drive **URAN V1**, a real competition robot built from its team's CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN and NECTAR, launch them into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. Play **online 2 vs 2** with friends: up to four players join a room with a 4-letter code. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
+Drive **URAN V1**, a real competition robot built from its team's CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN and NECTAR, launch them into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. Play **online 1 vs 1 or 2 vs 2** with friends: they join your room with a 4-letter code. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
 
 ![In game](docs/game.jpg)
 
@@ -71,7 +71,7 @@ flowchart LR
 
 **Desktop app and CI.** The same build runs in Electron, served over a custom `app://` protocol so that fetch, WebAssembly and localStorage work as on the website. GitHub Actions builds the Windows, macOS (universal) and Linux zips on native runners.
 
-**Tests.** 88 Vitest tests in 13 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules, server rooms and house rules, input bindings, high scores and translations.
+**Tests.** 90 Vitest tests in 13 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules, server rooms and house rules, input bindings, high scores and translations.
 
 | Area | Tools |
 |---|---|
@@ -115,7 +115,7 @@ node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb tool
 
 - **Match 2:30**: like at a competition: AUTO 30 s → 3 s break → TELEOP 2:00, scoring per the game manual, and an FTC-style results screen at the end (R to play again, Esc for the menu). There is no autonomous code yet: you drive during those 30 seconds yourself.
 - **Practice**: no timer; points and HIVE tips are still counted.
-- **Online 2 vs 2**: up to 4 players per room (Red 1/2, Blue 1/2), a match or a shared practice.
+- **Online**: a 1 vs 1 room (Red 1, Blue 1) or a 2 vs 2 room (Red 1/2, Blue 1/2), a match or a shared practice. Up to 4 people per room; anyone without a driver spot watches.
 
 A ball that leaves the field comes back after 5 seconds (manual 10.8.2): POLLEN is placed on the field next to the nearest wall, and NECTAR goes to that alliance's human player, who can bring it back in right away (G427).
 
@@ -166,7 +166,7 @@ npm run dev
 npm run server
 ```
 
-Then **Online 2 vs 2 → Create room**, and friends join with the 4-letter code.
+Then **Online → 1 vs 1 room** or **2 vs 2 room**, and friends join with the 4-letter code.
 
 - **Friends on the same Wi-Fi:** run `npm run dev:lan` instead of `npm run dev`; friends open `http://<your Mac's IP>:5173`.
 - **Over the internet:** the server is hosted on [Render](https://render.com) from `render.yaml` (see "Hosting online" below).
@@ -177,7 +177,7 @@ The production build is one process that serves both the game and the rooms:
 npm run build && npm run build:server && PORT=8787 npm start
 ```
 
-The server address can be changed under **Online 2 vs 2 → Server address** or with a `?server=wss://…` link.
+The server address can be changed under **Online → Server address** or with a `?server=wss://…` link.
 
 ## Settings
 

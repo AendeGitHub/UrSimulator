@@ -1,6 +1,7 @@
-// Online screens: connect (name, server, room code) and the room lobby with the four driver slots.
+// Online screens: connect (name, server, new 1 vs 1 or 2 vs 2 room, or a room code) and the room
+// lobby with its driver slots.
 
-import { normalizeCode, type RoomInfo } from '../net/protocol';
+import { normalizeCode, type RoomFormat, type RoomInfo } from '../net/protocol';
 import { robotById } from '../robot/robots';
 import { SLOT_NAMES, type Slot } from '../sim/types';
 import { h } from './dom';
@@ -9,7 +10,7 @@ import type { Screen } from './menus';
 import { MenuNav } from './MenuNav';
 
 export interface ConnectActions {
-  create(name: string, server: string): void;
+  create(name: string, server: string, format: RoomFormat): void;
   join(name: string, server: string, code: string): void;
   back(): void;
 }
@@ -34,7 +35,8 @@ export class ConnectScreen implements Screen {
         h('div', { class: 'panel' },
           ht('h3', {}, 'online.newRoom'),
           ht('p', { class: 'muted' }, 'online.newRoomAbout'),
-          ht('button', { class: 'btn btn-primary', onclick: () => this.go(() => actions.create(this.nameValue, this.server.value.trim())) }, 'online.create')),
+          ht('button', { class: 'btn btn-primary', onclick: () => this.create(actions, '1v1') }, 'online.create1v1'),
+          ht('button', { class: 'btn btn-primary', onclick: () => this.create(actions, '2v2') }, 'online.create2v2')),
         h('div', { class: 'panel' },
           ht('h3', {}, 'online.joinTitle'),
           this.code,
@@ -49,6 +51,10 @@ export class ConnectScreen implements Screen {
 
   private get nameValue(): string {
     return this.name.value;
+  }
+
+  private create(actions: ConnectActions, format: RoomFormat): void {
+    this.go(() => actions.create(this.nameValue, this.server.value.trim(), format));
   }
 
   private join(actions: ConnectActions): void {
@@ -97,14 +103,16 @@ export class LobbyScreen implements Screen {
       h('span', { class: 'slot-player' }, p ? `${p.name}${p.id === room.hostId ? ' ★' : ''}${mine ? t('lobby.you') : ''}` : t('lobby.free')),
       p ? h('span', { class: 'slot-robot' }, h('img', { src: robotById(p.robot).teamLogo, alt: '' }), robotById(p.robot).name) : '');
     };
+    // Servers from before 1 vs 1 send no format: their rooms are 2 vs 2.
+    const format = room.format ?? '2v2';
     const watchers = room.players.filter(p => !p.slot);
     this.el.replaceChildren(
-      h('h2', {}, t('lobby.title')),
+      h('h2', {}, `${t('lobby.title')} · ${t(format === '1v1' ? 'online.1v1' : 'online.2v2')}`),
       h('div', { class: 'room-code' }, room.code),
       h('p', { class: 'muted' }, t('lobby.share'), t('lobby.server', { url: serverUrl })),
       h('div', { class: 'slots' },
-        h('div', { class: 'slot-col' }, card('red1'), card('red2')),
-        h('div', { class: 'slot-col' }, card('blue1'), card('blue2'))),
+        h('div', { class: 'slot-col' }, card('red1'), format === '2v2' ? card('red2') : ''),
+        h('div', { class: 'slot-col' }, card('blue1'), format === '2v2' ? card('blue2') : '')),
       watchers.length ? h('p', { class: 'muted' }, t('lobby.watching', { names: watchers.map(p => p.name).join(', ') })) : '',
       room.running ? h('p', { class: 'warn' }, t('lobby.running')) : '',
       h('div', { class: 'menu-buttons' },
