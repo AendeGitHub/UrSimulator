@@ -34,7 +34,11 @@
 xattr -cr /Applications/UrSim.app
 ```
 
-**Linux.** Распакуй архив и запусти исполняемый файл `ursim` из распакованной папки.
+**Linux.** Распакуй архив и запусти `./ursim` из распакованной папки. Если приложение сразу закрывается с ошибкой про sandbox (бывает на Ubuntu 24.04 и новее), выполни один раз в этой папке:
+
+```bash
+sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox
+```
 
 `F11` — полный экран.
 
