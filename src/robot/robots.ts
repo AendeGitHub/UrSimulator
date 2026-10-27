@@ -19,6 +19,8 @@ export interface ShooterSpec {
   modelYaw: number;
   /** How far the turret turns each way from straight ahead before its cables stop it, rad */
   turretLimit: number;
+  /** Seconds between shots while transferring (how fast it fires) */
+  fireInterval: number;
 }
 
 /**
@@ -30,6 +32,8 @@ export interface ArmSpec {
   travel: number;
   /** How far the model's arm turns up from its CAD pose (lowered), rad */
   upAngle: number;
+  /** The lowered arm's box in front of the frame: forward from..to and up from..to, m */
+  box: { x: [number, number]; y: [number, number] };
 }
 
 export interface RobotDefinition {
@@ -52,6 +56,8 @@ export interface RobotDefinition {
   shooter: ShooterSpec;
   /** Game pieces the intake picks up; it drives over the others */
   intakes: BallKind[];
+  /** Forward distance of the intake's mouth from the footprint center, if not at its front edge, m */
+  intakeFront?: number;
   arm?: ArmSpec;
   /**
    * Where held balls sit in the model (robot frame: forward, up, right; m): `first` is the ball
@@ -88,7 +94,7 @@ export const URAN_V1: RobotDefinition = {
   // Flywheel shooter on a turret (axis measured from the CAD turret ring); balls leave on the side
   // that faces the front of the robot in the CAD. From the opening side of a cell the field allows
   // at most ~2.3 m, so the accuracy scale fits that.
-  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: Math.PI },
+  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: Math.PI, fireInterval: 0.5 },
   // URAN V1 plays POLLEN only: NECTAR stays on the field.
   intakes: ['pollen'],
   // A row under the transfer rollers, from the turret forward to the intake.
@@ -106,10 +112,12 @@ export const BUMBLE_V: RobotDefinition = {
   lowModel: 'assets/robots/bumble-v-low.glb',
   // On the side plates of the drive base (the arm sticks out in front of them).
   sign: { at: -0.055, length: 0.26 },
-  // Sizes measured from the team CAD (Bumble V.step); the intake bar sticks out in front.
+  // Sizes measured from the team CAD (Bumble V.step); the lowered arm sticks out in front.
   config: {
     name: 'Bumble V',
     length: 0.459,
+    // The frame alone: the arm's part of the footprint only collides while it is down.
+    frame: { length: 0.351, offset: -0.054 },
     width: 0.28,
     height: 0.404,
     mass: 11,
@@ -122,10 +130,12 @@ export const BUMBLE_V: RobotDefinition = {
   },
   // Two flywheels on a turret that turns a full turn each way: the ball is squeezed between the
   // low front wheel and the high back one and leaves forward over the front wheel (camera side).
-  shooter: { at: [-0.084, 0], height: 0.33, exit: 0.06, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: 2 * Math.PI },
+  shooter: { at: [-0.084, 0], height: 0.33, exit: 0.06, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: 2 * Math.PI, fireInterval: 0.6 },
   intakes: ['pollen'],
   // The bush-back arm on the front intake axle, driven by a servo.
-  arm: { travel: 0.4, upAngle: 1.85 },
+  arm: { travel: 0.4, upAngle: 1.85, box: { x: [0.12, 0.23], y: [0.035, 0.18] } },
+  // The front rollers sit behind the arm, at the front plate of the frame.
+  intakeFront: 0.11,
   // Up the transfer ramp, from under the turret forward to the intake rollers.
   storage: { first: [-0.09, 0.13, 0], step: [0.06, 0, 0] },
 };

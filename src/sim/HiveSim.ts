@@ -7,9 +7,13 @@ import type { Alliance } from '../robot/robotConfig';
 import type { Ball, BallSim } from './BallSim';
 import type { ColliderPart } from './colliders';
 
-/** NECTAR weighs as much as 2 POLLEN; a cell tips with the weight of 10 POLLEN (5 NECTAR). */
-export const NECTAR_WEIGHT = 2;
-export const TIP_LOAD = 10;
+/**
+ * A cell tips under 8 POLLEN or 5 NECTAR. In units of 1/5 POLLEN (= 1/8 NECTAR) a POLLEN weighs 5,
+ * a NECTAR 8 and the cell tips at 40; mixed loads add up the same way.
+ */
+export const POLLEN_WEIGHT = 5;
+export const NECTAR_WEIGHT = 8;
+export const TIP_LOAD = 40;
 /**
  * A full cell does not drop at once: the dampers hold it for 3 s, and teams can keep launching
  * into it meanwhile.
@@ -17,7 +21,8 @@ export const TIP_LOAD = 10;
 export const TIP_DELAY = 3;
 /** How far the hive sags toward the tip while the dampers give way. */
 const SAG = (6 * Math.PI) / 180;
-const TIP_DURATION = 0.7;
+/** Seconds the HIVE takes to turn over once the dampers let go */
+const TIP_DURATION = 1.8;
 
 export class HiveSim {
   state: HiveState = 'A';
@@ -75,7 +80,7 @@ export class HiveSim {
 
   step(dt: number, balls: BallSim): void {
     if (this.tipping === null) {
-      const load = this.ballsInUpCell(balls).reduce((s, b) => s + (b.kind === 'nectar' ? NECTAR_WEIGHT : 1), 0);
+      const load = this.ballsInUpCell(balls).reduce((s, b) => s + (b.kind === 'nectar' ? NECTAR_WEIGHT : POLLEN_WEIGHT), 0);
       const rest = stateAngle(this.alliance, this.state);
       const toward = Math.sign(stateAngle(this.alliance, this.state === 'A' ? 'B' : 'A') - rest);
       if (load >= TIP_LOAD) {

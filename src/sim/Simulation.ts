@@ -133,8 +133,8 @@ export class Simulation {
   addRobot(slot: Slot, name: string, robotId: string = DEFAULT_ROBOT_ID): PlayerRobot {
     this.removeRobot(slot);
     const def = robotById(robotId);
-    const robot = new RobotSim(this.world, slot, def.config, this.startPose(slot, def.config.length));
-    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter, def.intakes, def.arm);
+    const robot = new RobotSim(this.world, slot, def.config, this.startPose(slot, def.config.length), def.arm);
+    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter, def.intakes, def.arm, def.intakeFront ?? def.config.length / 2);
     mech.reset(this.balls.preloads(slot));
     mech.onPickup = (b, at) => this.judgePickup(robot, b, at);
     robot.battery.enabled = this.rules.battery;
@@ -198,6 +198,7 @@ export class Simulation {
         robot.drive(0, 0, 0, dt);
       }
       mech.step(dt, input, enabled);
+      robot.setArmDown(mech.arm > 0.5);
       const { fl, fr, bl, br } = robot.powers;
       robot.battery.step(dt, mech.flywheel, (Math.abs(fl) + Math.abs(fr) + Math.abs(bl) + Math.abs(br)) / 4);
       input.shooterOn = input.shooterOff = input.imuReset = input.armUp = input.armDown = false;

@@ -21,14 +21,14 @@ export const SHOOTER = {
   spinDownRate: 0.7,
   /** Each shot slows the flywheel; it then recovers */
   shotDrop: 0.9,
-  feedInterval: 0.28,
   turretRate: 7,
   aimTolerance: 0.035,
   /** A target this far past the turret's stop is not worth swinging round for yet, rad */
   unwindMargin: 0.2,
 };
 
-const INTAKE = { reach: 0.09, inside: 0.06, halfWidth: 0.17, maxHeight: 0.16, interval: 0.12 };
+/** Where the intake grabs balls (from its mouth) and how often: one ball every `interval` s. */
+const INTAKE = { reach: 0.09, inside: 0.06, halfWidth: 0.17, maxHeight: 0.16, interval: 0.35 };
 /** Balls inside a flower tube: only a lowered arm reaches the flower's retrieval opening. */
 const FLOWER_TUBE = { radius: 0.09, height: 0.62 };
 /** With the arm down, a FLOWER this close in front of the robot (center from its front face, m) */
@@ -43,7 +43,8 @@ const DEG = Math.PI / 180;
 export function shotSpread(distance: number, acc: Pick<ShooterSpec, 'sweetSpot' | 'maxRange'>): { angle: number; speed: number } {
   const t = Math.max(0, Math.min(1.3, (distance - acc.sweetSpot) / (acc.maxRange - acc.sweetSpot)));
   const k = t * t;
-  return { angle: 0.4 * DEG + k * 4.5 * DEG, speed: 0.006 + k * 0.07 };
+  // Even close in, no robot is perfect: a little scatter on every shot.
+  return { angle: 0.8 * DEG + k * 4.5 * DEG, speed: 0.009 + k * 0.07 };
 }
 
 export type ShotRange = 'near' | 'mid' | 'far';
@@ -99,7 +100,9 @@ export class Mechanisms {
     private readonly flowers: [number, number][],
     private readonly spec: ShooterSpec,
     private readonly intakes: readonly BallKind[],
-    private readonly armSpec?: ArmSpec,
+    private readonly armSpec: ArmSpec | undefined,
+    /** Forward distance of the intake's mouth from the footprint center, m */
+    private readonly intakeFront: number,
   ) {}
 
   reset(preloads: Ball[]): void {
@@ -177,7 +180,7 @@ export class Mechanisms {
     const [px, , pz] = this.robot.position;
     const yaw = this.robot.yaw;
     const [fx, fz] = [Math.cos(yaw), -Math.sin(yaw)];
-    const front = this.robot.cfg.length / 2;
+    const front = this.intakeFront;
     for (const b of this.balls.all) {
       if (b.state !== 'field' || !this.intakes.includes(b.kind)) continue;
       const [x, y, z] = this.balls.position(b);
@@ -291,6 +294,6 @@ export class Mechanisms {
     this.balls.release(b, this.launchPoint(), [v[0] + rvx, v[1], v[2] + rvz]);
     b.launch = { by: this.robot.slot, kind: 'shot', age: 0 };
     this.flywheel *= SHOOTER.shotDrop;
-    this.feedTimer = SHOOTER.feedInterval;
+    this.feedTimer = this.spec.fireInterval;
   }
 }

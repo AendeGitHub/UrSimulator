@@ -4,6 +4,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import type { Vec3 } from '../field/layout';
 import { chassisSpeeds, forwardVector, mecanumPowers, rightVector, wrapAngle, type WheelPowers } from '../robot/mecanum';
 import type { Alliance, RobotConfig } from '../robot/robotConfig';
+import type { ArmSpec } from '../robot/robots';
 import { Battery } from './Battery';
 import { slotAlliance, type Slot } from './types';
 
@@ -25,7 +26,10 @@ export class RobotSim {
   powers: WheelPowers = { fl: 0, fr: 0, bl: 0, br: 0 };
   readonly battery = new Battery();
 
-  constructor(private readonly world: RAPIER.World, readonly slot: Slot, readonly cfg: RobotConfig, pose: Pose) {
+  /** A folding arm's box, solid only while the arm is down */
+  private readonly armCollider: RAPIER.Collider | null = null;
+
+  constructor(private readonly world: RAPIER.World, readonly slot: Slot, readonly cfg: RobotConfig, pose: Pose, arm?: ArmSpec) {
     this.alliance = slotAlliance(slot);
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
@@ -34,9 +38,10 @@ export class RobotSim {
         .setCanSleep(false),
     );
     const bodyHeight = cfg.height - GROUND_CLEARANCE;
+    const frame = cfg.frame ?? { length: cfg.length, offset: 0 };
     this.collider = world.createCollider(
-      RAPIER.ColliderDesc.cuboid(cfg.length / 2, bodyHeight / 2, cfg.width / 2)
-        .setTranslation(0, GROUND_CLEARANCE + bodyHeight / 2, 0)
+      RAPIER.ColliderDesc.cuboid(frame.length / 2, bodyHeight / 2, cfg.width / 2)
+        .setTranslation(frame.offset, GROUND_CLEARANCE + bodyHeight / 2, 0)
         .setMass(cfg.mass)
         // Traction comes from the drive controller below, so the body itself slides freely.
         .setFriction(0)
@@ -44,7 +49,25 @@ export class RobotSim {
         .setRestitution(0.05),
       this.body,
     );
+    if (arm) {
+      const [x0, x1] = arm.box.x;
+      const [y0, y1] = arm.box.y;
+      this.armCollider = world.createCollider(
+        RAPIER.ColliderDesc.cuboid((x1 - x0) / 2, (y1 - y0) / 2, cfg.width / 2)
+          .setTranslation((x0 + x1) / 2, (y0 + y1) / 2, 0)
+          .setMass(0)
+          .setFriction(0)
+          .setRestitution(0.05),
+        this.body,
+      );
+      this.armCollider.setEnabled(false);
+    }
     this.setPose(pose);
+  }
+
+  /** The arm's box pushes balls and robots only while the arm is down. */
+  setArmDown(down: boolean): void {
+    if (this.armCollider && this.armCollider.isEnabled() !== down) this.armCollider.setEnabled(down);
   }
 
   remove(): void {

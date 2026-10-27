@@ -8,7 +8,7 @@ import { idleInput } from '../src/sim/types';
 import { cellFrame } from '../src/field/hiveGeometry';
 import { total } from '../src/game/scoring';
 import type { Ball } from '../src/sim/BallSim';
-import { ROBOTS, URAN_V1 } from '../src/robot/robots';
+import { ROBOTS, URAN_V1, robotById } from '../src/robot/robots';
 
 const layout: FieldLayout = JSON.parse(fs.readFileSync('public/assets/field-layout.json', 'utf8'));
 const bin = fs.readFileSync('public/assets/field-colliders.bin');
@@ -41,17 +41,18 @@ describe('headless simulation', () => {
     expect(sim.robots.get('red1')!.robot.position[0] - x0).toBeGreaterThan(0.3);
   });
 
-  it('tips the red hive with the 4 pre-loads from in front of the opening (3 NECTAR + 4 POLLEN = 10)', () => {
+  it('tips the red hive with the 4 pre-loads from in front of the opening (3 NECTAR + 4 POLLEN ≥ 8 POLLEN)', () => {
     const { sim, toasts } = makeSim();
     const p = sim.addRobot('red1', 'test');
     sim.start('practice');
     p.robot.setPose({ x: -0.45, z: 1.35, yaw: Math.PI / 2 });
     sim.setInput('red1', { ...idleInput(), shooterOn: true });
     run(sim, 1);
+    // One shot every 0.5 s (URAN V1's fire rate)
     sim.setInput('red1', { ...idleInput(), transfer: true });
-    run(sim, 1.5);
+    run(sim, 2.2);
     sim.setInput('red1', idleInput());
-    run(sim, 6.5); // a full cell takes up to 5 s to drop
+    run(sim, 6.5); // 3 s on the dampers, then 1.8 s to turn over
     expect(sim.hives.red.tips).toBe(1);
     expect(toasts.some(t => t.includes('улей перевернулся'))).toBe(true);
   });
@@ -152,19 +153,20 @@ describe('hive tipping delay', () => {
     });
   }
 
-  it('starts with 3 NECTAR in the cell (weight 6): 4 POLLEN make 10 and it tips 3 s later', () => {
+  it('starts with 3 NECTAR in the cell (24 of 40): 4 POLLEN tip it 3 s later', () => {
     const { sim } = makeSim();
     sim.start('practice');
     fillRedCell(sim, 4);
     run(sim, 2.4);
     expect(sim.hives.red.tips).toBe(0);
     expect(sim.hives.red.tipPending).toBeGreaterThan(0.5);
-    run(sim, 1.6);
+    // The rest of the 3 s, then 1.8 s to turn over
+    run(sim, 2.6);
     expect(sim.hives.red.tips).toBe(1);
   });
 
-  it('an empty cell tips with 10 POLLEN but not with 9', () => {
-    for (const [n, tips] of [[9, 0], [10, 1]] as const) {
+  it('an empty cell tips with 8 POLLEN but not with 7', () => {
+    for (const [n, tips] of [[7, 0], [8, 1]] as const) {
       const { sim } = makeSim();
       sim.start('practice');
       emptyRedCell(sim);
@@ -172,18 +174,20 @@ describe('hive tipping delay', () => {
       run(sim, 2);
       // All of them landed in the cell and count; NECTAR would count double.
       expect(sim.hives.red.ballsInUpCell(sim.balls)).toHaveLength(n);
-      run(sim, 2);
+      run(sim, 3);
       expect(sim.hives.red.tips).toBe(tips);
     }
   });
 
-  it('5 NECTAR weigh as much as 10 POLLEN and tip it', () => {
-    const { sim } = makeSim();
-    sim.start('practice');
-    // 3 NECTAR are already in the cell; 2 more make 5.
-    dropIntoRedCell(sim, 'nectar', 2);
-    run(sim, 5);
-    expect(sim.hives.red.tips).toBe(1);
+  it('5 NECTAR tip it like 8 POLLEN, 4 do not', () => {
+    for (const [n, tips] of [[1, 0], [2, 1]] as const) {
+      const { sim } = makeSim();
+      sim.start('practice');
+      // 3 NECTAR are already in the cell; 1 more makes 4, 2 more make 5.
+      dropIntoRedCell(sim, 'nectar', n);
+      run(sim, 6);
+      expect(sim.hives.red.tips).toBe(tips);
+    }
   });
 });
 
@@ -194,7 +198,8 @@ describe('referee (manual 11.4)', () => {
   function intake(sim: Simulation, slot: 'red1' | 'blue1', b: Ball, x: number, z: number) {
     const p = sim.robots.get(slot)!;
     p.robot.setPose({ x, z, yaw: slot === 'red1' ? 0 : Math.PI });
-    sim.balls.release(b, [x + (slot === 'red1' ? 1 : -1) * (p.robot.cfg.length / 2 + 0.04), b.radius, z], [0, 0, 0]);
+    const mouth = robotById(p.robotId).intakeFront ?? p.robot.cfg.length / 2;
+    sim.balls.release(b, [x + (slot === 'red1' ? 1 : -1) * (mouth + 0.04), b.radius, z], [0, 0, 0]);
     sim.setInput(slot, { ...idleInput(), intake: true });
     run(sim, 0.3);
     sim.setInput(slot, idleInput());
@@ -247,6 +252,44 @@ describe('referee (manual 11.4)', () => {
     expect(p.mech.stored.length).toBeGreaterThanOrEqual(2);
     expect(p.mech.stored).toContain(bottom);
     expect(p.mech.stored.every(b => b.kind === 'pollen')).toBe(true);
+  });
+
+  it('fires one ball every 0.5 s (URAN V1) or 0.6 s (Bumble V)', () => {
+    for (const [robot, shots] of [['uran-v1', 3], ['bumble-v', 2]] as const) {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', robot);
+      sim.start('practice');
+      sim.setInput('red1', { ...idleInput(), shooterOn: true });
+      run(sim, 1);
+      const before = p.mech.stored.length;
+      // Shots at 0 and every interval after: 0, 0.5, 1.0 s or 0, 0.6 s within 1.1 s.
+      sim.setInput('red1', { ...idleInput(), transfer: true });
+      run(sim, 1.1);
+      expect(before - p.mech.stored.length, robot).toBe(shots);
+    }
+  });
+
+  it("Bumble V's arm box only pushes balls while the arm is down", () => {
+    const moved = (down: boolean) => {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', 'bumble-v');
+      sim.start('practice');
+      p.robot.setPose({ x: -1.0, z: 0.2, yaw: 0 });
+      if (down) sim.setInput('red1', { ...idleInput(), armDown: true });
+      run(sim, 0.6);
+      // A POLLEN a little beyond the lowered arm's tip, then creep ~8 cm toward it.
+      const b = sim.balls.all.find(x => x.kind === 'pollen' && x.state === 'field' && sim.balls.position(x)[1] < 0.06)!;
+      const at: [number, number, number] = [-1.0 + 0.3, b.radius, 0.2];
+      sim.balls.release(b, at, [0, 0, 0]);
+      sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.2 });
+      run(sim, 0.2);
+      sim.setInput('red1', idleInput());
+      run(sim, 0.2);
+      return Math.hypot(sim.balls.position(b)[0] - at[0], sim.balls.position(b)[2] - at[2]);
+    };
+    // Raised, the frame stops short of the ball; lowered, the arm pushes it.
+    expect(moved(false)).toBeLessThan(0.01);
+    expect(moved(true)).toBeGreaterThan(0.02);
   });
 
   it('URAN V1 has no arm: the arm buttons change nothing', () => {

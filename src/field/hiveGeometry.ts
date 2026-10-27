@@ -101,8 +101,8 @@ export function aimPoint(alliance: Alliance, cell: CellId, pivot: Vec3, angle: n
   return add(f.center, scale(f.u, CELL_HALF_DEPTH - 0.04));
 }
 
-/** Smooth fall from one stable state to the other; the dampers slow the end. */
+/** Smooth fall from one stable state to the other: it eases off the dampers and settles gently. */
 export function tipProgress(t: number): number {
   const x = Math.min(1, Math.max(0, t));
-  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  return 0.5 - 0.5 * Math.cos(Math.PI * x);
 }
