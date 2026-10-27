@@ -1,27 +1,28 @@
 # UrSim
 
-Симулятор FIRST Tech Challenge для сезона 2026–2027 **BIOBUZZ**. Неофициальный, не связан с FIRST.
+A *FIRST* Tech Challenge simulator for the 2026–2027 season, **BIOBUZZ**. Unofficial, not affiliated with *FIRST*.
 
-## Запуск
+[Русский](README.ru.md)
+
+## Running
 
 ```bash
 npm install
 npm run dev
 ```
 
-Открыть http://localhost:5173. Подключить геймпад (PS4, PS5 или Logitech F310) и нажать любую кнопку.
+Open http://localhost:5173, connect a gamepad (PS4, PS5 or Logitech F310) and press any button.
 
-## Роботы
+## Robots
 
-Перед матчем, тренировкой или онлайном открывается выбор робота: команда, характеристики, альянс, камера и режим управления.
+Before a match, practice or online game you pick a robot: team, specs, alliance, camera and drive mode.
 
-- **URAN V1** (команда URAN92): модель из CAD команды, mecanum на моторах 518 RPM с колёсами 82 мм (≈2,2 м/с), 9 кг, 44 × 32 см.
-- Турель сама поворачивается к цели; колёса, интейк, трансфер и маховик крутятся как на настоящем роботе.
-- Точность шутера зависит от расстояния до ячейки: до 1 м — почти всегда попадает, к 2,2 м — сильный разброс. HUD подсказывает: «точно / средне / далеко».
-- Захват URAN V1 не достаёт мячи из цветов.
-- Взять NECTAR соперника (G408): 1-й раз — предупреждение, 2-й — жёлтая карточка, 3-й — красная карточка и 0 очков.
+- **URAN V1** (team URAN92): model from the team's CAD, mecanum drive on 518 RPM motors with 82 mm wheels (≈2.2 m/s), 9 kg, 44 × 32 cm.
+- The turret turns to the target by itself; the wheels, intake, transfer and flywheel spin like on the real robot.
+- Shooter accuracy depends on the distance to the cell: within 1 m it almost always scores, at 2.2 m the spread is large.
+- The URAN V1 intake can't reach balls inside the flowers.
 
-Как добавить робота из CAD (STEP):
+Adding a robot from CAD (STEP):
 
 ```bash
 pip install cascadio==0.1.1 numpy
@@ -29,54 +30,54 @@ python3 -c "import cascadio; cascadio.step_to_glb('Robot/Uran 92 V1/Jedi92.stp',
 node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb tools/robots/uran-v1.json
 ```
 
-В `tools/robots/uran-v1.json` описаны подвижные части робота: какие детали CAD — турель, маховик, валы интейка и трансфера, колёса, и вокруг какой оси они крутятся. В `fixed` перечислены детали, которые не двигаются, даже если стоят рядом с крутящейся (например, ремни вокруг шкивов колёс); `triangles` и `error` задают, насколько упрощать модель. Для нового робота скопируй этот файл и поправь узлы и оси под его CAD, потом добавь робота в `src/robot/robots.ts`: размеры, мотор, колёса, вес, шутер.
+`tools/robots/uran-v1.json` describes the robot's moving parts: which CAD parts are the turret, flywheel, intake and transfer shafts and wheels, and which axis each one spins around. `fixed` lists parts that never move even when they sit next to a spinning one (for example, belts around the wheel pulleys); `triangles` and `error` set how much the model is simplified. For a new robot, copy this file and adjust the nodes and axes to its CAD, then add the robot to `src/robot/robots.ts`: size, motor, wheels, weight, shooter.
 
-## Режимы
+## Modes
 
-- **Матч 2:30** — как на соревнованиях: АВТОНОМ 30 с → перерыв 3 с → TELEOP 2:00, подсчёт очков по мануалу, в конце табло как на FTC (R — ещё раз, Esc — в меню). Автонома пока нет: в эти 30 секунд управляешь сам.
-- **Тренировка** — без таймера, очки и перевороты считаются.
-- **Онлайн 2 на 2** — до 4 игроков в комнате (Red 1/2, Blue 1/2), матч или совместная тренировка.
+- **2:30 match**: like at a competition: AUTO 30 s → 3 s break → TELEOP 2:00, scoring per the game manual, and an FTC-style results screen at the end (R to play again, Esc for the menu). There is no autonomous code yet: you drive during those 30 seconds yourself.
+- **Practice**: no timer; points and HIVE tips are still counted.
+- **Online 2 vs 2**: up to 4 players per room (Red 1/2, Blue 1/2), a match or a shared practice.
 
-Мяч, вылетевший за поле, через 5 секунд возвращается (мануал 10.8.2): POLLEN кладётся на поле у ближайшей стенки, NECTAR отдаётся человеку-игроку своего альянса, и тот может сразу ввести его снова (G427).
+A ball that leaves the field comes back after 5 seconds (manual 10.8.2): POLLEN is placed on the field next to the nearest wall, and NECTAR goes to that alliance's human player, who can bring it back in right away (G427).
 
-Во время игры на экране только таймер со счётом и аккумулятор робота, как на Driver Station: зелёный блок с напряжением сейчас и самым низким за матч в скобках. В начале матча 14 В; маховик, который крутится без остановки, садит аккумулятор, и робот едет медленнее (скорость моторов пропорциональна напряжению).
+During play the screen shows only the timer with the score and the robot battery, like on a Driver Station: a green block with the current voltage and the lowest one this match in brackets. A match starts at 14 V; a flywheel left spinning drains the battery and the robot drives slower (motor speed is proportional to voltage).
 
-Турель не крутится бесконечно (мешают провода): она поворачивается не больше чем на 180° в каждую сторону, а если цель уходит дальше, турель разворачивается обратно через перед.
+The turret can't spin endlessly (its wires would twist): it turns at most 180° each way, and when the target moves past that, the turret swings back around through the front.
 
-Камера выбирается перед игрой: **вид водителя**, **вид зрителей** (с трибуны) или **за роботом**. Во время матча камеру менять нельзя; только «за роботом» по R3 смотрит вперёд или назад (камера не поворачивается вместе с роботом, а едет за ним).
+The camera is chosen before the game: **driver view**, **audience view** (from the stands) or **follow** (behind the robot). It can't be changed during a match; only the follow camera looks forward or back with R3 (it doesn't rotate with the robot, it just follows it).
 
-## Правила и судья
+## Rules and referee
 
-В «Матч 2:30» и онлайн-матчах судья сам следит за правилами из мануала (раздел 11.4). MINOR FOUL даёт сопернику 5 очков, MAJOR FOUL — 20 (строка FOUL на табло), вторая жёлтая карточка становится красной — 0 очков за матч. Все нарушения перечислены на табло после матча.
+In 2:30 matches and online matches the referee enforces the game rules from the manual (section 11.4) by itself. A MINOR FOUL gives the opponent 5 points, a MAJOR FOUL 20 (the FOUL row on the results screen), and a second yellow card becomes a red card: 0 points for the match. Every call is listed on the results screen after the match.
 
-| Правило | Что нельзя | Наказание |
+| Rule | Not allowed | Penalty |
 |---|---|---|
-| G402 | В AUTO брать мячи или толкать робота соперника на его половине поля | MAJOR FOUL за матч |
-| G405 | Выбрасывать мяч за поле (промах при броске не считается) | MAJOR FOUL за мяч |
-| G408 | Брать NECTAR соперника | предупреждение, потом жёлтая карточка |
-| G410 | Забрасывать NECTAR в цветок раньше последней минуты | MAJOR FOUL за NECTAR |
-| G417 | Таранить раму улья (быстро или дважды за 10 с) | предупреждение, потом MAJOR FOUL и жёлтая |
-| G421 | Прижимать соперника к стенке или элементу поля дольше 3 с | MAJOR FOUL и ещё один каждые 3 с |
+| G402 | In AUTO, taking balls or pushing an opponent robot on the opponent's half of the field | MAJOR FOUL per match |
+| G405 | Launching a ball out of the field (a missed shot doesn't count) | MAJOR FOUL per ball |
+| G408 | Taking the opponent's NECTAR | warning, then a yellow card |
+| G410 | Scoring NECTAR in a flower before the last minute | MAJOR FOUL per NECTAR |
+| G417 | Ramming the HIVE frame (fast, or twice within 10 s) | warning, then MAJOR FOUL and a yellow card |
+| G421 | Pinning an opponent against a wall or field element for more than 3 s | MAJOR FOUL, plus another every 3 s |
 
-Остальные правила симулятор просто не даёт нарушить: роботы стоят между периодами и после матча (G403, G404), в робота помещается максимум 4 мяча (G407), интейк берёт мячи только с пола (G409) и не достаёт из цветка (G418), а человек-игрок вводит NECTAR по правилам (G426–G428). Правила про людей, инспекцию и «намеренность» на усмотрение судьи в симуляторе не проверяются. В тренировке судьи нет.
+The other rules the simulator simply doesn't let you break: robots are stopped between periods and after the match (G403, G404), a robot holds at most 4 balls (G407), the intake picks up balls only from the floor (G409) and can't reach into a flower (G418), and the human player brings NECTAR in by the rules (G426–G428). Rules about people, inspection and intent (referee's judgement) are not checked. Practice has no referee.
 
-## Рекорды
+## High scores
 
-«Рекорды» в главном меню — топ 100 одиночных матчей 2:30 для каждого робота. У игрока одна строчка: новый лучший счёт заменяет старый. Имя для таблицы вписывается в «Рекорды» или на экране выбора робота перед матчем.
+**Рекорды** (high scores) in the main menu shows the top 100 single-player 2:30 matches for each robot. Each player has one row: a new best score replaces the old one. The name for the table is entered under high scores or on the robot select screen before a match.
 
-Рекорды хранит сервер. Без настроек он пишет их в файл `data/records.json`, но бесплатный Render стирает диск при каждом перезапуске, поэтому для сайта нужна бесплатная база [Upstash Redis](https://upstash.com):
+The server keeps the high scores. With no setup it writes them to `data/records.json`, but free Render wipes the disk on every restart, so the website needs a free [Upstash Redis](https://upstash.com) database:
 
-1. Войди на upstash.com (можно через GitHub) → **Create Database** → тип Redis, регион Frankfurt, план Free.
-2. На странице базы во вкладке **REST API** скопируй `UPSTASH_REDIS_REST_URL` и `UPSTASH_REDIS_REST_TOKEN`.
-3. В Render: сервис `ursim` → **Environment** → **Add Environment Variable** → добавь обе переменные с этими значениями → **Save Changes**.
+1. Sign in at upstash.com (GitHub works) → **Create Database** → type Redis, region Frankfurt, Free plan.
+2. On the database page, open the **REST API** tab and copy `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
+3. In Render: service `ursim` → **Environment** → **Add Environment Variable** → add both variables with those values → **Save Changes**.
 
-После перезапуска в логе сервера будет `High scores: upstash`.
+After the restart the server log shows `High scores: upstash`.
 
-## Онлайн
+## Online
 
-Онлайн-игру считает сервер: игроки шлют только нажатия, а физику, очки и таймер ведёт он, поэтому у всех одно и то же поле.
+The server runs the online game: players send only their inputs, and the server runs the physics, scoring and timer, so everyone sees the same field.
 
-Запуск у себя (два терминала):
+Running it locally (two terminals):
 
 ```bash
 npm run dev
@@ -86,118 +87,120 @@ npm run dev
 npm run server
 ```
 
-Дальше «Онлайн 2 на 2 → Создать комнату», и друзья входят по коду из 4 букв.
+Then **Онлайн 2 на 2 → Создать комнату** (Online 2 vs 2 → Create room), and friends join with the 4-letter code.
 
-- **Друзья в той же Wi-Fi сети:** вместо `npm run dev` запусти `npm run dev:lan`, друзья открывают `http://<IP твоего Mac>:5173`.
-- **Через интернет:** сервер размещается на [Render](https://render.com) по файлу `render.yaml` (см. «Размещение в интернете» ниже).
+- **Friends on the same Wi-Fi:** run `npm run dev:lan` instead of `npm run dev`; friends open `http://<your Mac's IP>:5173`.
+- **Over the internet:** the server is hosted on [Render](https://render.com) from `render.yaml` (see "Hosting online" below).
 
-Готовая сборка — это один процесс, который отдаёт и игру, и комнаты:
+The production build is one process that serves both the game and the rooms:
 
 ```bash
 npm run build && npm run build:server && PORT=8787 npm start
 ```
 
-Адрес сервера можно поменять в «Онлайн → Адрес сервера» или ссылкой `?server=wss://…`.
+The server address can be changed under **Онлайн → Адрес сервера** (Online → Server address) or with a `?server=wss://…` link.
 
-## Настройки
+## Settings
 
-«Настройки» в главном меню (и в паузе):
+**Настройки** (Settings) in the main menu (and in the pause menu):
 
-- **Управление** — любую кнопку геймпада и любую клавишу можно переназначить: нажми на неё в таблице, потом нужную кнопку или клавишу (Esc — отмена). Если она уже занята другим действием, они меняются местами. «Сбросить управление» возвращает всё как ниже.
-- **Графика** — качество (Авто / Высокое / Среднее / Низкое), тени, чёрные контуры, счётчик FPS. «Авто» само снижает разрешение и затенение, если FPS падает ниже 50.
-- **Правила** — фолы, карточки и аккумулятор (просадка напряжения и замедление робота) можно выключить. Для онлайна действуют настройки хоста.
-- **Геймпады** — какой геймпад gamepad1 и gamepad2, проверка кнопок, настройка нестандартных геймпадов.
+- **Controls**: any gamepad button and any key can be rebound: click it in the table, then press the button or key you want (Esc cancels). If it's already used by another action, the two swap. "Reset controls" restores the defaults below.
+- **Graphics**: quality (Auto / High / Medium / Low), shadows, black outlines, FPS counter. Auto lowers the resolution and ambient occlusion by itself when the frame rate drops below 50.
+- **Rules**: fouls, cards and the battery (voltage sag that slows the robot) can be turned off. Online games use the host's settings.
+- **Gamepads**: which gamepad is gamepad1 and gamepad2, a button tester, and setup for non-standard gamepads.
 
-Всё сохраняется в браузере сразу.
+Everything is saved in the browser right away.
 
-## Управление (как в FTC TeleOp, по умолчанию)
+## Controls (like an FTC TeleOp, defaults)
 
-| Действие | PS4 / PS5 | Logitech F310 | Клавиатура |
+| Action | PS4 / PS5 | Logitech F310 | Keyboard |
 |---|---|---|---|
-| Езда и стрейф | левый стик | левый стик | W A S D |
-| Поворот | правый стик | правый стик | Q / E |
-| Захват: забрать мячи спереди (держать, до 4) | L1 | LB | F |
-| Выкинуть мячи обратно (держать) | ↓ | ↓ | K |
-| Шутер включить | L2 | LT | Z |
-| Шутер выключить | R2 | RT | V |
-| Трансфер: мячи в шутер (держать; интейк тоже крутится и подаёт новые мячи прямо в шутер) | R1 | RB | Space |
-| Медленный режим (вкл/выкл) | L3 | L3 | Shift |
-| Field-centric ↔ Robot-centric | Share / Create | Back | Tab |
-| Сброс курса (IMU) | Options | Start | Enter |
-| Камера «за роботом»: вперёд / назад | R3 или тачпад | R3 | C |
-| Пауза | PS | Logitech | Esc |
-| Начать заново | — | — | R |
+| Drive and strafe | left stick | left stick | W A S D |
+| Turn | right stick | right stick | Q / E |
+| Intake: pick up balls in front (hold, up to 4) | L1 | LB | F |
+| Eject balls (hold) | ↓ | ↓ | K |
+| Shooter on | L2 | LT | Z |
+| Shooter off | R2 | RT | V |
+| Transfer: balls into the shooter (hold; the intake spins too and feeds new balls straight to the shooter) | R1 | RB | Space |
+| Slow mode (toggle) | L3 | L3 | Shift |
+| Field-centric ↔ robot-centric | Share / Create | Back | Tab |
+| Reset heading (IMU) | Options | Start | Enter |
+| Follow camera: forward / back | R3 or touchpad | R3 | C |
+| Pause | PS | Logitech | Esc |
+| Restart | — | — | R |
 
-Механизмы слушаются и gamepad1, и gamepad2 — можно играть вдвоём.
+The mechanisms listen to both gamepad1 and gamepad2, so two people can drive one robot.
 
-Турель сама наводится на верхнюю ячейку своего улья и сама подбирает скорость маховика. Стрелять нужно с той стороны, куда смотрит отверстие ячейки (после переворота — с другой).
+The turret aims at the top cell of its own HIVE and sets the flywheel speed by itself. Shoot from the side the cell's opening faces (after a tip, from the other side).
 
-У F310 сзади переключатель режимов: **X** на Windows, **D** на Mac. Если кнопки перепутаны, открой «Геймпады → Настроить кнопки».
+The F310 has a mode switch on the back: **X** on Windows, **D** on Mac. If the buttons are mixed up, open **Геймпады → Настроить кнопки** (Gamepads → Set up buttons).
 
-## Приложение и релизы
+## Desktop app and releases
 
-Игра есть и как приложение для Windows, macOS и Linux (Electron, папка `desktop/`): та же игра в своём окне, онлайн-комнаты и рекорды идут через сервер на Render. Скачать его можно со страницы релизов публичного репозитория [AendeGitHub/UrSim-Public](https://github.com/AendeGitHub/UrSim-Public/releases), код игры остаётся приватным.
+The game also comes as an app for Windows, macOS and Linux (Electron, in `desktop/`): the same game in its own window, with online rooms and high scores going through the Render server. It's downloaded from the releases page of the public repository [AendeGitHub/UrSim-Public](https://github.com/AendeGitHub/UrSim-Public/releases); the game's code stays private.
 
-Запустить приложение у себя:
+Running the app locally:
 
 ```bash
 npm run desktop
 ```
 
-Новый релиз:
+A new release:
 
-1. Подними версию в `package.json` (её видно в меню игры) и закоммить.
-2. Поставь тег и отправь его — GitHub Actions («Desktop app») соберёт zip для Windows, macOS и Linux на своих машинах:
+1. Bump the version in `package.json` (it's shown in the game menu) and commit.
+2. Tag and push the tag; GitHub Actions ("Desktop app") builds the zips for Windows, macOS and Linux on its own machines:
 
 ```bash
 git tag v1.0.1 && git push origin v1.0.1
 ```
 
-3. Когда сборка закончится, скачай архивы и выложи их на публичную страницу:
+3. When the build finishes, download the zips and put them on the public page:
 
 ```bash
 gh run download --name UrSim-Windows --name UrSim-macOS --name UrSim-Linux --dir release
 ```
 
 ```bash
-gh release create v1.0.1 release/*/*.zip --repo AendeGitHub/UrSim-Public --title "UrSim v1.0.1" --notes "Что нового: …"
+gh release create v1.0.1 release/*/*.zip --repo AendeGitHub/UrSim-Public --title "UrSim v1.0.1" --notes "What's new: …"
 ```
 
-Mac-версия подписана без сертификата Apple, поэтому при первом запуске macOS спросит разрешение (подробности — в README публичного репозитория).
+The Mac build is signed without an Apple certificate, so macOS asks for permission on the first launch (details in the public repository's README).
 
-## Размещение в интернете (Render, бесплатно)
+## Hosting online (Render, free)
 
-1. Создай на GitHub пустой **приватный** репозиторий `ursim` и отправь туда код (`git push`).
-2. Зайди на [render.com](https://render.com) через GitHub → **New → Blueprint** → выбери репозиторий `ursim` → **Apply**.
-3. Через 3–5 минут игра будет по адресу вида `https://ursim-xxxx.onrender.com`. Эту ссылку и шли друзьям.
+1. Create an empty **private** GitHub repository `ursim` and push the code to it.
+2. Go to [render.com](https://render.com), sign in with GitHub → **New → Blueprint** → pick the `ursim` repository → **Apply**.
+3. After 3–5 minutes the game is live at an address like `https://ursim-xxxx.onrender.com`. Send that link to your friends.
 
-Сервер во Франкфурте (поменять: `region` в `render.yaml`). Бесплатный сервер засыпает после 15 минут без игроков: первый вход после этого занимает около минуты. Каждый `git push` в `main` обновляет игру автоматически.
+The server is in Frankfurt (change `region` in `render.yaml`). The free server sleeps after 15 minutes without players; the first visit after that takes about a minute. Every `git push` to `main` updates the game automatically.
 
-Проверка, что сервер жив: `https://<адрес>/health`.
+Health check: `https://<address>/health`.
 
-## Что можно подстроить
+## Tuning
 
-- `TIP_LOAD`, `NECTAR_WEIGHT` и `TIP_DELAY` в `src/sim/HiveSim.ts` — улей переворачивается через 3 с после того, как в верхней ячейке набрался вес 10 POLLEN (NECTAR весит как 2 POLLEN: 10 POLLEN = 5 NECTAR). В начале матча в ячейке уже 3 NECTAR (мануал 10.3.1), поэтому первый раз хватает 4 POLLEN.
-- `SHOOTER` в `src/sim/Mechanisms.ts` — скорость маховика, темп стрельбы, угол подлёта.
-- `shooter.sweetSpot` / `shooter.maxRange` в `src/robot/robots.ts` — дальность точного броска робота.
+- `TIP_LOAD`, `NECTAR_WEIGHT` and `TIP_DELAY` in `src/sim/HiveSim.ts`: a HIVE tips 3 s after its top cell holds the weight of 10 POLLEN (a NECTAR weighs as much as 2 POLLEN: 10 POLLEN = 5 NECTAR). At the start of a match the cell already holds 3 NECTAR (manual 10.3.1), so the first tip needs only 4 POLLEN.
+- `SHOOTER` in `src/sim/Mechanisms.ts`: flywheel speed, fire rate, entry angle.
+- `shooter.sweetSpot` / `shooter.maxRange` in `src/robot/robots.ts`: the robot's accurate shooting range.
 
-## Структура
+## Layout
 
-- `Field/`, `Manual/`, `Logo/`, `Robot/` — исходные материалы (CAD, мануал, логотип).
-- `tools/convert-balls.mjs` — POLLEN и NECTAR из официального CAD (`Field/am-5851…`, `am-5852…`) в `public/assets/balls.glb`.
-- `tools/convert-field.mjs` — переводит CAD поля (STEP) в `public/assets/field.glb` и `field-layout.json`; `tools/build-colliders.mjs` — коллизии поля для браузера и сервера (`field-colliders.bin`). Оба: `npm run convert:field`.
-- `src/sim/` — вся игра без графики: физика, роботы, механизмы, ульи, матч, очки, снимки для сети. Работает и в браузере (соло), и на сервере.
-- `src/net/` — протокол, онлайн-сессия, плавная интерполяция снимков; `server/` — игровой сервер с комнатами.
-- `src/view/` — отрисовка поля, арены, мячей и роботов по состоянию мира.
-- `src/input/` — геймпады (имена кнопок как в FTC SDK), клавиатура, мастер настройки кнопок.
-- `src/robot/` — формулы меканум-шасси (как в FTC TeleOp) и список роботов (`robots.ts`).
-- `src/field/` — геометрия ячеек улья из CAD, зоны, текстура пола.
-- `src/game/` — игровой цикл, сессии (соло / онлайн), подсчёт очков, баллистика автонаведения.
-- `src/camera/`, `src/ui/` — камеры, меню, HUD, табло, результаты.
+- `Field/`, `Manual/`, `Logo/`, `Robot/`: source material (CAD, game manual, logo).
+- `tools/convert-balls.mjs`: POLLEN and NECTAR from the official CAD (`Field/am-5851…`, `am-5852…`) into `public/assets/balls.glb`.
+- `tools/convert-field.mjs` turns the field CAD (STEP) into `public/assets/field.glb` and `field-layout.json`; `tools/build-colliders.mjs` builds the field colliders for the browser and the server (`field-colliders.bin`). Both: `npm run convert:field`.
+- `src/sim/`: the whole game without graphics: physics, robots, mechanisms, HIVEs, match, scoring, network snapshots. Runs in the browser (solo) and on the server.
+- `src/net/`: protocol, online session, smooth snapshot interpolation; `server/`: the game server with rooms.
+- `src/view/`: draws the field, arena, balls and robots from the world state.
+- `src/input/`: gamepads (button names as in the FTC SDK), keyboard, button setup wizard.
+- `src/robot/`: mecanum drive math (as in an FTC TeleOp) and the robot list (`robots.ts`).
+- `src/field/`: HIVE cell geometry from CAD, zones, floor texture.
+- `src/game/`: game loop, sessions (solo / online), scoring, auto-aim ballistics.
+- `src/camera/`, `src/ui/`: cameras, menus, HUD, scoreboard, results.
 
-## Проверки
+## Checks
 
 ```bash
 npm test
 npm run build
 ```
+
+The in-game interface is in Russian for now; menu names are given above with English translations.

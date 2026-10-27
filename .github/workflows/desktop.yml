@@ -1,6 +1,6 @@
 # Builds the desktop app on GitHub's own Windows, macOS and Linux machines.
 # Run it from Actions → "Desktop app" → Run workflow (or push a tag like v1.2.0). The zips are
-# the run's artifacts; README → "Приложение и релизы" shows how they go onto the public release
+# the run's artifacts; README → "Desktop app and releases" shows how they go onto the public release
 # page (AendeGitHub/UrSim-Public).
 
 name: Desktop app
