@@ -137,7 +137,7 @@ The F310 has a mode switch on the back: **X** on Windows, **D** on Mac. If the b
 
 ## Desktop app and releases
 
-The game also comes as an app for Windows, macOS and Linux (Electron, in `desktop/`): the same game in its own window, with online rooms and high scores going through the Render server. It's downloaded from the releases page of the public repository [AendeGitHub/UrSim-Public](https://github.com/AendeGitHub/UrSim-Public/releases); the game's code stays private.
+The game also comes as an app for Windows, macOS and Linux (Electron, in `desktop/`): the same game in its own window, with online rooms and high scores going through the Render server. It's downloaded from the releases page of the public repository [AendeGitHub/UrSimulator](https://github.com/AendeGitHub/UrSimulator/releases); the game's code stays private.
 
 Running the app locally:
 
@@ -161,7 +161,7 @@ gh run download --name UrSim-Windows --name UrSim-macOS --name UrSim-Linux --dir
 ```
 
 ```bash
-gh release create v1.0.1 release/*/*.zip --repo AendeGitHub/UrSim-Public --title "UrSim v1.0.1" --notes "What's new: …"
+gh release create v1.0.1 release/*/*.zip --repo AendeGitHub/UrSimulator --title "UrSim v1.0.1" --notes "What's new: …"
 ```
 
 The Mac build is signed without an Apple certificate, so macOS asks for permission on the first launch (details in the public repository's README).

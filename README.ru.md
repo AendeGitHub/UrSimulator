@@ -137,7 +137,7 @@ npm run build && npm run build:server && PORT=8787 npm start
 
 ## Приложение и релизы
 
-Игра есть и как приложение для Windows, macOS и Linux (Electron, папка `desktop/`): та же игра в своём окне, онлайн-комнаты и рекорды идут через сервер на Render. Скачать его можно со страницы релизов публичного репозитория [AendeGitHub/UrSim-Public](https://github.com/AendeGitHub/UrSim-Public/releases), код игры остаётся приватным.
+Игра есть и как приложение для Windows, macOS и Linux (Electron, папка `desktop/`): та же игра в своём окне, онлайн-комнаты и рекорды идут через сервер на Render. Скачать его можно со страницы релизов публичного репозитория [AendeGitHub/UrSimulator](https://github.com/AendeGitHub/UrSimulator/releases), код игры остаётся приватным.
 
 Запустить приложение у себя:
 
@@ -161,7 +161,7 @@ gh run download --name UrSim-Windows --name UrSim-macOS --name UrSim-Linux --dir
 ```
 
 ```bash
-gh release create v1.0.1 release/*/*.zip --repo AendeGitHub/UrSim-Public --title "UrSim v1.0.1" --notes "Что нового: …"
+gh release create v1.0.1 release/*/*.zip --repo AendeGitHub/UrSimulator --title "UrSim v1.0.1" --notes "Что нового: …"
 ```
 
 Mac-версия подписана без сертификата Apple, поэтому при первом запуске macOS спросит разрешение (подробности — в README публичного репозитория).
