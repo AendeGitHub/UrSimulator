@@ -2,7 +2,6 @@ node_modules/
 dist/
 dist-server/
 .DS_Store
-.claude/
 
 # Source CAD and the manual (large; the robot CAD is the team's own): the game uses public/assets.
 Field/*.step
