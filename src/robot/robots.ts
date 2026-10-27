@@ -25,7 +25,7 @@ export interface ShooterSpec {
 
 /**
  * A front arm that swings down in front of the intake (Bumble V's): raised, the intake takes balls
- * off the floor; lowered, it can't, but it pulls POLLEN out of the bottom of a FLOWER (G418 B).
+ * off the floor; lowered, it can't, but at a FLOWER it pulls POLLEN out of the bottom by itself (G418 B).
  */
 export interface ArmSpec {
   /** Seconds to swing all the way up or down */
@@ -93,8 +93,8 @@ export const URAN_V1: RobotDefinition = {
   },
   // Flywheel shooter on a turret (axis measured from the CAD turret ring); balls leave on the side
   // that faces the front of the robot in the CAD. From the opening side of a cell the field allows
-  // at most ~2.3 m, so the accuracy scale fits that.
-  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: Math.PI, fireInterval: 0.5 },
+  // at most ~2.3 m, so the accuracy scale fits that. The turret turns 200° each way, a little past the back.
+  shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: (200 * Math.PI) / 180, fireInterval: 0.2 },
   // URAN V1 plays POLLEN only: NECTAR stays on the field.
   intakes: ['pollen'],
   // A row under the transfer rollers, from the turret forward to the intake.
@@ -130,7 +130,7 @@ export const BUMBLE_V: RobotDefinition = {
   },
   // Two flywheels on a turret that turns a full turn each way: the ball is squeezed between the
   // low front wheel and the high back one and leaves forward over the front wheel (camera side).
-  shooter: { at: [-0.084, 0], height: 0.33, exit: 0.06, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: 2 * Math.PI, fireInterval: 0.6 },
+  shooter: { at: [-0.084, 0], height: 0.33, exit: 0.06, sweetSpot: 1.0, maxRange: 2.2, modelYaw: 0, turretLimit: 2 * Math.PI, fireInterval: 0.4 },
   intakes: ['pollen'],
   // The bush-back arm on the front intake axle, driven by a servo.
   arm: { travel: 0.4, upAngle: 1.85, box: { x: [0.12, 0.23], y: [0.035, 0.18] } },

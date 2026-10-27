@@ -31,6 +31,11 @@ const HIVE_HIT_SPEED = 0.8;
  * `stuck`, held within `against` of a wall or field element.
  */
 const PIN = { trying: 0.3, stuck: 0.15, against: 0.03, foulEvery: 3, apart: 0.61, endAfterApart: 3 };
+/**
+ * A ball leaving a robot keeps only `keep` of its speed. Shots start inside their robot, so a ball
+ * shot less than `shotClear` s ago is left alone.
+ */
+const ROBOT_HIT = { keep: 0.35, shotClear: 0.3 };
 
 /** During AUTO each alliance owns its half of the field: red is -X (columns A–C), blue +X. */
 const onOpponentSide = (alliance: Alliance, x: number) => (alliance === 'red' ? x > 0 : x < 0);
@@ -73,6 +78,8 @@ export class Simulation {
   private readonly lastSpeed = new Map<Slot, number>();
   /** PIN counts keyed "pinner|pinned" */
   private readonly pins = new Map<string, { time: number; fouls: number; apart: number }>();
+  /** 1 for each ball (by id) that touched a robot at the last step */
+  private readonly onRobot: Uint8Array;
 
   /** Call initPhysics() first. */
   constructor(readonly layout: FieldLayout, colliders: ColliderPart[], events: MatchEvents) {
@@ -81,6 +88,7 @@ export class Simulation {
     this.zones = buildZones(layout);
     this.buildField(colliders);
     this.balls = new BallSim(this.world, layout);
+    this.onRobot = new Uint8Array(this.balls.all.length);
     const hive = (a: Alliance) => {
       const shape = colliders.find(c => c.kind === `hive_${a}`);
       if (!shape) throw new Error(`field-colliders.bin has no hive_${a}`);
@@ -209,6 +217,7 @@ export class Simulation {
     this.match.step(dt);
     this.world.step();
     this.balls.sync();
+    this.softenRobotHits();
     this.judgeContacts(dt);
     this.time += dt;
   }
@@ -231,6 +240,36 @@ export class Simulation {
       if (manifold.numContacts() > 0) contact = true;
     });
     return contact;
+  }
+
+  /**
+   * Bumpers and hollow plastic soak up a hit: a ball pushed or struck by a robot rolls off slowly
+   * instead of shooting across the field. It loses the speed as it leaves the robot, so the robot
+   * can still push it along.
+   */
+  private softenRobotHits(): void {
+    const robots = [...this.robots.values()].map(({ robot }) => {
+      const [x, , z] = robot.position;
+      return { robot, x, z, reach: Math.hypot(robot.cfg.length, robot.cfg.width) / 2 };
+    });
+    for (const b of this.balls.all) {
+      let touching = false;
+      if (b.state === 'field' && !b.body.isSleeping() && !(b.launch?.kind === 'shot' && b.launch.age < ROBOT_HIT.shotClear)) {
+        const [x, , z] = this.balls.position(b);
+        touching = robots.some(({ robot, x: rx, z: rz, reach }) =>
+          Math.hypot(x - rx, z - rz) < reach + b.radius + 0.02
+          && (this.touching(robot.collider, b.collider) || (!!robot.armCollider?.isEnabled() && this.touching(robot.armCollider, b.collider))));
+      }
+      if (this.onRobot[b.id] && !touching && b.state === 'field') {
+        const v = b.body.linvel();
+        const w = b.body.angvel();
+        const k = ROBOT_HIT.keep;
+        b.body.setLinvel({ x: v.x * k, y: v.y, z: v.z * k }, true);
+        // Its spin too, or the floor would turn the spin back into speed.
+        b.body.setAngvel({ x: w.x * k, y: w.y * k, z: w.z * k }, true);
+      }
+      this.onRobot[b.id] = touching ? 1 : 0;
+    }
   }
 
   /** Robots near each other, or near the HIVE frame (a cheap test before asking Rapier). */

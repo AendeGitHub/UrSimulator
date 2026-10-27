@@ -160,8 +160,11 @@ export class Mechanisms {
     }
 
     // The transfer runs the intake too, so balls picked up while feeding go straight to the shooter.
-    this.intakeDir = input.eject ? -1 : input.intake || input.transfer ? 1 : 0;
-    if (this.intakeDir === 1) this.runIntake(dt);
+    // A lowered arm at a FLOWER runs it by itself: the POLLEN it pulls out goes straight in.
+    const flower = this.flowerAhead();
+    const fromFlower = !!flower && this.intakes.includes('pollen') && this.stored.length < CAPACITY;
+    this.intakeDir = input.eject ? -1 : input.intake || input.transfer || fromFlower ? 1 : 0;
+    if (this.intakeDir === 1) this.runIntake(dt, flower);
     if (this.intakeDir === -1) this.runEject(dt);
 
     this.aim(dt);
@@ -169,12 +172,12 @@ export class Mechanisms {
     else this.feedTimer = Math.min(this.feedTimer, 0);
   }
 
-  private runIntake(dt: number): void {
+  private runIntake(dt: number, flower: [number, number] | undefined): void {
     this.intakeTimer -= dt;
     if (this.intakeTimer > 0 || this.stored.length >= CAPACITY) return;
     // A lowered arm blocks the floor but reaches into a FLOWER; one on its way blocks both.
     if (this.armSpec && this.arm > 0) {
-      if (this.arm === 1) this.takeFromFlower();
+      if (flower) this.takeFromFlower(flower);
       return;
     }
     const [px, , pz] = this.robot.position;
@@ -199,36 +202,40 @@ export class Mechanisms {
     }
   }
 
-  /** The bottom POLLEN of a FLOWER right in front of the robot, pulled out of its retrieval opening. */
-  private takeFromFlower(): void {
-    if (!this.intakes.includes('pollen')) return;
+  /** The FLOWER (tube center x, z) right in front of the fully lowered arm, if there is one. */
+  private flowerAhead(): [number, number] | undefined {
+    if (!this.armSpec || this.arm < 1) return undefined;
     const [px, , pz] = this.robot.position;
     const yaw = this.robot.yaw;
     const [fx, fz] = [Math.cos(yaw), -Math.sin(yaw)];
     const front = this.robot.cfg.length / 2;
-    for (const [cx, cz] of this.flowers) {
+    return this.flowers.find(([cx, cz]) => {
       const forward = (cx - px) * fx + (cz - pz) * fz - front;
       const side = (cx - px) * -fz + (cz - pz) * fx;
-      if (forward < -FLOWER_REACH.behind || forward > FLOWER_REACH.ahead || Math.abs(side) > FLOWER_REACH.side) continue;
-      let bottom: Ball | null = null;
-      let bottomY = Infinity;
-      for (const b of this.balls.all) {
-        if (b.state !== 'field') continue;
-        const [x, y, z] = this.balls.position(b);
-        if (y < FLOWER_TUBE.height && y < bottomY && Math.hypot(x - cx, z - cz) < FLOWER_TUBE.radius) {
-          bottom = b;
-          bottomY = y;
-        }
+      return forward >= -FLOWER_REACH.behind && forward <= FLOWER_REACH.ahead && Math.abs(side) <= FLOWER_REACH.side;
+    });
+  }
+
+  /** The bottom POLLEN of the FLOWER at (cx, cz), pulled out of its retrieval opening. */
+  private takeFromFlower([cx, cz]: [number, number]): void {
+    if (!this.intakes.includes('pollen')) return;
+    let bottom: Ball | null = null;
+    let bottomY = Infinity;
+    for (const b of this.balls.all) {
+      if (b.state !== 'field') continue;
+      const [x, y, z] = this.balls.position(b);
+      if (y < FLOWER_TUBE.height && y < bottomY && Math.hypot(x - cx, z - cz) < FLOWER_TUBE.radius) {
+        bottom = b;
+        bottomY = y;
       }
-      // Only POLLEN, and only from below the middle ring (G418): NECTAR at the bottom blocks it.
-      if (!bottom || bottom.kind !== 'pollen' || bottomY > FLOWER_VOLUME.yMin) return;
-      const at = this.balls.position(bottom);
-      this.balls.hold(bottom);
-      this.stored.push(bottom);
-      this.intakeTimer = INTAKE.interval;
-      this.onPickup?.(bottom, at);
-      return;
     }
+    // Only POLLEN, and only from below the middle ring (G418): NECTAR at the bottom blocks it.
+    if (!bottom || bottom.kind !== 'pollen' || bottomY > FLOWER_VOLUME.yMin) return;
+    const at = this.balls.position(bottom);
+    this.balls.hold(bottom);
+    this.stored.push(bottom);
+    this.intakeTimer = INTAKE.interval;
+    this.onPickup?.(bottom, at);
   }
 
   private runEject(dt: number): void {

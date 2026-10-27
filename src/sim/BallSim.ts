@@ -25,6 +25,8 @@ export interface BallSpec {
 export interface Ball extends BallSpec {
   readonly id: number;
   readonly body: RAPIER.RigidBody;
+  /** Kept: body.collider(0) makes a new wrapper object on every call. */
+  readonly collider: RAPIER.Collider;
   state: BallState;
   /** NECTAR handed back to the drive team after leaving the field (re-entered any time, G427) */
   returned: boolean;
@@ -84,8 +86,8 @@ export class BallSim {
       const body = world.createRigidBody(
         RAPIER.RigidBodyDesc.dynamic().setTranslation(...spec.pos).setLinearDamping(AIR_DAMPING).setAngularDamping(0.9).setCcdEnabled(true),
       );
-      world.createCollider(RAPIER.ColliderDesc.ball(spec.radius).setMass(MASS[spec.kind]).setRestitution(BALL_RESTITUTION).setFriction(BALL_FRICTION), body);
-      return { ...spec, id, body, state: spec.homeState, returned: false, launch: null };
+      const collider = world.createCollider(RAPIER.ColliderDesc.ball(spec.radius).setMass(MASS[spec.kind]).setRestitution(BALL_RESTITUTION).setFriction(BALL_FRICTION), body);
+      return { ...spec, id, body, collider, state: spec.homeState, returned: false, launch: null };
     });
     this.transforms = new Float32Array(this.all.length * 7);
     this.awake = new Uint8Array(this.all.length);

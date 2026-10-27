@@ -27,7 +27,7 @@ export class RobotSim {
   readonly battery = new Battery();
 
   /** A folding arm's box, solid only while the arm is down */
-  private readonly armCollider: RAPIER.Collider | null = null;
+  readonly armCollider: RAPIER.Collider | null = null;
 
   constructor(private readonly world: RAPIER.World, readonly slot: Slot, readonly cfg: RobotConfig, pose: Pose, arm?: ArmSpec) {
     this.alliance = slotAlliance(slot);
@@ -46,7 +46,9 @@ export class RobotSim {
         // Traction comes from the drive controller below, so the body itself slides freely.
         .setFriction(0)
         .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min)
-        .setRestitution(0.05),
+        // Bumpers soak up hits: nothing bounces off the robot.
+        .setRestitution(0)
+        .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Min),
       this.body,
     );
     if (arm) {
@@ -57,7 +59,9 @@ export class RobotSim {
           .setTranslation((x0 + x1) / 2, (y0 + y1) / 2, 0)
           .setMass(0)
           .setFriction(0)
-          .setRestitution(0.05),
+          .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min)
+          .setRestitution(0)
+          .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Min),
         this.body,
       );
       this.armCollider.setEnabled(false);

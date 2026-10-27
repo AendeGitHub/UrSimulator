@@ -48,7 +48,7 @@ describe('headless simulation', () => {
     p.robot.setPose({ x: -0.45, z: 1.35, yaw: Math.PI / 2 });
     sim.setInput('red1', { ...idleInput(), shooterOn: true });
     run(sim, 1);
-    // One shot every 0.5 s (URAN V1's fire rate)
+    // One shot every 0.2 s (URAN V1's fire rate)
     sim.setInput('red1', { ...idleInput(), transfer: true });
     run(sim, 2.2);
     sim.setInput('red1', idleInput());
@@ -254,7 +254,29 @@ describe('referee (manual 11.4)', () => {
     expect(p.mech.stored.every(b => b.kind === 'pollen')).toBe(true);
   });
 
-  it('fires one ball every 0.5 s (URAN V1) or 0.6 s (Bumble V)', () => {
+  it("Bumble V's lowered arm pulls POLLEN out of a FLOWER without the intake button", () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', 'bumble-v');
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
+    const park = () => {
+      p.robot.setPose({ x: fx, z: fz + p.robot.cfg.length / 2 + 0.1, yaw: Math.PI / 2 });
+      run(sim, 0.8);
+    };
+    // Raised, the arm leaves the FLOWER alone and the rollers stay still.
+    park();
+    expect(p.mech.stored).toHaveLength(0);
+    expect(p.mech.intakeDir).toBe(0);
+    sim.setInput('red1', { ...idleInput(), armDown: true });
+    run(sim, 0.5);
+    park();
+    expect(p.mech.stored.length).toBeGreaterThanOrEqual(2);
+    expect(p.mech.stored.every(b => b.kind === 'pollen')).toBe(true);
+    expect(p.mech.intakeDir).toBe(1);
+  });
+
+  it('fires one ball every 0.2 s (URAN V1) or 0.4 s (Bumble V)', () => {
     for (const [robot, shots] of [['uran-v1', 3], ['bumble-v', 2]] as const) {
       const { sim } = makeSim();
       const p = sim.addRobot('red1', 'test', robot);
@@ -262,9 +284,9 @@ describe('referee (manual 11.4)', () => {
       sim.setInput('red1', { ...idleInput(), shooterOn: true });
       run(sim, 1);
       const before = p.mech.stored.length;
-      // Shots at 0 and every interval after: 0, 0.5, 1.0 s or 0, 0.6 s within 1.1 s.
+      // Shots at 0 and every interval after: 0, 0.2, 0.4 s or 0, 0.4 s within 0.5 s.
       sim.setInput('red1', { ...idleInput(), transfer: true });
-      run(sim, 1.1);
+      run(sim, 0.5);
       expect(before - p.mech.stored.length, robot).toBe(shots);
     }
   });
@@ -474,6 +496,32 @@ describe('plastic balls', () => {
   });
 });
 
+describe('balls hit by a robot', () => {
+  beforeAll(() => initPhysics());
+
+  it('roll off it instead of flying across the field', () => {
+    for (const robot of ['uran-v1', 'bumble-v']) {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', robot);
+      sim.start('practice');
+      p.robot.setPose({ x: -1.4, z: -1.2, yaw: 0 });
+      const b = sim.balls.all.find(x => x.kind === 'pollen' && x.state === 'field' && sim.balls.position(x)[1] < 0.06)!;
+      const at: [number, number, number] = [-0.9, b.radius, -1.2];
+      sim.balls.release(b, at, [0, 0, 0]);
+      // Full speed (over 2 m/s) into it, then stop.
+      sim.setInput('red1', { ...idleInput(), ly: -1, fieldCentric: false });
+      run(sim, 0.45);
+      sim.setInput('red1', idleInput());
+      run(sim, 5);
+      const [x, , z] = sim.balls.position(b);
+      const [rx, , rz] = p.robot.position;
+      expect(Math.hypot(x - at[0], z - at[2]), robot).toBeGreaterThan(0.3);
+      // It ends up just ahead of the robot, not at the far wall.
+      expect(Math.hypot(x - rx, z - rz), robot).toBeLessThan(0.7);
+    }
+  });
+});
+
 describe('balls that leave the field (manual 10.8.2)', () => {
   beforeAll(() => initPhysics());
 
@@ -513,7 +561,7 @@ describe('balls that leave the field (manual 10.8.2)', () => {
 describe('turret wiring and battery', () => {
   beforeAll(() => initPhysics());
 
-  it('turns at most half a turn either way and unwinds instead of spinning through the back', () => {
+  it("URAN V1's turret turns at most 200° either way and unwinds instead of spinning round", () => {
     const { sim } = makeSim();
     const p = sim.addRobot('red1', 'test');
     sim.start('practice');
@@ -529,8 +577,9 @@ describe('turret wiring and battery', () => {
       if (Math.abs(p.mech.turretYaw - last) > 0.03) swings++;
       last = p.mech.turretYaw;
     }
-    expect(max).toBeLessThanOrEqual(Math.PI + 1e-6);
-    expect(max).toBeGreaterThan(2.5);
+    // Past the back (180°), up to its stop at 200°.
+    expect(max).toBeLessThanOrEqual((200 * Math.PI) / 180 + 1e-6);
+    expect(max).toBeGreaterThan(Math.PI + 0.1);
     // Unwinding shows up as steps at full turret speed against the robot's turn.
     expect(swings).toBeGreaterThan(0);
   });

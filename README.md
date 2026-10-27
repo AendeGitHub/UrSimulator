@@ -63,7 +63,7 @@ flowchart LR
 
 **From CAD to game.** The field, HIVEs and game elements are converted from the official BIOBUZZ CAD (STEP → GLB) by scripts in `tools/`, and the field colliders are baked into one binary file that the browser and the server both load. The robot comes from the team's own CAD: a JSON file marks which parts spin (wheels, intake, flywheel, turret) and around which axis, then the model is simplified and its parts are merged by material to cut draw calls.
 
-**Robot physics.** Mecanum kinematics as in an FTC TeleOp (robot-centric or field-centric with an IMU heading), with motor speed scaled by a battery model: 14 V at the start, drained by the flywheel, sagging under load. The turret aims by itself within ±180° (its cables would twist further) and unwinds through the front; the flywheel speed comes from a ballistic solution for the distance to the HIVE cell, and the spread grows with range.
+**Robot physics.** Mecanum kinematics as in an FTC TeleOp (robot-centric or field-centric with an IMU heading), with motor speed scaled by a battery model: 14 V at the start, drained by the flywheel, sagging under load. The turret aims by itself within its cable limit (URAN V1 ±200°, Bumble V a full turn each way) and unwinds through the front; the flywheel speed comes from a ballistic solution for the distance to the HIVE cell, and the spread grows with range.
 
 **Automatic referee.** Six rules from the game manual are judged from physics contacts and match state. Pinning (G421) checks the footprint corners of a robot held against a wall or field element for 3 seconds; ramming the HIVE (G417) uses the contact speed with its frame. Fouls go to the opponent's score, a second yellow card becomes a red one, and every call is listed on the results screen.
 
@@ -101,7 +101,7 @@ Before a match, practice or online game you pick a robot: team, specs, alliance,
 - Shooter accuracy depends on the distance to the cell: within 1 m it almost always scores, at 2.2 m the spread is large.
 - The URAN V1 intake can't reach balls inside the flowers.
 - URAN V1 picks up and shoots only POLLEN; it drives over NECTAR (`intakes` in `src/robot/robots.ts`).
-- **Bumble V** (team SWB): model from the team's CAD, mecanum drive on 522 RPM motors with 96 mm wheels (≈2.6 m/s), 11 kg, 46 × 28 cm. A two-flywheel shooter on a turret that turns a full turn each way. Picks up and shoots only POLLEN.
+- **Bumble V** (team SWB): model from the team's CAD, mecanum drive on 522 RPM motors with 96 mm wheels (≈2.6 m/s), 11 kg, 46 × 28 cm. A two-flywheel shooter on a turret that turns a full turn each way. Picks up and shoots only POLLEN. Its front arm (FLOWER mode): lowered at a FLOWER, it pulls the POLLEN out of the bottom by itself, straight into the intake, no intake button needed.
 
 Adding a robot from CAD (STEP):
 
@@ -123,7 +123,7 @@ A ball that leaves the field comes back after 5 seconds (manual 10.8.2): POLLEN 
 
 During play the screen shows only the timer with the score and the robot battery, like on a Driver Station: a green block with the current voltage and the lowest one this match in brackets. A match starts at 14 V; a flywheel left spinning drains the battery and the robot drives slower (motor speed is proportional to voltage).
 
-The turret can't spin endlessly (its wires would twist): it turns at most 180° each way, and when the target moves past that, the turret swings back around through the front.
+The turret can't spin endlessly (its wires would twist): URAN V1's turns at most 200° each way (Bumble V's a full turn), and when the target moves past that, the turret swings back around through the front.
 
 The camera is chosen before the game: **driver view**, **audience view** (from the stands) or **follow robot** (behind the robot). It can't be changed during a match; only the follow camera looks forward or back with R3 (it doesn't rotate with the robot, it just follows it).
 
@@ -259,7 +259,9 @@ Health check: `https://<address>/health`.
 ## Tuning
 
 - `TIP_LOAD`, `NECTAR_WEIGHT` and `TIP_DELAY` in `src/sim/HiveSim.ts`: a HIVE tips 3 s after its top cell holds the weight of 10 POLLEN (a NECTAR weighs as much as 2 POLLEN: 10 POLLEN = 5 NECTAR). At the start of a match the cell already holds 3 NECTAR (manual 10.3.1), so the first tip needs only 4 POLLEN.
-- `SHOOTER` in `src/sim/Mechanisms.ts`: flywheel speed, fire rate, entry angle.
+- `SHOOTER` in `src/sim/Mechanisms.ts`: flywheel speed, entry angle.
+- `shooter.fireInterval` in `src/robot/robots.ts`: seconds between shots (URAN V1 0.2 s, Bumble V 0.4 s).
+- `ROBOT_HIT` in `src/sim/Simulation.ts`: how much speed a ball keeps as it leaves a robot that hit it.
 - `shooter.sweetSpot` / `shooter.maxRange` in `src/robot/robots.ts`: the robot's accurate shooting range.
 
 ## Layout
