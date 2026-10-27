@@ -60,6 +60,7 @@
         }
       ],
       "category": "Game",
+      "executableName": "ursim",
       "artifactName": "UrSim_${version}_Linux.${ext}"
     }
   }
