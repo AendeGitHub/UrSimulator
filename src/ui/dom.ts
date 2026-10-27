@@ -1,7 +1,7 @@
 // Tiny DOM builder used by the menus and HUD.
 
 type Child = Node | string | null | undefined | false;
-type Props = Record<string, unknown> & { class?: string; onclick?: (e: MouseEvent) => void };
+export type Props = Record<string, unknown> & { class?: string; onclick?: (e: MouseEvent) => void };
 
 export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);

@@ -1,12 +1,13 @@
-// Settings from the main menu (MoSim style panel): rebind controls, graphics quality and house
-// rules. Every change is saved at once; the game applies it on the spot.
+// Settings from the main menu (MoSim style panel): rebind controls, graphics quality, house
+// rules and the interface language. Every change is saved at once; the game applies it on the spot.
 
-import { ACTIONS, ACTION_NAMES, DEFAULT_BINDINGS, MOVES, keyLabel, rebind, type ActionId, type Bindings, type MoveId } from '../input/bindings';
+import { ACTIONS, DEFAULT_BINDINGS, MOVES, actionName, keyLabel, rebind, type ActionId, type Bindings, type MoveId } from '../input/bindings';
 import type { ControlId, PadModel } from '../input/gamepad';
 import type { InputManager } from '../input/InputManager';
 import { controlLabel } from '../input/labels';
-import type { RuleOptions } from '../sim/Referee';
+import type { RuleId, RuleOptions } from '../sim/Referee';
 import { h } from './dom';
+import { LANGUAGES, LANGUAGE_NAMES, ht, localize, t, type Language, type TextKey } from './i18n';
 import type { Screen } from './menus';
 import { MenuNav } from './MenuNav';
 
@@ -25,6 +26,7 @@ export interface SettingsValues {
   bindings: Bindings;
   graphics: GraphicsSettings;
   rules: RuleOptions;
+  language: Language;
 }
 
 export interface SettingsActions {
@@ -33,24 +35,16 @@ export interface SettingsActions {
   back(): void;
 }
 
-type Tab = 'controls' | 'graphics' | 'rules';
+type Tab = 'controls' | 'graphics' | 'rules' | 'language';
 
-const TABS: [Tab, string][] = [['controls', 'Управление'], ['graphics', 'Графика'], ['rules', 'Правила']];
+const TABS: Tab[] = ['controls', 'graphics', 'rules', 'language'];
 
-const QUALITY_NAMES: Record<QualityPreset, string> = { auto: 'Авто (по FPS)', high: 'Высокое', medium: 'Среднее', low: 'Низкое' };
 const QUALITY_ORDER: QualityPreset[] = ['auto', 'high', 'medium', 'low'];
 
 /** What the automatic referee calls during a match (sim/Referee.ts). */
-const RULES: [string, string][] = [
-  ['G402', 'В AUTO не трогать мячи и робота соперника на его половине — MAJOR FOUL'],
-  ['G405', 'Не выбрасывать мячи за поле (промах при броске не считается) — MAJOR FOUL за мяч'],
-  ['G408', 'Не брать NECTAR соперника — предупреждение, затем жёлтая карточка'],
-  ['G410', 'NECTAR в цветок только в последнюю минуту — MAJOR FOUL за NECTAR'],
-  ['G417', 'Не таранить раму улья — предупреждение, затем MAJOR FOUL и жёлтая'],
-  ['G421', 'Не прижимать соперника дольше 3 с — MAJOR FOUL и ещё один каждые 3 с'],
-];
+const RULES: RuleId[] = ['G402', 'G405', 'G408', 'G410', 'G417', 'G421'];
 
-const onOff = (on: boolean) => (on ? 'Вкл' : 'Выкл');
+const onOff = (on: boolean) => t(on ? 'common.on' : 'common.off');
 
 export class SettingsScreen implements Screen {
   readonly el: HTMLElement;
@@ -65,9 +59,9 @@ export class SettingsScreen implements Screen {
 
   constructor(private readonly actions: SettingsActions) {
     this.el = h('div', { class: 'screen menu-settings' },
-      h('button', { class: 'ms-back', onclick: () => this.goBack() }, '← Назад'),
+      ht('button', { class: 'ms-back', onclick: () => this.goBack() }, 'common.backArrow'),
       h('div', { class: 'ms-panel settings-panel' },
-        h('div', { class: 'ms-title' }, 'Настройки'),
+        ht('div', { class: 'ms-title' }, 'menu.settings'),
         this.tabs,
         this.body));
     this.nav = new MenuNav(this.el, () => this.goBack());
@@ -129,22 +123,25 @@ export class SettingsScreen implements Screen {
 
   private render(): void {
     this.tabs.replaceChildren(
-      ...TABS.map(([id, name]) => h('button', {
+      ...TABS.map(id => ht('button', {
         class: `ms-tab ${id === this.tab ? 'ms-tab-on' : ''}`,
         onclick: () => {
           this.tab = id;
           this.waiting = null;
           this.render();
         },
-      }, name)),
-      h('button', { class: 'ms-tab', onclick: this.actions.gamepads }, 'Геймпады →'),
+      }, `settings.tab.${id}`)),
+      ht('button', { class: 'ms-tab', onclick: this.actions.gamepads }, 'settings.gamepads'),
     );
-    this.body.replaceChildren(...(this.tab === 'controls' ? this.controls() : this.tab === 'graphics' ? this.graphics() : this.rules()));
+    const pages = { controls: () => this.controls(), graphics: () => this.graphics(), rules: () => this.rules(), language: () => this.language() };
+    this.body.replaceChildren(...pages[this.tab]());
+    // The title and Back button, after a language switch
+    localize(this.el);
   }
 
   /** A settings row: label on the left, a blue button that cycles the value. */
-  private row(label: string, value: string, onclick: () => void): HTMLElement {
-    return h('div', { class: 'ms-row' }, h('span', { class: 'ms-label' }, label), h('button', { class: 'ms-select', onclick }, value));
+  private row(label: TextKey, value: string, onclick: () => void): HTMLElement {
+    return h('div', { class: 'ms-row' }, ht('span', { class: 'ms-label' }, label), h('button', { class: 'ms-select', onclick }, value));
   }
 
   private controls(): HTMLElement[] {
@@ -155,19 +152,17 @@ export class SettingsScreen implements Screen {
     };
     const waitingFor = (action: ActionId | MoveId, kind: 'pad' | 'keys') => this.waiting?.action === action && this.waiting.kind === kind;
     const padButton = (action: ActionId) => h('button', { class: `ms-bind ${waitingFor(action, 'pad') ? 'ms-bind-wait' : ''}`, onclick: wait(action, 'pad') },
-      waitingFor(action, 'pad') ? 'Нажми кнопку…' : controlLabel(this.model, b.pad[action] as ControlId).text);
+      waitingFor(action, 'pad') ? t('settings.pressButton') : controlLabel(this.model, b.pad[action] as ControlId).text);
     const keyButton = (action: ActionId | MoveId) => h('button', { class: `ms-bind ${waitingFor(action, 'keys') ? 'ms-bind-wait' : ''}`, onclick: wait(action, 'keys') },
-      waitingFor(action, 'keys') ? 'Нажми клавишу…' : keyLabel(b.keys[action]));
-    const stick = (move: MoveId) => (move === 'turnLeft' || move === 'turnRight' ? 'Правый стик' : 'Левый стик');
+      waitingFor(action, 'keys') ? t('settings.pressKey') : keyLabel(b.keys[action]));
+    const stick = (move: MoveId) => t(move === 'turnLeft' || move === 'turnRight' ? 'label.rightStick' : 'label.leftStick');
     return [
       h('div', { class: 'bind-table' },
-        h('div', { class: 'bind-head' }, h('span', {}, 'Действие'), h('span', {}, 'Геймпад'), h('span', {}, 'Клавиатура')),
-        ...MOVES.map(m => h('div', { class: 'bind-row' }, h('span', {}, ACTION_NAMES[m]), h('span', { class: 'bind-fixed' }, stick(m)), keyButton(m))),
-        ...ACTIONS.map(a => h('div', { class: 'bind-row' }, h('span', {}, ACTION_NAMES[a]), padButton(a), keyButton(a)))),
-      h('p', { class: 'muted settings-note' },
-        'Нажми на кнопку в таблице, потом нужную кнопку геймпада или клавишу (Esc — отмена). Если она уже занята, действия поменяются местами. ',
-        'Механизмы слушаются и gamepad1, и gamepad2, как в FTC. R на клавиатуре — начать заново.'),
-      h('button', { class: 'ms-select settings-reset', onclick: () => this.set({ bindings: structuredClone(DEFAULT_BINDINGS) }) }, 'Сбросить управление'),
+        h('div', { class: 'bind-head' }, h('span', {}, t('settings.action')), h('span', {}, t('settings.gamepad')), h('span', {}, t('pad.keyboard'))),
+        ...MOVES.map(m => h('div', { class: 'bind-row' }, h('span', {}, actionName(m)), h('span', { class: 'bind-fixed' }, stick(m)), keyButton(m))),
+        ...ACTIONS.map(a => h('div', { class: 'bind-row' }, h('span', {}, actionName(a)), padButton(a), keyButton(a)))),
+      h('p', { class: 'muted settings-note' }, t('settings.controlsNote')),
+      h('button', { class: 'ms-select settings-reset', onclick: () => this.set({ bindings: structuredClone(DEFAULT_BINDINGS) }) }, t('settings.resetControls')),
     ];
   }
 
@@ -178,13 +173,11 @@ export class SettingsScreen implements Screen {
       this.render();
     };
     return [
-      this.row('Качество', QUALITY_NAMES[g.quality], () => patch({ quality: QUALITY_ORDER[(QUALITY_ORDER.indexOf(g.quality) + 1) % QUALITY_ORDER.length] })),
-      this.row('Тени', onOff(g.shadows), () => patch({ shadows: !g.shadows })),
-      this.row('Чёрные контуры', onOff(g.outlines), () => patch({ outlines: !g.outlines })),
-      this.row('Счётчик FPS', onOff(g.fps), () => patch({ fps: !g.fps })),
-      h('p', { class: 'muted settings-note' },
-        '«Авто» само снижает разрешение и затенение, если FPS падает ниже 50, и возвращает, когда запас есть. ',
-        'Если игра тормозит, выключи тени и поставь «Низкое».'),
+      this.row('settings.quality', t(`settings.quality.${g.quality}`), () => patch({ quality: QUALITY_ORDER[(QUALITY_ORDER.indexOf(g.quality) + 1) % QUALITY_ORDER.length] })),
+      this.row('settings.shadows', onOff(g.shadows), () => patch({ shadows: !g.shadows })),
+      this.row('settings.outlines', onOff(g.outlines), () => patch({ outlines: !g.outlines })),
+      this.row('settings.fps', onOff(g.fps), () => patch({ fps: !g.fps })),
+      h('p', { class: 'muted settings-note' }, t('settings.graphicsNote')),
     ];
   }
 
@@ -195,14 +188,23 @@ export class SettingsScreen implements Screen {
       this.render();
     };
     return [
-      this.row('Фолы (очки сопернику)', onOff(r.fouls), () => patch({ fouls: !r.fouls })),
-      this.row('Предупреждения и карточки', onOff(r.cards), () => patch({ cards: !r.cards })),
-      this.row('Аккумулятор (садится, робот медленнее)', onOff(r.battery), () => patch({ battery: !r.battery })),
+      this.row('settings.fouls', onOff(r.fouls), () => patch({ fouls: !r.fouls })),
+      this.row('settings.cards', onOff(r.cards), () => patch({ cards: !r.cards })),
+      this.row('settings.battery', onOff(r.battery), () => patch({ battery: !r.battery })),
       h('div', { class: 'rules-list' },
-        ...RULES.map(([id, text]) => h('div', { class: 'rules-item' }, h('span', { class: 'key' }, id), h('span', {}, text)))),
-      h('p', { class: 'muted settings-note' },
-        'Судья работает в «Матч 2:30» и онлайн-матчах (там действуют настройки хоста). MINOR FOUL — 5 очков сопернику, MAJOR — 20; ',
-        'вторая жёлтая карточка становится красной: 0 очков за матч.'),
+        ...RULES.map(id => h('div', { class: 'rules-item' }, h('span', { class: 'key' }, id), h('span', {}, t(`settings.rule.${id}`))))),
+      h('p', { class: 'muted settings-note' }, t('settings.rulesNote')),
+    ];
+  }
+
+  private language(): HTMLElement[] {
+    const lang = this.values.language;
+    return [
+      this.row('settings.language', LANGUAGE_NAMES[lang], () => {
+        this.set({ language: LANGUAGES[(LANGUAGES.indexOf(lang) + 1) % LANGUAGES.length] });
+        this.render();
+      }),
+      h('p', { class: 'muted settings-note' }, t('settings.languageNote')),
     ];
   }
 }

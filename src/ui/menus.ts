@@ -1,8 +1,9 @@
 // Main menu and pause menu.
 
-import { MODEL_NAMES } from '../input/gamepad';
+import { modelName } from '../input/gamepad';
 import type { InputManager } from '../input/InputManager';
 import { h } from './dom';
+import { ht, setText, t, type TextKey } from './i18n';
 import { MenuNav } from './MenuNav';
 
 export interface Screen {
@@ -24,8 +25,8 @@ export interface MainMenuActions {
 }
 
 /** A big white menu entry, outlined when focused (MoSim style). */
-function item(text: string, onclick: () => void): HTMLButtonElement {
-  return h('button', { class: 'btn menu-item', onclick }, text);
+function item(key: TextKey, onclick: () => void): HTMLButtonElement {
+  return ht('button', { class: 'btn menu-item', onclick }, key);
 }
 
 export class MainMenu implements Screen {
@@ -43,20 +44,25 @@ export class MainMenu implements Screen {
       this.list,
       h('div', { class: 'menu-foot' },
         this.pads,
-        h('p', { class: 'menu-legal' }, `UrSim v${__APP_VERSION__} · Неофициальный фанатский симулятор. Не связан с FIRST®. BIOBUZZ™ — товарный знак FIRST.`)),
+        h('p', { class: 'menu-legal' }, `UrSim v${__APP_VERSION__} · `, ht('span', {}, 'menu.legal'))),
     );
     this.nav = new MenuNav(this.el, () => this.page === 'play' && this.open('root'));
     this.open('root');
   }
 
-  /** "Играть" opens a sub-list in place, like MoSim's Play menu. */
+  /** "Play" opens a sub-list in place, like MoSim's Play menu. */
   private open(page: 'root' | 'play'): void {
     this.page = page;
     const a = this.actions;
     this.list.replaceChildren(...(page === 'root'
-      ? [item('Играть', () => this.open('play')), item('Онлайн 2 на 2', a.online), item('Рекорды', a.records), item('Настройки', a.settings)]
-      : [h('div', { class: 'menu-heading' }, 'Играть'), item('Матч 2:30', a.match), item('Тренировка', a.practice), item('Назад', () => this.open('root'))]));
+      ? [item('menu.play', () => this.open('play')), item('menu.online', a.online), item('menu.records', a.records), item('menu.settings', a.settings)]
+      : [ht('div', { class: 'menu-heading' }, 'menu.play'), item('menu.match', a.match), item('menu.practice', a.practice), item('common.back', () => this.open('root'))]));
     this.nav.focusFirst();
+  }
+
+  /** Redraws the controller line too, in case the language changed in the settings. */
+  onShow(): void {
+    this.padKey = '';
   }
 
   update(input: InputManager): void {
@@ -68,9 +74,9 @@ export class MainMenu implements Screen {
     const unsupported = input.pads.filter(p => p.model === 'unsupported').length;
     this.pads.replaceChildren(
       h('span', { class: `dot ${p1 ? 'dot-on' : 'dot-off'}` }),
-      p1 ? `gamepad1: ${MODEL_NAMES[p1.model]}` : 'Геймпад не найден — нажми любую кнопку на геймпаде или играй с клавиатуры',
-      p2 ? h('span', { class: 'muted' }, ` · gamepad2: ${MODEL_NAMES[p2.model]}`) : '',
-      unsupported ? h('div', { class: 'warn' }, 'Есть неподдерживаемый геймпад. Подходят только PS4, PS5 и Logitech F310.') : '',
+      p1 ? `gamepad1: ${modelName(p1.model)}` : t('menu.noPad'),
+      p2 ? h('span', { class: 'muted' }, ` · gamepad2: ${modelName(p2.model)}`) : '',
+      unsupported ? h('div', { class: 'warn' }, t('menu.unsupportedPad')) : '',
     );
   }
 }
@@ -87,22 +93,22 @@ export interface PauseActions {
 export class PauseMenu implements Screen {
   readonly el: HTMLElement;
   readonly nav: MenuNav;
-  private readonly title = h('div', { class: 'menu-heading' }, 'Пауза');
+  private readonly title = ht('div', { class: 'menu-heading' }, 'pause.title');
   private readonly reset: HTMLButtonElement;
   private readonly stop: HTMLButtonElement;
   private readonly exit: HTMLButtonElement;
 
   constructor(actions: PauseActions) {
-    this.reset = item('Начать заново', () => actions.resetRobot());
-    this.stop = item('Вернуть всех в лобби', () => actions.stopOnline());
-    this.exit = item('В главное меню', () => actions.exit());
+    this.reset = item('pause.restart', () => actions.resetRobot());
+    this.stop = item('pause.toLobby', () => actions.stopOnline());
+    this.exit = item('pause.toMenu', () => actions.exit());
     this.el = h('div', { class: 'screen menu-pause' },
       h('div', { class: 'menu-list' },
         this.title,
-        item('Продолжить', () => actions.resume()),
+        item('pause.resume', () => actions.resume()),
         this.reset,
         this.stop,
-        item('Настройки', () => actions.settings()),
+        item('menu.settings', () => actions.settings()),
         this.exit,
       ),
     );
@@ -111,9 +117,9 @@ export class PauseMenu implements Screen {
 
   /** Online games keep running behind the menu and cannot be restarted by guests. */
   configure(online: boolean, host: boolean): void {
-    this.title.textContent = online ? 'Меню · игра идёт' : 'Пауза';
+    setText(this.title, online ? 'pause.titleOnline' : 'pause.title');
     this.reset.hidden = online;
     this.stop.hidden = !(online && host);
-    this.exit.textContent = online ? 'Выйти из комнаты' : 'В главное меню';
+    setText(this.exit, online ? 'online.leave' : 'pause.toMenu');
   }
 }

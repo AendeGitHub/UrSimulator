@@ -81,7 +81,7 @@ export class Hud {
     }
   }
 
-  /** Frame rate counter in the corner (Settings → Графика). */
+  /** Frame rate counter in the corner (Settings → Graphics). */
   showFps(on: boolean): void {
     this.fps.hidden = !on;
   }

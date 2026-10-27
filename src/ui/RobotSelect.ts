@@ -1,13 +1,14 @@
 // Robot selection before a match, laid out like MoSim: Back button top left, the robot on the
-// field in the open area, "Настройки матча" down the right with the Start button, robot cards
+// field in the open area, "Match settings" down the right with the Start button, robot cards
 // along the bottom. The page is built once; changes only update texts and classes, so logos are
 // never re-created.
 
-import { CAMERA_MODES, CAMERA_NAMES, type CameraMode } from '../camera/CameraRig';
+import { CAMERA_MODES, cameraName, type CameraMode } from '../camera/CameraRig';
 import { cleanName } from '../net/protocol';
 import type { Alliance } from '../robot/robotConfig';
 import { ROBOTS, robotById } from '../robot/robots';
 import { h } from './dom';
+import { ht, t, type TextKey } from './i18n';
 import type { Screen } from './menus';
 import { MenuNav } from './MenuNav';
 
@@ -29,7 +30,7 @@ export interface SelectActions {
   back(): void;
 }
 
-const TITLES: Record<SelectPurpose, string> = { match: 'Матч 2:30', practice: 'Тренировка', online: 'Онлайн 2 на 2' };
+const TITLES: Record<SelectPurpose, TextKey> = { match: 'menu.match', practice: 'menu.practice', online: 'menu.online' };
 
 export class RobotSelectScreen implements Screen {
   readonly el: HTMLElement;
@@ -48,20 +49,20 @@ export class RobotSelectScreen implements Screen {
 
   constructor(private settings: SelectSettings, private readonly actions: SelectActions) {
     /** A settings row: label on the left, a blue drop-down-style button that cycles the value. */
-    const row = (label: string, control: HTMLElement) => h('div', { class: 'ms-row' }, h('span', { class: 'ms-label' }, label), control);
+    const row = (label: TextKey, control: HTMLElement) => h('div', { class: 'ms-row' }, ht('span', { class: 'ms-label' }, label), control);
     const choice = (onclick: () => void) => h('button', { class: 'ms-select', onclick });
     this.alliance = choice(() => this.set({ alliance: this.settings.alliance === 'red' ? 'blue' : 'red' }));
     this.camera = choice(() => this.set({ camera: CAMERA_MODES[(CAMERA_MODES.indexOf(this.settings.camera) + 1) % CAMERA_MODES.length] }));
     this.drive = choice(() => this.set({ fieldCentric: !this.settings.fieldCentric }));
-    this.allianceRow = row('Альянс', this.alliance);
+    this.allianceRow = row('select.alliance', this.alliance);
 
     // Typing must not rebuild anything, or the field would lose focus.
-    this.nameInput = h('input', { class: 'ms-input', maxlength: '16', placeholder: 'Для рекордов' });
+    this.nameInput = ht('input', { class: 'ms-input', maxlength: '16' }, 'select.namePlaceholder');
     this.nameInput.addEventListener('input', () => {
       this.settings = { ...this.settings, name: this.nameInput.value.trim() ? cleanName(this.nameInput.value) : '' };
       this.actions.change(this.settings);
     });
-    this.nameRow = row('Имя', this.nameInput);
+    this.nameRow = row('select.name', this.nameInput);
     this.start = h('button', { class: 'ms-start', onclick: () => this.actions.start(this.purpose) });
 
     for (const r of ROBOTS) {
@@ -71,17 +72,17 @@ export class RobotSelectScreen implements Screen {
     }
 
     this.el = h('div', { class: 'screen menu-select' },
-      h('button', { class: 'ms-back', onclick: this.actions.back }, '← Назад'),
+      ht('button', { class: 'ms-back', onclick: this.actions.back }, 'common.backArrow'),
       h('div', { class: 'ms-panel ms-settings' },
-        h('div', { class: 'ms-title' }, 'Настройки матча'),
+        ht('div', { class: 'ms-title' }, 'select.title'),
         this.mode,
         this.allianceRow,
-        row('Камера', this.camera),
-        row('Управление', this.drive),
+        row('select.camera', this.camera),
+        row('select.drive', this.drive),
         this.nameRow,
         this.start),
       h('div', { class: 'ms-panel ms-robots' },
-        h('div', { class: 'ms-title ms-title-left' }, 'Роботы'),
+        ht('div', { class: 'ms-title ms-title-left' }, 'select.robots'),
         h('div', { class: 'ms-cards' }, ...this.cards.values())),
     );
     this.nav = new MenuNav(this.el, actions.back);
@@ -104,14 +105,14 @@ export class RobotSelectScreen implements Screen {
     const def = robotById(this.settings.robot);
     const s = this.settings;
     const online = this.purpose === 'online';
-    this.mode.textContent = online ? `${TITLES.online} · альянс выбирается в комнате` : TITLES[this.purpose];
+    this.mode.textContent = online ? `${t(TITLES.online)} · ${t('select.onlineNote')}` : t(TITLES[this.purpose]);
     this.allianceRow.hidden = online;
-    this.alliance.textContent = s.alliance === 'red' ? 'Красный' : 'Синий';
-    this.camera.textContent = CAMERA_NAMES[s.camera];
+    this.alliance.textContent = t(s.alliance === 'red' ? 'select.red' : 'select.blue');
+    this.camera.textContent = cameraName(s.camera);
     this.drive.textContent = s.fieldCentric ? 'Field-centric' : 'Robot-centric';
     // Only full solo matches go into the high score table.
     this.nameRow.hidden = this.purpose !== 'match';
-    this.start.textContent = online ? 'Дальше' : 'Старт';
+    this.start.textContent = t(online ? 'select.next' : 'select.start');
     for (const [id, card] of this.cards) card.classList.toggle('ms-card-on', id === def.id);
   }
 }

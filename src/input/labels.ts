@@ -1,5 +1,6 @@
 // On-screen names and colors of controls for each supported controller.
 
+import { t, type TextKey } from '../ui/i18n';
 import type { ControlId, PadModel } from './gamepad';
 
 export interface ControlLabel {
@@ -29,11 +30,6 @@ const PLAYSTATION: Partial<Record<ControlId, ControlLabel>> = {
   back: { text: 'Share' },
   start: { text: 'Options' },
   guide: { text: 'PS' },
-  touchpad: { text: 'Тачпад' },
-  left_stick_x: { text: 'Левый стик' },
-  left_stick_y: { text: 'Левый стик' },
-  right_stick_x: { text: 'Правый стик' },
-  right_stick_y: { text: 'Правый стик' },
 };
 
 const F310: Partial<Record<ControlId, ControlLabel>> = {
@@ -52,10 +48,15 @@ const F310: Partial<Record<ControlId, ControlLabel>> = {
   start: { text: 'Start' },
   guide: { text: 'Logitech' },
   touchpad: { text: '—' },
-  left_stick_x: { text: 'Левый стик' },
-  left_stick_y: { text: 'Левый стик' },
-  right_stick_x: { text: 'Правый стик' },
-  right_stick_y: { text: 'Правый стик' },
+};
+
+/** Controls a controller has no printed name for: named in words, in the interface language. */
+const SPOKEN: Partial<Record<ControlId, TextKey>> = {
+  touchpad: 'label.touchpad',
+  left_stick_x: 'label.leftStick',
+  left_stick_y: 'label.leftStick',
+  right_stick_x: 'label.rightStick',
+  right_stick_y: 'label.rightStick',
 };
 
 const KEYBOARD: Partial<Record<ControlId, ControlLabel>> = {
@@ -85,33 +86,11 @@ const KEYBOARD: Partial<Record<ControlId, ControlLabel>> = {
 
 export function controlLabel(model: PadModel, control: ControlId): ControlLabel {
   const table = model === 'ps4' || model === 'ps5' ? PLAYSTATION : model === 'f310' ? F310 : KEYBOARD;
-  const label = table[control] ?? { text: control };
+  const spoken = SPOKEN[control];
+  const label = table[control] ?? { text: spoken ? t(spoken) : control };
   if (model === 'ps5' && control === 'back') return { text: 'Create' };
   return label;
 }
 
 /** Human-readable name of an FTC control, used in the remap wizard. */
-export const CONTROL_DESCRIPTIONS: Record<ControlId, string> = {
-  a: 'a (✕ / A)',
-  b: 'b (○ / B)',
-  x: 'x (□ / X)',
-  y: 'y (△ / Y)',
-  dpad_up: 'крестовина вверх',
-  dpad_down: 'крестовина вниз',
-  dpad_left: 'крестовина влево',
-  dpad_right: 'крестовина вправо',
-  left_bumper: 'левый бампер (L1 / LB)',
-  right_bumper: 'правый бампер (R1 / RB)',
-  left_trigger: 'левый триггер (L2 / LT)',
-  right_trigger: 'правый триггер (R2 / RT)',
-  left_stick_x: 'левый стик ВПРАВО',
-  left_stick_y: 'левый стик ВВЕРХ',
-  right_stick_x: 'правый стик ВПРАВО',
-  right_stick_y: 'правый стик ВВЕРХ',
-  left_stick_button: 'нажатие левого стика (L3)',
-  right_stick_button: 'нажатие правого стика (R3)',
-  back: 'Share / Create / Back',
-  start: 'Options / Start',
-  guide: 'PS / Logitech',
-  touchpad: 'тачпад (только PlayStation)',
-};
+export const controlDescription = (control: ControlId): string => t(`control.${control}`);

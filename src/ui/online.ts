@@ -4,6 +4,7 @@ import { normalizeCode, type RoomInfo } from '../net/protocol';
 import { robotById } from '../robot/robots';
 import { SLOT_NAMES, type Slot } from '../sim/types';
 import { h } from './dom';
+import { ht, t } from './i18n';
 import type { Screen } from './menus';
 import { MenuNav } from './MenuNav';
 
@@ -22,26 +23,26 @@ export class ConnectScreen implements Screen {
   private readonly status = h('p', { class: 'muted status' });
 
   constructor(defaults: { name: string; server: string }, actions: ConnectActions) {
-    this.name = h('input', { class: 'field', maxlength: '16', placeholder: 'Например: Max', value: defaults.name });
+    this.name = ht('input', { class: 'field', maxlength: '16', value: defaults.name }, 'common.namePlaceholder');
     this.server = h('input', { class: 'field', value: defaults.server, spellcheck: 'false' });
     this.code = h('input', { class: 'field field-code', maxlength: '4', placeholder: 'ABCD', autocapitalize: 'characters' });
     this.code.addEventListener('input', () => (this.code.value = normalizeCode(this.code.value)));
     this.el = h('div', { class: 'screen menu-online' },
-      h('h2', {}, 'Онлайн 2 на 2'),
-      h('label', { class: 'field-label' }, 'Твоё имя (будет на табличке робота)', this.name),
+      ht('h2', {}, 'menu.online'),
+      h('label', { class: 'field-label' }, ht('span', {}, 'online.name'), this.name),
       h('div', { class: 'online-actions' },
         h('div', { class: 'panel' },
-          h('h3', {}, 'Новая комната'),
-          h('p', { class: 'muted' }, 'Получишь код из 4 букв и скажешь его друзьям.'),
-          h('button', { class: 'btn btn-primary', onclick: () => this.go(() => actions.create(this.nameValue, this.server.value.trim())) }, 'Создать комнату')),
+          ht('h3', {}, 'online.newRoom'),
+          ht('p', { class: 'muted' }, 'online.newRoomAbout'),
+          ht('button', { class: 'btn btn-primary', onclick: () => this.go(() => actions.create(this.nameValue, this.server.value.trim())) }, 'online.create')),
         h('div', { class: 'panel' },
-          h('h3', {}, 'Войти по коду'),
+          ht('h3', {}, 'online.joinTitle'),
           this.code,
-          h('button', { class: 'btn btn-secondary', onclick: () => this.join(actions) }, 'Войти'))),
-      h('details', { class: 'server-details' }, h('summary', {}, 'Адрес сервера'), this.server,
-        h('p', { class: 'muted' }, 'Все игроки должны подключаться к одному серверу.')),
+          ht('button', { class: 'btn btn-secondary', onclick: () => this.join(actions) }, 'online.join'))),
+      h('details', { class: 'server-details' }, ht('summary', {}, 'online.server'), this.server,
+        ht('p', { class: 'muted' }, 'online.serverAbout')),
       this.status,
-      h('div', { class: 'menu-buttons' }, h('button', { class: 'btn btn-ghost', onclick: actions.back }, 'Назад')),
+      h('div', { class: 'menu-buttons' }, ht('button', { class: 'btn btn-ghost', onclick: actions.back }, 'common.back')),
     );
     this.nav = new MenuNav(this.el, actions.back);
   }
@@ -52,12 +53,12 @@ export class ConnectScreen implements Screen {
 
   private join(actions: ConnectActions): void {
     const code = normalizeCode(this.code.value);
-    if (code.length !== 4) return this.setStatus('Введи код комнаты из 4 букв', true);
+    if (code.length !== 4) return this.setStatus(t('online.codeNeeded'), true);
     this.go(() => actions.join(this.nameValue, this.server.value.trim(), code));
   }
 
   private go(action: () => void): void {
-    this.setStatus('Подключение…', false);
+    this.setStatus(t('online.connecting'), false);
     action();
   }
 
@@ -93,25 +94,25 @@ export class LobbyScreen implements Screen {
         onclick: () => !p && this.actions.takeSlot(slot),
       },
       h('span', { class: 'slot-name' }, SLOT_NAMES[slot]),
-      h('span', { class: 'slot-player' }, p ? `${p.name}${p.id === room.hostId ? ' ★' : ''}${mine ? ' (ты)' : ''}` : 'Свободно — занять'),
+      h('span', { class: 'slot-player' }, p ? `${p.name}${p.id === room.hostId ? ' ★' : ''}${mine ? t('lobby.you') : ''}` : t('lobby.free')),
       p ? h('span', { class: 'slot-robot' }, h('img', { src: robotById(p.robot).teamLogo, alt: '' }), robotById(p.robot).name) : '');
     };
     const watchers = room.players.filter(p => !p.slot);
     this.el.replaceChildren(
-      h('h2', {}, 'Комната'),
+      h('h2', {}, t('lobby.title')),
       h('div', { class: 'room-code' }, room.code),
-      h('p', { class: 'muted' }, 'Скажи код друзьям: «Онлайн 2 на 2 → Войти по коду». ', `Сервер: ${serverUrl}`),
+      h('p', { class: 'muted' }, t('lobby.share'), t('lobby.server', { url: serverUrl })),
       h('div', { class: 'slots' },
         h('div', { class: 'slot-col' }, card('red1'), card('red2')),
         h('div', { class: 'slot-col' }, card('blue1'), card('blue2'))),
-      watchers.length ? h('p', { class: 'muted' }, `Смотрят: ${watchers.map(p => p.name).join(', ')}`) : '',
-      room.running ? h('p', { class: 'warn' }, 'Идёт игра — ты присоединишься со следующего старта') : '',
+      watchers.length ? h('p', { class: 'muted' }, t('lobby.watching', { names: watchers.map(p => p.name).join(', ') })) : '',
+      room.running ? h('p', { class: 'warn' }, t('lobby.running')) : '',
       h('div', { class: 'menu-buttons' },
-        isHost ? h('button', { class: 'btn btn-primary', onclick: () => this.actions.start('match') }, 'Начать матч 2:30') : '',
-        isHost ? h('button', { class: 'btn btn-secondary', onclick: () => this.actions.start('practice') }, 'Тренировка вместе') : '',
-        isHost ? '' : h('p', { class: 'muted' }, 'Ждём, пока хост ★ начнёт игру'),
-        me?.slot ? h('button', { class: 'btn btn-ghost', onclick: () => this.actions.takeSlot(null) }, 'Смотреть без робота') : '',
-        h('button', { class: 'btn btn-ghost', onclick: this.actions.leave }, 'Выйти из комнаты')),
+        isHost ? h('button', { class: 'btn btn-primary', onclick: () => this.actions.start('match') }, t('lobby.startMatch')) : '',
+        isHost ? h('button', { class: 'btn btn-secondary', onclick: () => this.actions.start('practice') }, t('lobby.startPractice')) : '',
+        isHost ? '' : h('p', { class: 'muted' }, t('lobby.waitHost')),
+        me?.slot ? h('button', { class: 'btn btn-ghost', onclick: () => this.actions.takeSlot(null) }, t('lobby.watch')) : '',
+        h('button', { class: 'btn btn-ghost', onclick: this.actions.leave }, t('online.leave'))),
     );
   }
 }

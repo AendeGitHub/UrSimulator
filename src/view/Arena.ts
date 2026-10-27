@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { t } from '../ui/i18n';
 
 const HALL = { halfX: 15, halfZ: 13, height: 10 };
 /** Brightness of hall surfaces compared to their real colours (the field gets the light). */
@@ -316,6 +317,6 @@ export class Arena {
       logo.src = src;
     };
     make('assets/biobuzz.webp', '', '', 10, [-HALL.halfX + 0.05, 5.6, 0], Math.PI / 2);
-    make('assets/logo.svg', 'UrSim', 'Симулятор FIRST Tech Challenge', 8, [HALL.halfX - 0.05, 5.6, 0], -Math.PI / 2);
+    make('assets/logo.svg', 'UrSim', t('arena.subtitle'), 8, [HALL.halfX - 0.05, 5.6, 0], -Math.PI / 2);
   }
 }

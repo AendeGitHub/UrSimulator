@@ -5,6 +5,7 @@ import { decodeState, type WorldState } from '../sim/state';
 import type { GameMode, RobotInput, Slot } from '../sim/types';
 import { SnapshotBuffer } from './interpolate';
 import type { RuleOptions } from '../sim/Referee';
+import { t } from '../ui/i18n';
 import { DEFAULT_PORT, type ClientMessage, type RoomInfo, type ServerMessage } from './protocol';
 
 export interface NetEvents extends SessionEvents {
@@ -46,7 +47,7 @@ export class NetSession implements Session {
       for (const m of this.queue.splice(0)) this.ws.send(JSON.stringify(m));
     };
     this.ws.onmessage = e => this.receive(e.data);
-    this.ws.onerror = () => events.error('Не удалось подключиться к серверу');
+    this.ws.onerror = () => events.error(t('online.failed'));
     this.ws.onclose = () => events.closed();
   }
 
@@ -71,7 +72,7 @@ export class NetSession implements Session {
         this.events.room(msg.room);
         break;
       case 'error':
-        this.events.error(msg.message);
+        this.events.error(msg.code ? t(`error.${msg.code}`) : msg.message);
         break;
       case 'toast':
         this.events.toast(msg.text);

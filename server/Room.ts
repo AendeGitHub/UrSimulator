@@ -90,8 +90,8 @@ export class Room {
   setSlot(id: number, slot: Slot | null): void {
     const p = this.players.get(id);
     if (!p || p.slot === slot) return;
-    if (slot && [...this.players.values()].some(o => o.slot === slot)) return p.peer.sendText({ t: 'error', message: 'Это место уже занято' });
-    if (this.running === 'match') return p.peer.sendText({ t: 'error', message: 'Во время матча меняться нельзя' });
+    if (slot && [...this.players.values()].some(o => o.slot === slot)) return p.peer.sendText({ t: 'error', code: 'slotTaken', message: 'Это место уже занято' });
+    if (this.running === 'match') return p.peer.sendText({ t: 'error', code: 'matchRunning', message: 'Во время матча меняться нельзя' });
     if (p.slot) this.sim?.removeRobot(p.slot);
     p.slot = slot;
     if (this.running === 'practice' && slot) this.sim?.addRobot(slot, p.name, p.robot);
@@ -101,7 +101,7 @@ export class Room {
   start(id: number, mode: GameMode, rules: RuleOptions = DEFAULT_RULES): void {
     const p = this.players.get(id);
     if (!p) return;
-    if (id !== this.hostId) return p.peer.sendText({ t: 'error', message: 'Начать может только хост комнаты' });
+    if (id !== this.hostId) return p.peer.sendText({ t: 'error', code: 'hostOnly', message: 'Начать может только хост комнаты' });
     this.sim ??= new Simulation(this.layout, this.colliders, {
       toast: text => this.broadcast({ t: 'toast', text }),
       finished: () => this.finish(),

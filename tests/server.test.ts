@@ -29,6 +29,10 @@ class FakePeer implements Peer {
   get errors(): string[] {
     return this.messages.flatMap(m => (m.t === 'error' ? [m.message] : []));
   }
+  /** What the browser translates errors by */
+  get errorCodes(): string[] {
+    return this.messages.flatMap(m => (m.t === 'error' && m.code ? [m.code] : []));
+  }
 }
 
 function connect(lobby: Lobby, name: string) {
@@ -67,6 +71,7 @@ describe('game server lobby', () => {
     const stranger = connect(lobby, 'X');
     lobby.handle(stranger.id, { t: 'join', code: 'ZZZZ' === code ? 'YYYY' : 'ZZZZ' });
     expect(stranger.peer.errors).toContain('Комната с таким кодом не найдена');
+    expect(stranger.peer.errorCodes).toEqual(['noRoom']);
 
     const others = ['B', 'C', 'D'].map(n => connect(lobby, n));
     for (const o of others) lobby.handle(o.id, { t: 'join', code });
@@ -76,6 +81,7 @@ describe('game server lobby', () => {
 
     lobby.handle(others[0].id, { t: 'start', mode: 'match' });
     expect(others[0].peer.errors).toContain('Начать может только хост комнаты');
+    expect(others[0].peer.errorCodes).toEqual(['hostOnly']);
   });
 
   it('runs a match: inputs move the right robot and everyone gets snapshots', () => {

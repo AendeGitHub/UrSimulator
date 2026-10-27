@@ -37,7 +37,7 @@ function storeMappings(all: Record<string, Mapping>): void {
 
 export class InputManager {
   readonly keyboard = new KeyboardPad();
-  /** What each button and key does (Settings → Управление) */
+  /** What each button and key does (Settings → Controls) */
   bindings: Bindings = DEFAULT_BINDINGS;
   readonly gamepad1 = emptyGamepad();
   readonly gamepad2 = emptyGamepad();

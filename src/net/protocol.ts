@@ -40,10 +40,14 @@ export type ClientMessage =
   | { t: 'input'; input: RobotInput }
   | { t: 'leave' };
 
+/** Why the server refused something; the browser shows it in the player's language (ui/i18n.ts). */
+export type ErrorCode = 'serverFull' | 'noRoom' | 'roomFull' | 'slotTaken' | 'matchRunning' | 'hostOnly';
+
 export type ServerMessage =
   | { t: 'welcome'; id: number }
   | { t: 'room'; room: RoomInfo | null }
-  | { t: 'error'; message: string }
+  // `message` is Russian text for clients older than `code`.
+  | { t: 'error'; code?: ErrorCode; message: string }
   | { t: 'toast'; text: string }
   | { t: 'finished'; score: Record<Alliance, AllianceScore> };
 
@@ -54,6 +58,6 @@ export function normalizeCode(code: string): string {
   return code.trim().toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
 }
 
-export function cleanName(name: string): string {
-  return name.replace(/\s+/g, ' ').trim().slice(0, 16) || 'Игрок';
+export function cleanName(name: string, fallback = 'Игрок'): string {
+  return name.replace(/\s+/g, ' ').trim().slice(0, 16) || fallback;
 }

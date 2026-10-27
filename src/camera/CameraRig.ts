@@ -3,16 +3,14 @@
 
 import * as THREE from 'three';
 import type { Alliance } from '../robot/robotConfig';
+import { t } from '../ui/i18n';
 
 export type CameraMode = 'driver' | 'audience' | 'follow';
 
 export const CAMERA_MODES: CameraMode[] = ['driver', 'audience', 'follow'];
 
-export const CAMERA_NAMES: Record<CameraMode, string> = {
-  driver: 'Вид водителя',
-  audience: 'Вид зрителей',
-  follow: 'За роботом',
-};
+/** What a camera view is called on the robot selection screen, in the interface language. */
+export const cameraName = (mode: CameraMode): string => t(`camera.${mode}`);
 
 /** Eye height of a standing driver, m */
 const DRIVER_EYE = 1.7;

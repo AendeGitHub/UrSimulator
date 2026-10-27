@@ -18,7 +18,7 @@ export const BATTERY = {
 };
 
 export class Battery {
-  /** Off (Settings → Правила): always full, the robot always runs at full speed. */
+  /** Off (Settings → Rules): always full, the robot always runs at full speed. */
   enabled = true;
   /** Resting voltage: what is left of the charge */
   private rest = BATTERY.full;

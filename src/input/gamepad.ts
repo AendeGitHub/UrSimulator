@@ -1,6 +1,8 @@
 // Gamepad model detection and FTC-style button mapping.
 // Supported controllers (the same ones allowed on an FTC Driver Station): PS4, PS5, Logitech F310.
 
+import { t } from '../ui/i18n';
+
 export type PadModel = 'ps4' | 'ps5' | 'f310' | 'keyboard' | 'unsupported';
 
 /** Gamepad state with the same field names as the FTC SDK `Gamepad` class. */
@@ -118,13 +120,16 @@ export function detectModel(id: string): PadModel {
   return 'unsupported';
 }
 
-export const MODEL_NAMES: Record<PadModel, string> = {
+const MODEL_NAMES: Record<'ps4' | 'ps5' | 'f310', string> = {
   ps4: 'PS4 DualShock 4',
   ps5: 'PS5 DualSense',
   f310: 'Logitech F310',
-  keyboard: 'Клавиатура',
-  unsupported: 'Неподдерживаемый геймпад',
 };
+
+/** Product name of a controller; the keyboard and unknown pads in the interface language. */
+export function modelName(model: PadModel): string {
+  return model === 'keyboard' || model === 'unsupported' ? t(`pad.${model}`) : MODEL_NAMES[model];
+}
 
 /** Raw state the mapping reads from; matches the shape of the browser `Gamepad`. */
 export interface RawPad {

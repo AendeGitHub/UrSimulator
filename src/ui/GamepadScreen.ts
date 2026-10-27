@@ -1,10 +1,11 @@
 // Controller setup: which pad is gamepad1/gamepad2, live button tester, button assignment wizard.
 
-import { MODEL_NAMES, type ControlId, type PadModel } from '../input/gamepad';
+import { modelName, type ControlId, type PadModel } from '../input/gamepad';
 import type { InputManager, PadInfo } from '../input/InputManager';
-import { CONTROL_DESCRIPTIONS, controlLabel } from '../input/labels';
+import { controlDescription, controlLabel } from '../input/labels';
 import { RemapWizard } from '../input/remap';
 import { h } from './dom';
+import { ht, t } from './i18n';
 import type { Screen } from './menus';
 import { MenuNav } from './MenuNav';
 
@@ -23,9 +24,8 @@ export class GamepadScreen implements Screen {
 
   constructor(private readonly input: InputManager, private readonly back: () => void) {
     this.el.append(
-      h('h2', {}, 'Геймпады'),
-      h('p', { class: 'muted' }, 'Поддерживаются PS4 DualShock 4, PS5 DualSense и Logitech F310 — как на FTC Driver Station. ',
-        'У F310 сзади есть переключатель: «X» на Windows, «D» на Mac.'),
+      ht('h2', {}, 'pads.title'),
+      ht('p', { class: 'muted' }, 'pads.about'),
       this.body,
     );
     this.nav = new MenuNav(this.el, () => this.goBack());
@@ -65,14 +65,14 @@ export class GamepadScreen implements Screen {
     const slotCard = (slot: 0 | 1) => {
       const info = input.slotInfo(slot);
       const name = `gamepad${slot + 1}`;
-      if (!info) return h('div', { class: 'panel pad-card' }, h('h3', {}, name), h('p', { class: 'muted' }, 'Не подключён'));
-      const status = info.mapping ? (info.customMapping ? 'Готов · свои настройки кнопок' : 'Готов') : 'Нужно настроить кнопки';
+      if (!info) return h('div', { class: 'panel pad-card' }, h('h3', {}, name), h('p', { class: 'muted' }, t('pads.none')));
+      const status = t(info.mapping ? (info.customMapping ? 'pads.readyCustom' : 'pads.ready') : 'pads.needsSetup');
       return h('div', { class: 'panel pad-card' },
-        h('h3', {}, name, h('span', { class: 'muted' }, ` · ${MODEL_NAMES[info.model]}`)),
+        h('h3', {}, name, h('span', { class: 'muted' }, ` · ${modelName(info.model)}`)),
         h('p', { class: info.mapping ? 'ok' : 'warn' }, status),
         h('div', { class: 'row' },
-          h('button', { class: 'btn btn-small', onclick: () => this.startWizard(info) }, 'Настроить кнопки'),
-          info.customMapping ? h('button', { class: 'btn btn-small btn-ghost', onclick: () => { input.resetMapping(info.id); this.layoutKey = ''; } }, 'Сбросить') : '',
+          h('button', { class: 'btn btn-small', onclick: () => this.startWizard(info) }, t('pads.setup')),
+          info.customMapping ? h('button', { class: 'btn btn-small btn-ghost', onclick: () => { input.resetMapping(info.id); this.layoutKey = ''; } }, t('pads.reset')) : '',
         ),
       );
     };
@@ -80,10 +80,10 @@ export class GamepadScreen implements Screen {
     this.body.replaceChildren(
       h('div', { class: 'pad-cards' }, slotCard(0), slotCard(1)),
       h('div', { class: 'row' },
-        h('button', { class: 'btn btn-secondary', onclick: () => { input.swapSlots(); this.layoutKey = ''; } }, 'Поменять gamepad1 ↔ gamepad2'),
-        h('button', { class: 'btn btn-secondary', onclick: () => this.goBack() }, 'Назад'),
+        h('button', { class: 'btn btn-secondary', onclick: () => { input.swapSlots(); this.layoutKey = ''; } }, t('pads.swap')),
+        h('button', { class: 'btn btn-secondary', onclick: () => this.goBack() }, t('common.back')),
       ),
-      ...unsupported.map(p => h('p', { class: 'warn' }, `Не поддерживается: ${p.id}`)),
+      ...unsupported.map(p => h('p', { class: 'warn' }, t('pads.unsupported', { id: p.id }))),
       this.buildTester(),
     );
   }
@@ -93,7 +93,7 @@ export class GamepadScreen implements Screen {
     const info = this.input.slotInfo(slot);
     if (!info?.mapping) {
       this.tester = null;
-      return h('p', { class: 'muted' }, 'Подключи геймпад и нажми любую кнопку — здесь появится проверка кнопок.');
+      return h('p', { class: 'muted' }, t('pads.testerHint'));
     }
     const model: PadModel = info.model;
     const cells = new Map<ControlId, HTMLElement>();
@@ -108,7 +108,7 @@ export class GamepadScreen implements Screen {
     const triggers = [trigger('left_trigger'), trigger('right_trigger')];
     this.tester = { slot, cells, sticks, triggers };
     return h('div', { class: 'panel tester' },
-      h('h3', {}, `Проверка: gamepad${slot + 1}`),
+      h('h3', {}, t('pads.tester', { n: slot + 1 })),
       h('div', { class: 'tester-row' }, triggers[0], sticks[0], h('div', { class: 'tester-grid' }, ...cells.values()), sticks[1], triggers[1]),
     );
   }
@@ -144,14 +144,14 @@ export class GamepadScreen implements Screen {
     const label = controlLabel(w.pad.model, control);
     this.body.replaceChildren(
       h('div', { class: 'panel wizard' },
-        h('p', { class: 'muted' }, `${MODEL_NAMES[w.pad.model]} · шаг ${w.wizard.index + 1} из ${w.wizard.order.length}`),
-        h('p', { class: 'wizard-prompt' }, control.includes('stick_') && !control.endsWith('button') ? 'Отклони ' : 'Нажми ',
+        h('p', { class: 'muted' }, t('pads.step', { model: modelName(w.pad.model), step: w.wizard.index + 1, count: w.wizard.order.length })),
+        h('p', { class: 'wizard-prompt' }, t(control.includes('stick_') && !control.endsWith('button') ? 'pads.move' : 'pads.press'),
           h('span', { class: 'key key-big', style: label.color ? { color: label.color } : undefined }, label.text)),
-        h('p', {}, CONTROL_DESCRIPTIONS[control]),
-        h('p', { class: 'muted' }, 'Пока идёт настройка, геймпад не управляет меню — используй мышь или клавиатуру.'),
+        h('p', {}, controlDescription(control)),
+        h('p', { class: 'muted' }, t('pads.wizardNote')),
         h('div', { class: 'row' },
-          h('button', { class: 'btn btn-secondary', onclick: () => { w.wizard.skip(); this.renderWizard(); } }, 'Пропустить'),
-          h('button', { class: 'btn btn-ghost', onclick: () => this.goBack() }, 'Отмена'),
+          h('button', { class: 'btn btn-secondary', onclick: () => { w.wizard.skip(); this.renderWizard(); } }, t('pads.skip')),
+          h('button', { class: 'btn btn-ghost', onclick: () => this.goBack() }, t('pads.cancel')),
         ),
       ),
     );

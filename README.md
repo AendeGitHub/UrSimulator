@@ -34,7 +34,7 @@ node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v1.glb tool
 
 ## Modes
 
-- **2:30 match**: like at a competition: AUTO 30 s → 3 s break → TELEOP 2:00, scoring per the game manual, and an FTC-style results screen at the end (R to play again, Esc for the menu). There is no autonomous code yet: you drive during those 30 seconds yourself.
+- **Match 2:30**: like at a competition: AUTO 30 s → 3 s break → TELEOP 2:00, scoring per the game manual, and an FTC-style results screen at the end (R to play again, Esc for the menu). There is no autonomous code yet: you drive during those 30 seconds yourself.
 - **Practice**: no timer; points and HIVE tips are still counted.
 - **Online 2 vs 2**: up to 4 players per room (Red 1/2, Blue 1/2), a match or a shared practice.
 
@@ -44,7 +44,7 @@ During play the screen shows only the timer with the score and the robot battery
 
 The turret can't spin endlessly (its wires would twist): it turns at most 180° each way, and when the target moves past that, the turret swings back around through the front.
 
-The camera is chosen before the game: **driver view**, **audience view** (from the stands) or **follow** (behind the robot). It can't be changed during a match; only the follow camera looks forward or back with R3 (it doesn't rotate with the robot, it just follows it).
+The camera is chosen before the game: **driver view**, **audience view** (from the stands) or **follow robot** (behind the robot). It can't be changed during a match; only the follow camera looks forward or back with R3 (it doesn't rotate with the robot, it just follows it).
 
 ## Rules and referee
 
@@ -63,7 +63,7 @@ The other rules the simulator simply doesn't let you break: robots are stopped b
 
 ## High scores
 
-**Рекорды** (high scores) in the main menu shows the top 100 single-player 2:30 matches for each robot. Each player has one row: a new best score replaces the old one. The name for the table is entered under high scores or on the robot select screen before a match.
+**High scores** in the main menu shows the top 100 single-player 2:30 matches for each robot. Each player has one row: a new best score replaces the old one. The name for the table is entered under high scores or on the robot select screen before a match.
 
 The server keeps the high scores. With no setup it writes them to `data/records.json`, but free Render wipes the disk on every restart, so the website needs a free [Upstash Redis](https://upstash.com) database:
 
@@ -87,7 +87,7 @@ npm run dev
 npm run server
 ```
 
-Then **Онлайн 2 на 2 → Создать комнату** (Online 2 vs 2 → Create room), and friends join with the 4-letter code.
+Then **Online 2 vs 2 → Create room**, and friends join with the 4-letter code.
 
 - **Friends on the same Wi-Fi:** run `npm run dev:lan` instead of `npm run dev`; friends open `http://<your Mac's IP>:5173`.
 - **Over the internet:** the server is hosted on [Render](https://render.com) from `render.yaml` (see "Hosting online" below).
@@ -98,15 +98,16 @@ The production build is one process that serves both the game and the rooms:
 npm run build && npm run build:server && PORT=8787 npm start
 ```
 
-The server address can be changed under **Онлайн → Адрес сервера** (Online → Server address) or with a `?server=wss://…` link.
+The server address can be changed under **Online 2 vs 2 → Server address** or with a `?server=wss://…` link.
 
 ## Settings
 
-**Настройки** (Settings) in the main menu (and in the pause menu):
+**Settings** in the main menu (and in the pause menu):
 
 - **Controls**: any gamepad button and any key can be rebound: click it in the table, then press the button or key you want (Esc cancels). If it's already used by another action, the two swap. "Reset controls" restores the defaults below.
 - **Graphics**: quality (Auto / High / Medium / Low), shadows, black outlines, FPS counter. Auto lowers the resolution and ambient occlusion by itself when the frame rate drops below 50.
 - **Rules**: fouls, cards and the battery (voltage sag that slows the robot) can be turned off. Online games use the host's settings.
+- **Language**: English or Russian. The default comes from the browser: Russian for a Russian browser, English otherwise. FTC terms (POLLEN, NECTAR, HIVE, AUTO, TELEOP, MAJOR FOUL) stay as in the game manual in both.
 - **Gamepads**: which gamepad is gamepad1 and gamepad2, a button tester, and setup for non-standard gamepads.
 
 Everything is saved in the browser right away.
@@ -133,7 +134,7 @@ The mechanisms listen to both gamepad1 and gamepad2, so two people can drive one
 
 The turret aims at the top cell of its own HIVE and sets the flywheel speed by itself. Shoot from the side the cell's opening faces (after a tip, from the other side).
 
-The F310 has a mode switch on the back: **X** on Windows, **D** on Mac. If the buttons are mixed up, open **Геймпады → Настроить кнопки** (Gamepads → Set up buttons).
+The F310 has a mode switch on the back: **X** on Windows, **D** on Mac. If the buttons are mixed up, open **Gamepads → Set up buttons**.
 
 ## Desktop app and releases
 
@@ -203,4 +204,4 @@ npm test
 npm run build
 ```
 
-The in-game interface is in Russian for now; menu names are given above with English translations.
+The in-game interface is in English and Russian (**Settings → Language**).

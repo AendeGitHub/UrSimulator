@@ -3,6 +3,7 @@
 import { FLOWER_VOLUME, ballInRect, type Zones } from '../field/zones';
 import type { Vec3 } from '../field/layout';
 import type { Alliance } from '../robot/robotConfig';
+import { t } from '../ui/i18n';
 
 export const POINTS = {
   leave: 3,
@@ -86,16 +87,16 @@ export const emptyScore = (): AllianceScore => ({
 /** Point breakdown for one alliance. */
 export function breakdown(s: AllianceScore): { label: string; count: number; points: number }[] {
   return [
-    { label: 'LEAVE (автоном)', count: s.leave, points: s.leave * POINTS.leave },
-    { label: 'PARK (автоном)', count: s.autoPark, points: s.autoPark * POINTS.autoPark },
-    { label: 'HIVE TIP (автоном)', count: s.autoTips, points: s.autoTips * POINTS.tip },
-    { label: 'HIVE TIP (TeleOp)', count: s.teleopTips, points: s.teleopTips * POINTS.tip },
-    { label: 'Мячи в верхней ячейке', count: s.field.cellElements, points: s.field.cellElements * POINTS.cellElement },
-    { label: 'Нижний NECTAR в цветке', count: s.field.flowerBottom, points: s.field.flowerBottom * POINTS.flowerBottomNectar },
-    { label: 'Мячи в своих цветах', count: s.field.ownedFlowerElements, points: s.field.ownedFlowerElements * POINTS.ownedFlowerElement },
-    { label: 'Мячи в GARDEN', count: s.field.gardenElements, points: s.field.gardenElements * POINTS.gardenElement },
-    { label: 'PARK (конец матча)', count: s.teleopPark, points: s.teleopPark * POINTS.teleopPark },
-    { label: 'Фолы соперника', count: 1, points: s.foulPoints },
+    { label: t('score.leave'), count: s.leave, points: s.leave * POINTS.leave },
+    { label: t('score.autoPark'), count: s.autoPark, points: s.autoPark * POINTS.autoPark },
+    { label: t('score.autoTips'), count: s.autoTips, points: s.autoTips * POINTS.tip },
+    { label: t('score.teleopTips'), count: s.teleopTips, points: s.teleopTips * POINTS.tip },
+    { label: t('score.cell'), count: s.field.cellElements, points: s.field.cellElements * POINTS.cellElement },
+    { label: t('score.flowerBottom'), count: s.field.flowerBottom, points: s.field.flowerBottom * POINTS.flowerBottomNectar },
+    { label: t('score.ownedFlower'), count: s.field.ownedFlowerElements, points: s.field.ownedFlowerElements * POINTS.ownedFlowerElement },
+    { label: t('score.garden'), count: s.field.gardenElements, points: s.field.gardenElements * POINTS.gardenElement },
+    { label: t('score.teleopPark'), count: s.teleopPark, points: s.teleopPark * POINTS.teleopPark },
+    { label: t('score.fouls'), count: 1, points: s.foulPoints },
   ];
 }
 

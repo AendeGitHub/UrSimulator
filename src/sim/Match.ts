@@ -3,6 +3,7 @@
 import { FLOWER_VOLUME, ballInRect, clearOfWalls, footprint, polygonOverlapsRect, rectCenter, type Zones } from '../field/zones';
 import { emptyScore, scoreField, type AllianceScore } from '../game/scoring';
 import type { Alliance } from '../robot/robotConfig';
+import { t } from '../ui/i18n';
 import type { BallSim } from './BallSim';
 import type { HiveSim } from './HiveSim';
 import { Referee } from './Referee';
@@ -39,17 +40,17 @@ export function matchClock(period: Period, time: number): { text: string; label:
   };
   switch (period) {
     case 'practice':
-      return { text: '∞', label: 'Тренировка', urgent: false };
+      return { text: '∞', label: t('menu.practice'), urgent: false };
     case 'auto':
-      return { text: fmt(DURATION.auto + DURATION.teleop - time), label: 'АВТОНОМ', urgent: false };
+      return { text: fmt(DURATION.auto + DURATION.teleop - time), label: t('clock.auto'), urgent: false };
     case 'transition':
-      return { text: fmt(DURATION.transition - time), label: 'Переход', urgent: true };
+      return { text: fmt(DURATION.transition - time), label: t('clock.transition'), urgent: true };
     case 'teleop': {
       const left = DURATION.teleop - time;
-      return { text: fmt(left), label: left <= ENDGAME ? 'TELEOP · цветы открыты' : 'TELEOP', urgent: left <= FINAL_WARNING };
+      return { text: fmt(left), label: left <= ENDGAME ? t('clock.flowersOpen') : 'TELEOP', urgent: left <= FINAL_WARNING };
     }
     case 'post':
-      return { text: '0:00', label: 'Конец матча', urgent: false };
+      return { text: '0:00', label: t('clock.over'), urgent: false };
   }
 }
 

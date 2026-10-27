@@ -28,7 +28,7 @@ export type RuleId = 'G402' | 'G405' | 'G408' | 'G410' | 'G417' | 'G421';
 
 export const FOUL_POINTS = { minor: 5, major: 20 };
 
-/** House rules (Settings → Правила): penalties and the battery can be switched off. */
+/** House rules (Settings → Rules): penalties and the battery can be switched off. */
 export interface RuleOptions {
   /** FOULS give points to the opponent */
   fouls: boolean;
@@ -125,7 +125,7 @@ export class Referee {
   private warning(slot: Slot, rule: RuleId): void {
     if (!this.options.cards) return;
     this.score[slotAlliance(slot)].warnings++;
-    this.call(slot, rule, 'предупреждение');
+    this.call(slot, rule, 'VERBAL WARNING');
   }
 
   /** A second YELLOW CARD is a RED CARD (10.6.1). */
@@ -134,13 +134,13 @@ export class Referee {
     if (this.yellow.has(slot)) return this.redCard(slot, rule);
     this.yellow.add(slot);
     this.score[slotAlliance(slot)].yellowCards++;
-    this.call(slot, rule, 'жёлтая карточка');
+    this.call(slot, rule, 'YELLOW CARD');
   }
 
   private redCard(slot: Slot, rule: RuleId): void {
     this.red.add(slot);
     this.score[slotAlliance(slot)].redCards++;
-    this.call(slot, rule, 'красная карточка');
+    this.call(slot, rule, 'RED CARD');
   }
 
   /** VERBAL WARNING the first time; true when the robot does it again. */
@@ -160,7 +160,7 @@ export class Referee {
     return true;
   }
 
-  /** Every call is listed on the results board. */
+  /** Every call is listed on the results board, which puts the words into the player's language. */
   private call(slot: Slot, rule: RuleId, what: string): void {
     this.score[slotAlliance(slot)].calls.push(`${rule} · ${what} · ${SLOT_NAMES[slot]}`);
   }

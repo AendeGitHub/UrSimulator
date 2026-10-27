@@ -5,7 +5,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { CAMERA_MODES, CameraRig, type CameraMode } from '../camera/CameraRig';
 import type { FieldLayout } from '../field/layout';
 import { withDefaults, type Bindings } from '../input/bindings';
-import { MODEL_NAMES } from '../input/gamepad';
+import { modelName } from '../input/gamepad';
 import { InputManager } from '../input/InputManager';
 import { NetSession, defaultServerUrl } from '../net/NetSession';
 import { cleanName, type RoomInfo } from '../net/protocol';
@@ -25,6 +25,7 @@ import { ConnectScreen, LobbyScreen } from '../ui/online';
 import { RecordsScreen } from '../ui/RecordsScreen';
 import { RobotSelectScreen, type SelectPurpose, type SelectSettings } from '../ui/RobotSelect';
 import { ResultsScreen, type ResultsTeam } from '../ui/ResultsScreen';
+import { LANGUAGES, defaultLanguage, localize, setLanguage, t, type Language } from '../ui/i18n';
 import { DEFAULT_GRAPHICS, SettingsScreen, type GraphicsSettings, type QualityPreset, type SettingsValues } from '../ui/SettingsScreen';
 import { Arena } from '../view/Arena';
 import { asset } from '../view/assets';
@@ -56,9 +57,10 @@ interface Settings {
   bindings: Bindings;
   graphics: GraphicsSettings;
   rules: RuleOptions;
+  language: Language;
 }
 
-function loadSettings(): Settings {
+export function loadSettings(): Settings {
   let saved: Partial<Settings> = {};
   try {
     saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
@@ -77,6 +79,8 @@ function loadSettings(): Settings {
     bindings: withDefaults(saved.bindings),
     graphics: { ...DEFAULT_GRAPHICS, ...saved.graphics },
     rules: cleanRules(saved.rules),
+    // The first time, from the browser's language.
+    language: LANGUAGES.includes(saved.language as Language) ? saved.language as Language : defaultLanguage(),
   };
 }
 
@@ -107,7 +111,7 @@ const QUALITY = [
   { ratio: 1, ao: false },
   { ratio: 0.75, ao: false },
 ];
-/** Fixed presets from Settings → Графика, as steps of the ladder above */
+/** Fixed presets from Settings → Graphics, as steps of the ladder above */
 const PRESET_LEVEL: Record<Exclude<QualityPreset, 'auto'>, number> = { high: 0, medium: 2, low: 4 };
 /** Below this frame rate quality steps down; above the upper one for a while it tries a step up. */
 const FPS_LOW = 50;
@@ -196,7 +200,7 @@ export class Game {
       }),
       select: new RobotSelectScreen(this.selectSettings(), {
         change: settings => this.applySelect(settings),
-        start: purpose => (purpose === 'online' ? this.show(this.screens.connect) : this.startSolo(purpose)),
+        start: purpose => (purpose === 'online' ? this.openConnect() : this.startSolo(purpose)),
         back: () => this.toMenu(),
       }),
       pause: new PauseMenu({
@@ -223,7 +227,8 @@ export class Game {
       connect: new ConnectScreen({ name: this.settings.name, server: this.settings.server }, {
         create: (name, server) => this.connect(name, server, net => net.create()),
         join: (name, server, code) => this.connect(name, server, net => net.join(code)),
-        back: () => this.show(this.screens.main),
+        // Also drops a connection still on its way, so its room can't open the lobby over the menu.
+        back: () => this.toMenu(),
       }),
       records: new RecordsScreen({
         server: () => this.settings.server || defaultServerUrl(),
@@ -320,6 +325,16 @@ export class Game {
     this.showPreview();
   }
 
+  /**
+   * Online, once the robot is picked: the connect screen in the menu state, the one in which
+   * room updates open the lobby and server errors show on this screen.
+   */
+  private openConnect(): void {
+    this.hidePreview();
+    this.state = 'menu';
+    this.show(this.screens.connect);
+  }
+
   private applySelect(settings: SelectSettings): void {
     Object.assign(this.settings, settings);
     this.saveSettings();
@@ -372,7 +387,7 @@ export class Game {
 
   private connect(name: string, server: string, action: (net: NetSession) => void): void {
     this.endSession();
-    this.settings.name = cleanName(name);
+    this.settings.name = cleanName(name, t('common.player'));
     this.settings.server = server || defaultServerUrl();
     this.saveSettings();
     const net = new NetSession(this.settings.server, this.settings.name, this.settings.robot, {
@@ -388,7 +403,7 @@ export class Game {
         this.hud.el.hidden = true;
         this.state = 'menu';
         this.show(this.screens.connect);
-        this.screens.connect.setStatus('Соединение с сервером потеряно', true);
+        this.screens.connect.setStatus(t('online.lost'), true);
       },
     });
     this.net = net;
@@ -435,6 +450,8 @@ export class Game {
     this.overlay.replaceChildren(...(screen ? [screen.el] : []));
     this.overlay.classList.toggle('active', !!screen);
     if (screen) {
+      // Screens are built once; the language may have changed since.
+      localize(screen.el);
       screen.onShow?.();
       screen.nav.focusFirst();
     } else {
@@ -477,8 +494,8 @@ export class Game {
     this.screens.results.show({
       score,
       teams,
-      title: room ? `Онлайн-матч ${this.matchNumber}` : `Матч ${this.matchNumber}`,
-      event: room ? `UrSim Онлайн · комната ${room.code}` : 'UrSim · одиночная игра',
+      title: t(room ? 'results.onlineMatch' : 'results.match', { n: this.matchNumber }),
+      event: room ? t('results.room', { code: room.code }) : t('results.solo'),
       online: !!this.net,
     });
     this.show(this.screens.results);
@@ -499,16 +516,16 @@ export class Game {
     const name = this.settings.name;
     // Without a name the match only counts as a personal best in this browser.
     if (!name) {
-      if (points > localBest && points > 0) this.screens.results.setRecord(alliance, 'Личный рекорд');
+      if (points > localBest && points > 0) this.screens.results.setRecord(alliance, t('results.personalBest'));
       return;
     }
     submitRecord(this.settings.server || defaultServerUrl(), robot, name, points)
       .then(r => {
         if (this.state !== 'results' || !r.improved) return;
-        this.screens.results.setRecord(alliance, r.rank === 1 ? 'Рекорд UrSim' : r.rank ? `Рекорд · место ${r.rank}` : 'Личный рекорд');
+        this.screens.results.setRecord(alliance, r.rank === 1 ? t('results.topScore') : r.rank ? t('results.rank', { rank: r.rank }) : t('results.personalBest'));
       })
       .catch(() => {
-        if (this.state === 'results' && points > localBest && points > 0) this.screens.results.setRecord(alliance, 'Личный рекорд');
+        if (this.state === 'results' && points > localBest && points > 0) this.screens.results.setRecord(alliance, t('results.personalBest'));
       });
   }
 
@@ -544,13 +561,14 @@ export class Game {
   }
 
   private settingsValues(): SettingsValues {
-    const { bindings, graphics, rules } = this.settings;
-    return structuredClone({ bindings, graphics, rules });
+    const { bindings, graphics, rules, language } = this.settings;
+    return structuredClone({ bindings, graphics, rules, language });
   }
 
-  /** Controls, graphics and house rules from the settings (the rules apply from the next game). */
+  /** Controls, graphics, house rules and language from the settings (the rules apply from the next game). */
   private applySettings(): void {
     const g = this.settings.graphics;
+    setLanguage(this.settings.language);
     this.input.bindings = this.settings.bindings;
     this.spot.castShadow = g.shadows;
     this.effects.setOutlines(g.outlines);
@@ -739,8 +757,8 @@ export class Game {
     const p1 = this.input.slotInfo(0);
     const key = p1 ? `${p1.index}|${p1.model}` : '';
     if (key === this.lastPad1) return;
-    if (p1) this.hud.toast(`Подключён ${MODEL_NAMES[p1.model]} → gamepad1`);
-    else if (this.lastPad1) this.hud.toast('gamepad1 отключён — управление с клавиатуры');
+    if (p1) this.hud.toast(t('pad.connected', { model: modelName(p1.model) }));
+    else if (this.lastPad1) this.hud.toast(t('pad.disconnected'));
     this.lastPad1 = key;
   }
 }

@@ -1,6 +1,7 @@
-// Which controller button and which key does what. Players change both in Settings → Управление;
+// Which controller button and which key does what. Players change both in Settings → Controls;
 // the sticks always drive (left: move, right: turn), as on an FTC Driver Station.
 
+import { t } from '../ui/i18n';
 import type { ControlId } from './gamepad';
 
 export type ActionId = 'intake' | 'eject' | 'transfer' | 'shooterOn' | 'shooterOff' | 'slow' | 'fieldCentric' | 'imuReset' | 'camera' | 'pause';
@@ -12,24 +13,8 @@ export const MOVES: MoveId[] = ['forward', 'backward', 'left', 'right', 'turnLef
 /** Mechanisms listen to gamepad1 and gamepad2, as in FTC; the rest is the driver's (gamepad1). */
 export const MECHANISM_ACTIONS = new Set<ActionId>(['intake', 'eject', 'transfer', 'shooterOn', 'shooterOff']);
 
-export const ACTION_NAMES: Record<ActionId | MoveId, string> = {
-  forward: 'Ехать вперёд',
-  backward: 'Ехать назад',
-  left: 'Влево (стрейф)',
-  right: 'Вправо (стрейф)',
-  turnLeft: 'Поворот влево',
-  turnRight: 'Поворот вправо',
-  intake: 'Интейк: забрать мячи (держать)',
-  eject: 'Выкинуть мячи (держать)',
-  transfer: 'Трансфер в шутер (держать)',
-  shooterOn: 'Шутер включить',
-  shooterOff: 'Шутер выключить',
-  slow: 'Медленный режим',
-  fieldCentric: 'Field-centric ↔ Robot-centric',
-  imuReset: 'Сброс курса (IMU)',
-  camera: 'Камера «За роботом»: вперёд / назад',
-  pause: 'Пауза',
-};
+/** What an action is called in Settings → Controls, in the interface language (ui/i18n.ts). */
+export const actionName = (id: ActionId | MoveId): string => t(`action.${id}`);
 
 export interface Bindings {
   /** Controller button or trigger for each action */

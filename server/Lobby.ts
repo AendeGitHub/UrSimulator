@@ -47,7 +47,7 @@ export class Lobby {
         c.robot = robotById(typeof msg.robot === 'string' ? msg.robot : undefined).id;
         break;
       case 'create': {
-        if (this.rooms.size >= MAX_ROOMS) return c.peer.sendText({ t: 'error', message: 'Сервер заполнен, попробуй позже' });
+        if (this.rooms.size >= MAX_ROOMS) return c.peer.sendText({ t: 'error', code: 'serverFull', message: 'Сервер заполнен, попробуй позже' });
         this.leaveRoom(id);
         const code = randomCode(code => this.rooms.has(code));
         const room = new Room(code, this.layout, this.colliders, 1 / SNAPSHOT_RATE);
@@ -57,7 +57,7 @@ export class Lobby {
       }
       case 'join': {
         const room = this.rooms.get(normalizeCode(String(msg.code ?? '')));
-        if (!room) return c.peer.sendText({ t: 'error', message: 'Комната с таким кодом не найдена' });
+        if (!room) return c.peer.sendText({ t: 'error', code: 'noRoom', message: 'Комната с таким кодом не найдена' });
         if (c.room === room) return;
         this.leaveRoom(id);
         this.enter(c, room);
@@ -83,7 +83,7 @@ export class Lobby {
   }
 
   private enter(c: Client, room: Room): void {
-    if (!room.join(c.id, c.name, c.robot, c.peer)) return c.peer.sendText({ t: 'error', message: 'Комната заполнена (4 игрока)' });
+    if (!room.join(c.id, c.name, c.robot, c.peer)) return c.peer.sendText({ t: 'error', code: 'roomFull', message: 'Комната заполнена (4 игрока)' });
     c.room = room;
   }
 
