@@ -8,7 +8,7 @@
 
 ![Main menu](docs/menu.jpg)
 
-Drive **URAN V2**, **Bumble V** or **Silver Bullet Blaster**, real competition robots built from their teams' CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN, launch it into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. Play **online 1 vs 1 or 2 vs 2** with friends: they join your room with a 4-letter code. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
+Drive **URAN V2**, **Bumble V** or **Silver Bullet Blaster**, real competition robots built from their teams' CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN, launch it into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. With two gamepads, two people play on one computer on a **split screen**: each drives their own robot and sees the field through their own camera. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
 
 ![In game](docs/game.jpg)
 
@@ -22,7 +22,7 @@ Every version is on the [Releases](../../releases) page. Pick the zip for your c
 | macOS 12 or newer (Intel and Apple Silicon) | `UrSim_<version>_Mac.zip` |
 | Linux (64-bit) | `UrSim_<version>_Linux.zip` |
 
-No install needed to play in the browser: **https://ursim.onrender.com** (Chrome, Edge, Firefox or Safari). The app and the website share the same online server, so they can play together.
+No install needed to play in the browser: **https://ursim.onrender.com** (Chrome, Edge, Firefox or Safari). The app and the website share the same high score tables.
 
 ### How to start
 
@@ -47,21 +47,21 @@ Press `F11` for fullscreen. PS4, PS5 and Logitech F310 gamepads or the keyboard;
 ```mermaid
 flowchart LR
   subgraph Client["Browser or desktop app"]
-    Input["Gamepads and keyboard<br/>src/input"] --> Game["Game loop and sessions<br/>src/game"]
-    Game --> View["three.js renderer<br/>src/view"]
-    Game -- solo --> LocalSim["Simulation<br/>src/sim"]
+    Input["Gamepads and keyboard<br/>src/input"] --> Game["Game loop and session<br/>src/game"]
+    Game --> Sim["Simulation<br/>src/sim"]
+    Game --> View["three.js renderer<br/>one view or two side by side<br/>src/view"]
   end
   subgraph Server["Node server on Render"]
-    Rooms["Lobby and rooms<br/>server/"] --> ServerSim["Simulation<br/>src/sim"]
-    Rooms --> Records["High scores<br/>file or Upstash Redis"]
+    Records["High scores<br/>file or Upstash Redis"]
   end
-  Game -- "inputs (JSON over WebSocket)" --> Rooms
-  Rooms -- "binary snapshots, 30 per second" --> Game
+  Game -- "solo match scores (HTTP)" --> Records
 ```
 
-**One simulation, two places.** All game logic lives in `src/sim` without any graphics: Rapier physics stepped at 120 Hz, the mecanum drive, the mechanisms, HIVEs, scoring and the referee. In solo play it runs in the browser. Online, the same code runs on the server, which is authoritative: players send only their inputs, the server sends compact binary snapshots back 30 times a second, and the client interpolates between them so motion stays smooth.
+**Simulation without graphics.** All game logic lives in `src/sim` without any graphics: Rapier physics stepped at 120 Hz, the mecanum drive, the mechanisms, HIVEs, scoring and the referee. It runs in the browser; the renderer only draws the world state the simulation reports.
 
-**From CAD to game.** The field, HIVEs and game elements are converted from the official BIOBUZZ CAD (STEP → GLB) by scripts in `tools/`, and the field colliders are baked into one binary file that the browser and the server both load. The robot comes from the team's own CAD: a JSON file marks which parts spin (wheels, intake, flywheel, turret) and around which axis, then the model is simplified and its parts are merged by material to cut draw calls.
+**Split screen.** With two gamepads the session holds two robots, each fed by its own gamepad. The scene is drawn into the left and right half of one canvas (viewport and scissor) through two cameras, each half with its own post-processing chain, and the shadow map is drawn once a frame for both.
+
+**From CAD to game.** The field, HIVEs and game elements are converted from the official BIOBUZZ CAD (STEP → GLB) by scripts in `tools/`, and the field colliders are baked into one binary file that the browser loads. The robot comes from the team's own CAD: a JSON file marks which parts spin (wheels, intake, flywheel, turret) and around which axis, then the model is simplified and its parts are merged by material to cut draw calls.
 
 **Robot physics.** Mecanum kinematics as in an FTC TeleOp (robot-centric or field-centric with an IMU heading), with motor speed scaled by a battery model: 14 V at the start, drained by the flywheel, sagging under load. The turret aims by itself within its cable limit (URAN V2 ±200°, Bumble V and Silver Bullet Blaster a full turn each way) and unwinds through the front; the flywheel speed comes from a ballistic solution for the distance to the HIVE cell, and the spread grows with range.
 
@@ -71,15 +71,15 @@ flowchart LR
 
 **Desktop app and CI.** The same build runs in Electron, served over a custom `app://` protocol so that fetch, WebAssembly and localStorage work as on the website. GitHub Actions builds the Windows, macOS (universal) and Linux zips on native runners.
 
-**Tests.** 112 Vitest tests in 14 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules, server rooms (also in worker threads) and house rules, input bindings, high scores and translations.
+**Tests.** 96 Vitest tests in 11 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules and house rules, input bindings, high scores and translations.
 
 | Area | Tools |
 |---|---|
-| Language | TypeScript (about 7,700 lines in `src/` and `server/`) |
+| Language | TypeScript (about 7,600 lines in `src/` and `server/`) |
 | 3D graphics | three.js |
 | Physics | Rapier (WebAssembly) |
 | Build | Vite, esbuild |
-| Server | Node.js, WebSocket (`ws`), hosted on Render |
+| Server | Node.js (the game files and high scores), hosted on Render |
 | Desktop | Electron, electron-builder, GitHub Actions |
 | Tests | Vitest |
 
@@ -94,7 +94,7 @@ Open http://localhost:5173, connect a gamepad (PS4, PS5 or Logitech F310) and pr
 
 ## Robots
 
-Before a match, practice or online game you pick a robot: alliance, camera and drive mode, with a card of the robot's figures (rapid fire, weight, drive, top speed, turret, what it picks up, Flower Mode).
+Before a match or practice you pick a robot: alliance, camera and drive mode, with a card of the robot's figures (rapid fire, weight, drive, top speed, turret, what it picks up, Flower Mode). With a second gamepad connected, the same screen has rows for gamepad2's robot and alliance (see [Split screen](#split-screen)).
 
 - **URAN V2** (team URAN92; it replaced URAN V1): model from the team's CAD, mecanum drive on 518 RPM motors with 82 mm wheels (≈2.2 m/s), 9 kg, 44 × 32 cm (53 cm with the arm down). Rapid fire: all 4 balls in 0.4 s. Flower Mode: the U-shaped push-back arm in front of the intake, like Bumble V's.
 - The turret turns to the target by itself; the wheels, intake, transfer and flywheel spin like on the real robot.
@@ -118,11 +118,11 @@ node tools/convert-robot.mjs robot-raw.glb public/assets/robots/uran-v2.glb tool
 
 - **Match 2:30**: like at a competition: AUTO 30 s → 3 s break → TELEOP 2:00, scoring per the game manual, and an FTC-style results screen at the end (R to play again, Esc for the menu). There is no autonomous code yet: you drive during those 30 seconds yourself.
 - **Practice**: no timer; points and HIVE tips are still counted.
-- **Online**: a 1 vs 1 room (Red 1, Blue 1) or a 2 vs 2 room (Red 1/2, Blue 1/2), a match or a shared practice. Up to 4 people per room; anyone without a driver spot watches.
+- **Split screen**: either of the two above for two players with two gamepads, each with their own robot and half of the screen.
 
 A ball that leaves the field comes back after 5 seconds (manual 10.8.2): POLLEN is placed on the field next to the nearest wall, and NECTAR goes to that alliance's human player, who can bring it back in right away (G427).
 
-During play the screen shows only the timer with the score and the robot battery, like on a Driver Station: a green block with the current voltage and the lowest one this match in brackets. A match starts at 14 V; a flywheel left spinning drains the battery and the robot drives slower (motor speed is proportional to voltage).
+During play the screen shows only the timer with the score and the robot battery, like on a Driver Station: a green block with the current voltage and the lowest one this match in brackets. A match starts at 14 V; a flywheel left spinning drains the battery and the robot drives slower (motor speed is proportional to voltage). On a split screen each half shows its driver's gamepad, slot and battery.
 
 The turret can't spin endlessly (its wires would twist): URAN V2's turns at most 200° each way (Bumble V's and Silver Bullet Blaster's a full turn), and when the target moves past that, the turret swings back around through the front.
 
@@ -130,7 +130,7 @@ The camera is chosen before the game: **driver view**, **audience view** (from t
 
 ## Rules and referee
 
-In 2:30 matches and online matches the referee enforces the game rules from the manual (section 11.4) by itself. A MINOR FOUL gives the opponent 5 points, a MAJOR FOUL 20 (the FOUL row on the results screen), and a second yellow card becomes a red card: 0 points for the match. Every call is listed on the results screen after the match.
+In 2:30 matches the referee enforces the game rules from the manual (section 11.4) by itself. A MINOR FOUL gives the opponent 5 points, a MAJOR FOUL 20 (the FOUL row on the results screen), and a second yellow card becomes a red card: 0 points for the match. Every call is listed on the results screen after the match.
 
 | Rule | Not allowed | Penalty |
 |---|---|---|
@@ -145,7 +145,7 @@ The other rules the simulator simply doesn't let you break: robots are stopped b
 
 ## High scores
 
-**High scores** in the main menu shows the top 100 single-player 2:30 matches for each robot. Each player has one row: a new best score replaces the old one. The name for the table is entered under high scores or on the robot select screen before a match.
+**High scores** in the main menu shows the top 100 single-player 2:30 matches for each robot. Each player has one row: a new best score replaces the old one. The name for the table is entered under high scores or on the robot select screen before a match. Split-screen matches don't go into the table.
 
 The server keeps the high scores. With no setup it writes them to `data/records.json`, but free Render wipes the disk on every restart, so the website needs a free [Upstash Redis](https://upstash.com) database:
 
@@ -157,13 +157,7 @@ After the restart the server log shows `High scores: upstash`, and `https://<add
 
 Without a database the game still gets its own best scores back: each browser remembers the bests it sent and sends them again when a restarted server no longer has them (at start and when High scores opens).
 
-## Online
-
-The server runs the online game: players send only their inputs, and the server runs the physics, scoring and timer, so everyone sees the same field.
-
-WebSockets run over TCP, so a lost packet holds everything behind it until it is sent again. The game draws the field a little in the past and adapts how far to how evenly snapshots arrive; when they stop for a moment, robots keep moving the way they were going for up to 0.25 s instead of freezing. A live 2 vs 2 match takes about 13% of a fast CPU core (Apple M2), mostly Rapier at 120 steps a second: more than Render's free plan gives (0.1 CPU), which is why everyone in a room stutters at once there. The rooms run in worker threads, one per core (`server/RoomPool.ts`), so a server with more cores runs more matches; on [your own server](deploy/README.md) 2 cores carry 8–10 matches at once.
-
-Running it locally (two terminals):
+Running the high score server locally next to the game (two terminals):
 
 ```bash
 npm run dev
@@ -173,18 +167,22 @@ npm run dev
 npm run server
 ```
 
-Then **Online → 1 vs 1 room** or **2 vs 2 room**, and friends join with the 4-letter code.
-
-- **Friends on the same Wi-Fi:** run `npm run dev:lan` instead of `npm run dev`; friends open `http://<your Mac's IP>:5173`.
-- **Over the internet:** the server is hosted on [Render](https://render.com) from `render.yaml` (see "Hosting online" below).
-
-The production build is one process that serves both the game and the rooms:
+The production build is one process that serves both the game and the high scores:
 
 ```bash
 npm run build && npm run build:server && PORT=8787 npm start
 ```
 
-The server address can be changed under **Online → Server address** or with a `?server=wss://…` link.
+Another high score server can be picked with a `?server=https://…` link.
+
+## Split screen
+
+Connect two gamepads (PS4, PS5 or Logitech F310) and open **Play → Match 2:30** or **Practice**. The robot select screen gets rows for gamepad2: **gamepad2 → Own robot**, its robot and its alliance; gamepad1 picks its robot from the cards as usual. Press Start and each player drives their own robot with their own gamepad on their own half of the screen: gamepad1 on the left, gamepad2 on the right, each with the camera picked before the game.
+
+- The same alliance for both (Red 1 and Red 2, or Blue 1 and Blue 2) is a team; different alliances play 1 vs 1.
+- Either gamepad pauses the game. The keyboard plays for gamepad1.
+- **gamepad2 → Operator (FTC)** keeps one robot on the whole screen, and gamepad2 runs its mechanisms like a second FTC driver.
+- Which controller is gamepad1 and which gamepad2: **Settings → Gamepads → Swap gamepad1 ↔ gamepad2**.
 
 ## Settings
 
@@ -192,7 +190,7 @@ The server address can be changed under **Online → Server address** or with a 
 
 - **Controls**: drive and turn sensitivity (30–200%), and any gamepad button and any key can be rebound: click it in the table, then press the button or key you want (Esc cancels). If it's already used by another action, the two swap. "Reset controls" restores the defaults below.
 - **Graphics**: quality (Auto / High / Medium / Low), shadows, black outlines, anti-aliasing, FPS counter. Auto lowers the resolution and ambient occlusion by itself when the frame rate drops below 50.
-- **Rules**: fouls, cards and the battery (voltage sag that slows the robot) can be turned off. Online games use the host's settings.
+- **Rules**: fouls, cards and the battery (voltage sag that slows the robot) can be turned off.
 - **Language**: English or Russian. The default comes from the browser: Russian for a Russian browser, English otherwise. FTC terms (POLLEN, NECTAR, HIVE, AUTO, TELEOP, MAJOR FOUL) stay as in the game manual in both.
 - **Gamepads**: which gamepad is gamepad1 and gamepad2, a button tester, and setup for non-standard gamepads.
 
@@ -216,7 +214,7 @@ Everything is saved in the browser right away.
 | Pause | PS | Logitech | Esc |
 | Restart | — | — | R |
 
-The mechanisms listen to both gamepad1 and gamepad2, so two people can drive one robot.
+With two gamepads each player drives their own robot with these buttons on a split screen; in **Operator (FTC)** mode the mechanisms listen to both gamepads instead, so two people drive one robot. The keyboard always plays for gamepad1.
 
 The turret aims at the top cell of its own HIVE and sets the flywheel speed by itself. Shoot from the side the cell's opening faces (after a tip, from the other side).
 
@@ -224,7 +222,7 @@ The F310 has a mode switch on the back: **X** on Windows, **D** on Mac. If the b
 
 ## Desktop app and releases
 
-The game also comes as an app for Windows, macOS and Linux (Electron, in `desktop/`): the same game in its own window, with online rooms and high scores going through the Render server. Ready-made builds are on the [Releases](../../releases) page.
+The game also comes as an app for Windows, macOS and Linux (Electron, in `desktop/`): the same game in its own window, with the high scores kept on the Render server. Ready-made builds are on the [Releases](../../releases) page.
 
 Running the app locally:
 
@@ -251,7 +249,7 @@ gh release edit v1.0.1 --notes "What's new: …" --draft=false
 
 The Mac build is signed without an Apple certificate, so macOS asks for permission on the first launch (see [How to start](#how-to-start)).
 
-## Hosting online (Render, free)
+## Hosting the website (Render, free)
 
 1. Push this repository to your own GitHub account (or fork it).
 2. Go to [render.com](https://render.com), sign in with GitHub → **New → Blueprint** → pick the repository → **Apply**.
@@ -263,7 +261,7 @@ Health check: `https://<address>/health`.
 
 ## Hosting on your own server (VPS)
 
-A small VPS (2 cores) has no CPU limit and does not sleep. `deploy/` has a systemd service, a Caddy config that gets the HTTPS certificate by itself, and an update script; [deploy/README.md](deploy/README.md) walks through it step by step (in Russian).
+A small VPS does not sleep, so the website opens at once and keeps its high scores in a file. `deploy/` has a systemd service, a Caddy config that gets the HTTPS certificate by itself, and an update script; [deploy/README.md](deploy/README.md) walks through it step by step (in Russian).
 
 ## Tuning
 
@@ -279,14 +277,14 @@ A small VPS (2 cores) has no CPU limit and does not sleep. `deploy/` has a syste
 - `tools/convert-balls.mjs`: POLLEN and NECTAR from the official CAD (`Field/am-5851…`, `am-5852…`) into `public/assets/balls.glb`.
 - `tools/lighten-model.mjs`: simplifies a finished model (fewer triangles, same moving parts) when the CAD isn't at hand.
   The field was made with `error 0.003 --drop-normals`, the robot with `0.01`, the balls with `0.02`.
-- `tools/convert-field.mjs` turns the field CAD (STEP) into `public/assets/field.glb` and `field-layout.json`; `tools/build-colliders.mjs` builds the field colliders for the browser and the server (`field-colliders.bin`). Both: `npm run convert:field`.
-- `src/sim/`: the whole game without graphics: physics, robots, mechanisms, HIVEs, match, scoring, network snapshots. Runs in the browser (solo) and on the server.
-- `src/net/`: protocol, online session, smooth snapshot interpolation; `server/`: the game server with rooms (simulated in worker threads); `deploy/`: running it on your own server.
+- `tools/convert-field.mjs` turns the field CAD (STEP) into `public/assets/field.glb` and `field-layout.json`; `tools/build-colliders.mjs` builds the field colliders (`field-colliders.bin`). Both: `npm run convert:field`.
+- `src/sim/`: the whole game without graphics: physics, robots, mechanisms, HIVEs, match, scoring.
+- `src/net/`: the high score tables on the server; `server/`: the web server (game files and high scores); `deploy/`: running it on your own server.
 - `src/view/`: draws the field, arena, balls and robots from the world state.
 - `src/input/`: gamepads (button names as in the FTC SDK), keyboard, button setup wizard.
 - `src/robot/`: mecanum drive math (as in an FTC TeleOp) and the robot list (`robots.ts`).
 - `src/field/`: HIVE cell geometry from CAD, zones, floor texture.
-- `src/game/`: game loop, sessions (solo / online), scoring, auto-aim ballistics.
+- `src/game/`: game loop (one view or a split screen), session, scoring, auto-aim ballistics.
 - `src/camera/`, `src/ui/`: cameras, menus, HUD, scoreboard, results.
 
 ## Checks

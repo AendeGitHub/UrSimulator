@@ -1,4 +1,4 @@
-// Shared types for the simulation, the browser and the game server.
+// Shared types for the simulation and the game.
 
 import type { Alliance } from '../robot/robotConfig';
 

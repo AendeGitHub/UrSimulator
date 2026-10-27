@@ -1,5 +1,4 @@
-// A game session supplies world states to draw and takes the local driver's input.
-// LocalSession runs the simulation in the browser; NetSession (net/NetSession.ts) talks to a server.
+// A game session runs the simulation in the browser and takes each local driver's input.
 
 import type { AllianceScore } from './scoring';
 import type { Alliance } from '../robot/robotConfig';
@@ -16,35 +15,27 @@ export interface SessionEvents {
   finished(score: Record<Alliance, AllianceScore>): void;
 }
 
-export interface Session {
-  readonly online: boolean;
-  /** Robot this browser drives, or null when watching */
-  readonly localSlot: Slot | null;
-  /** Advances time and hands over this frame's input. */
-  update(dt: number, input: RobotInput | null): void;
-  state(): WorldState | null;
-  /** Driver names shown on the robot signs */
-  names(): Partial<Record<Slot, string>>;
-  dispose(): void;
+/** A robot on the field and who drives it. */
+export interface Driver {
+  slot: Slot;
+  /** Robot id (robots.ts) */
+  robot: string;
 }
 
 const MAX_STEPS_PER_FRAME = 8;
 
-export class LocalSession implements Session {
-  readonly online = false;
+export class Session {
   private readonly sim: Simulation;
   private accumulator = 0;
   private cached: WorldState | null = null;
 
-  private readonly team: string;
-
-  constructor(layout: FieldLayout, colliders: ColliderPart[], readonly localSlot: Slot, robotId: string, mode: GameMode, rules: RuleOptions, events: SessionEvents) {
+  /** One driver for solo play, two for a split-screen game. */
+  constructor(layout: FieldLayout, colliders: ColliderPart[], readonly drivers: readonly Driver[], mode: GameMode, rules: RuleOptions, events: SessionEvents) {
     this.sim = new Simulation(layout, colliders, {
       toast: text => events.toast(text),
       finished: () => events.finished(structuredClone(this.sim.match.score)),
     });
-    this.team = robotById(robotId).team;
-    this.sim.addRobot(localSlot, this.team, robotId);
+    for (const d of drivers) this.sim.addRobot(d.slot, robotById(d.robot).team, d.robot);
     this.sim.setRules(rules);
     this.sim.start(mode);
   }
@@ -53,8 +44,9 @@ export class LocalSession implements Session {
     return this.sim;
   }
 
-  update(dt: number, input: RobotInput | null): void {
-    if (input) this.sim.setInput(this.localSlot, input);
+  /** Advances time and hands over this frame's input of each driver. */
+  update(dt: number, inputs: Partial<Record<Slot, RobotInput>>): void {
+    for (const [slot, input] of Object.entries(inputs) as [Slot, RobotInput][]) this.sim.setInput(slot, input);
     this.accumulator += dt;
     let steps = 0;
     while (this.accumulator >= PHYSICS_DT && steps < MAX_STEPS_PER_FRAME) {
@@ -69,10 +61,6 @@ export class LocalSession implements Session {
   state(): WorldState {
     this.cached ??= this.sim.state();
     return this.cached;
-  }
-
-  names(): Partial<Record<Slot, string>> {
-    return { [this.localSlot]: this.team };
   }
 
   dispose(): void {

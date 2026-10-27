@@ -1,5 +1,5 @@
 // The whole game without graphics: field physics, balls, hives, robots, match and scoring.
-// Runs in the browser for solo play and on the server for online matches.
+// Runs in the browser, for solo play and for two drivers on a split screen.
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { FieldLayout } from '../field/layout';

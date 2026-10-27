@@ -95,28 +95,36 @@ export class InputManager {
     return typeof v === 'number' ? Math.abs(v) > 0.5 : v;
   }
 
-  /** The pads an action listens to: mechanisms both, driving and the rest only gamepad1. */
-  private padsFor(action: ActionId): [FtcGamepad, FtcGamepad][] {
+  /**
+   * The pads an action listens to. One robot: mechanisms both, driving and the rest only gamepad1.
+   * Split screen (`pad` given): only that player's gamepad.
+   */
+  private padsFor(action: ActionId, pad?: 1 | 2): [FtcGamepad, FtcGamepad][] {
+    if (pad === 2) return [[this.gamepad2, this.prev2]];
     const pads: [FtcGamepad, FtcGamepad][] = [[this.gamepad1, this.prev1]];
-    if (MECHANISM_ACTIONS.has(action)) pads.push([this.gamepad2, this.prev2]);
+    if (!pad && MECHANISM_ACTIONS.has(action)) pads.push([this.gamepad2, this.prev2]);
     return pads;
   }
 
-  /** The action's button or key is held. */
-  held(action: ActionId): boolean {
+  /** The action's button or key is held. The keyboard belongs to gamepad1's player. */
+  held(action: ActionId, pad?: 1 | 2): boolean {
     const control = this.bindings.pad[action];
-    return this.keyboard.isDown(this.bindings.keys[action]) || this.padsFor(action).some(([now]) => this.padDown(now, control));
+    return (pad !== 2 && this.keyboard.isDown(this.bindings.keys[action])) || this.padsFor(action, pad).some(([now]) => this.padDown(now, control));
   }
 
   /** The action's button or key went down this frame. */
-  triggered(action: ActionId): boolean {
+  triggered(action: ActionId, pad?: 1 | 2): boolean {
     const control = this.bindings.pad[action];
-    return this.keyboard.pressed(this.bindings.keys[action])
-      || this.padsFor(action).some(([now, before]) => this.padDown(now, control) && !this.padDown(before, control));
+    return (pad !== 2 && this.keyboard.pressed(this.bindings.keys[action]))
+      || this.padsFor(action, pad).some(([now, before]) => this.padDown(now, control) && !this.padDown(before, control));
   }
 
-  /** gamepad1's sticks, or the movement keys when they are pressed. */
-  driveSticks(): { lx: number; ly: number; rx: number } {
+  /** gamepad1's sticks, or the movement keys when they are pressed; gamepad2's for its own robot. */
+  driveSticks(pad: 1 | 2 = 1): { lx: number; ly: number; rx: number } {
+    if (pad === 2) {
+      const g = this.gamepad2;
+      return { lx: g.left_stick_x, ly: g.left_stick_y, rx: g.right_stick_x };
+    }
     const k = this.bindings.keys;
     const key = (code: string) => (this.keyboard.isDown(code) ? 1 : 0);
     let lx = key(k.right) - key(k.left);

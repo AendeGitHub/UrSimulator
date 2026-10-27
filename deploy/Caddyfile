@@ -1,5 +1,5 @@
 # HTTPS for the game (deploy/README.md): copy to /etc/caddy/Caddyfile and put your domain in place
-# of ursim.example.com. Caddy gets and renews the certificate itself and passes the WebSocket (/ws) through.
+# of ursim.example.com. Caddy gets and renews the certificate itself.
 
 ursim.example.com {
 	encode zstd gzip

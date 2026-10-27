@@ -12,7 +12,7 @@
     "convert:field": "node --max-old-space-size=8192 tools/convert-field.mjs && npm run build:colliders",
     "build:colliders": "node tools/build-colliders.mjs",
     "server": "tsx server/index.ts",
-    "build:server": "esbuild server/index.ts server/roomWorker.ts --bundle --platform=node --format=esm --target=node18 --outdir=dist-server --out-extension:.js=.mjs --external:bufferutil --external:utf-8-validate --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node18 --outdir=dist-server --out-extension:.js=.mjs --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "dev:lan": "vite --host",
     "start": "node dist-server/index.mjs",
     "desktop": "npm run build && node tools/prepare-desktop.mjs && npm --prefix desktop start",
@@ -20,8 +20,7 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.14.0",
-    "three": "0.170.0",
-    "ws": "8.22.0"
+    "three": "0.170.0"
   },
   "devDependencies": {
     "@gltf-transform/core": "4.1.1",
@@ -29,7 +28,6 @@
     "@gltf-transform/functions": "4.1.1",
     "@types/node": "22.9.0",
     "@types/three": "0.170.0",
-    "@types/ws": "8.5.12",
     "esbuild": "0.24.0",
     "meshoptimizer": "0.22.0",
     "occt-import-js": "0.0.22",

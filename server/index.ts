@@ -1,38 +1,23 @@
-// UrSim game server: WebSocket rooms with the authoritative simulation.
-// Also serves the built game (dist/) so one address is enough for players.
+// UrSim web server: serves the built game (dist/) and keeps the high score tables.
 //
 //   npm run server          (development, next to `npm run dev`)
 //   PORT=8787 node dist-server/index.mjs   (after npm run build && npm run build:server)
 //
-// The rooms run in worker threads (RoomPool), one per CPU core unless ROOM_WORKERS says otherwise.
 // HOST=127.0.0.1 accepts only local connections, for a server behind a proxy such as Caddy.
 
 import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WebSocketServer, type WebSocket } from 'ws';
-import type { FieldLayout } from '../src/field/layout';
-import { DEFAULT_PORT, type ClientMessage } from '../src/net/protocol';
-import { Lobby } from './Lobby';
+import { DEFAULT_PORT } from '../src/net/records';
 import { MAX_SCORE, Records, createRecords } from './Records';
-import { RoomPool } from './RoomPool';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
 const PORT = Number(process.env.PORT) || DEFAULT_PORT;
 const HOST = process.env.HOST || undefined;
-/** A hosting plan may have fewer cores than the machine shows (Render free: 0.1 CPU): set ROOM_WORKERS=1 there. */
-const ROOM_WORKERS = Math.max(1, Math.floor(Number(process.env.ROOM_WORKERS)) || os.availableParallelism());
-/** The worker next to this file: the built roomWorker.mjs, or under tsx (npm run server) a starter for roomWorker.ts. */
-const WORKER_URL = new URL(import.meta.url.endsWith('.ts') ? './roomWorker.dev.mjs' : './roomWorker.mjs', import.meta.url);
-/** Protects a small free server from overload. */
-const MAX_CONNECTIONS = 200;
-/** Inputs arrive 60 times a second; anything far above that is a broken or hostile client. */
-const MAX_MESSAGES_PER_SECOND = 150;
-/** Hosting proxies drop silent connections, and ping/pong also finds dead ones. */
-const HEARTBEAT_MS = 25_000;
+/** Old records are cleaned out of the rate limiter this often, ms */
+const CLEANUP_MS = 60_000;
 /** A record submission is a tiny JSON object. */
 const MAX_BODY_BYTES = 1024;
 /** One player finishes a match every 2.5 minutes; this leaves room for a shared address. */
@@ -49,12 +34,6 @@ const MIME: Record<string, string> = {
   '.png': 'image/png',
   '.webp': 'image/webp',
 };
-
-/** Field data from the built game if present, otherwise from the source assets. */
-function assetPath(name: string): string {
-  const built = path.join(DIST, 'assets', name);
-  return fs.existsSync(built) ? built : path.join(ROOT, 'public', 'assets', name);
-}
 
 function sendText(res: http.ServerResponse, status: number, text: string, type = 'text/plain; charset=utf-8'): void {
   res.writeHead(status, { 'content-type': type });
@@ -161,13 +140,6 @@ function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, health
 }
 
 async function main(): Promise<void> {
-  const layout: FieldLayout = JSON.parse(fs.readFileSync(assetPath('field-layout.json'), 'utf8'));
-  const bin = fs.readFileSync(assetPath('field-colliders.bin'));
-  const colliders = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer;
-  const pool = new RoomPool(WORKER_URL, ROOM_WORKERS, { layout, colliders }, code => lobby.closeRoom(code));
-  await pool.ready();
-  const lobby = new Lobby(pool.create, pool.maxRooms);
-  console.log(`Rooms: ${ROOM_WORKERS} worker threads, up to ${pool.maxRooms} rooms`);
   const { records, storage } = createRecords(ROOT);
   console.log(`High scores: ${storage}`);
   // Render sets RENDER; its free disk is wiped on every restart.
@@ -188,55 +160,17 @@ async function main(): Promise<void> {
       });
       return;
     }
-    serveStatic(req, res, () => ({ ok: true, rooms: lobby.roomCount, players: wss.clients.size, workers: pool.load, uptime: Math.round((Date.now() - started) / 1000), records: storage === 'upstash' ? 'upstash' : 'file' }));
-  });
-  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
-  const alive = new WeakMap<WebSocket, boolean>();
-  wss.on('connection', (ws: WebSocket) => {
-    if (wss.clients.size > MAX_CONNECTIONS) return ws.close(1013, 'Server full');
-    alive.set(ws, true);
-    ws.on('pong', () => alive.set(ws, true));
-    const id = lobby.connect({
-      sendText: msg => ws.readyState === ws.OPEN && ws.send(JSON.stringify(msg)),
-      sendBinary: data => ws.readyState === ws.OPEN && ws.send(data, { binary: true }),
-    });
-    let windowStart = Date.now();
-    let count = 0;
-    ws.on('message', (data, isBinary) => {
-      const now = Date.now();
-      if (now - windowStart >= 1000) {
-        windowStart = now;
-        count = 0;
-      }
-      if (isBinary || ++count > MAX_MESSAGES_PER_SECOND) return;
-      try {
-        lobby.handle(id, JSON.parse(data.toString()) as ClientMessage);
-      } catch {
-        // Ignore malformed messages.
-      }
-    });
-    ws.on('close', () => lobby.disconnect(id));
-    ws.on('error', () => ws.terminate());
+    serveStatic(req, res, () => ({ ok: true, uptime: Math.round((Date.now() - started) / 1000), records: storage === 'upstash' ? 'upstash' : 'file' }));
   });
 
   setInterval(() => {
     const now = Date.now();
     for (const [ip, entry] of recordPosts) if (now - entry.start > 60_000) recordPosts.delete(ip);
-    for (const ws of wss.clients) {
-      if (!alive.get(ws)) {
-        ws.terminate();
-        continue;
-      }
-      alive.set(ws, false);
-      ws.ping();
-    }
-  }, HEARTBEAT_MS);
+  }, CLEANUP_MS).unref();
 
-  server.listen(PORT, HOST, () => console.log(`UrSim server on http://${HOST ?? 'localhost'}:${PORT} (WebSocket /ws)`));
+  server.listen(PORT, HOST, () => console.log(`UrSim server on http://${HOST ?? 'localhost'}:${PORT}`));
   // Hosting platforms stop the old version with SIGTERM during a deploy.
   process.on('SIGTERM', () => {
-    void pool.close();
-    wss.close();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000).unref();
   });

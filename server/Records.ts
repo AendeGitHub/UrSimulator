@@ -6,7 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { cleanName } from '../src/net/protocol';
+import { cleanName } from '../src/net/records';
 import { ROBOTS } from '../src/robot/robots';
 
 export const RECORDS_LIMIT = 100;

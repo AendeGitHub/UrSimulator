@@ -10,7 +10,6 @@ import { Referee } from './Referee';
 import type { RobotSim } from './RobotSim';
 
 export type Period = 'practice' | 'auto' | 'transition' | 'teleop' | 'post';
-export const PERIODS: Period[] = ['practice', 'auto', 'transition', 'teleop', 'post'];
 
 /** Seconds (manual 10.4, but a 3 s break after AUTO instead of 8 s keeps solo play moving) */
 export const DURATION = { auto: 30, transition: 3, teleop: 120 };

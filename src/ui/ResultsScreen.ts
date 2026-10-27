@@ -14,9 +14,9 @@ import type { Screen } from './menus';
 import { MenuNav } from './MenuNav';
 
 export interface ResultsActions {
-  /** Solo: the same match again · online: back to the room lobby */
+  /** The same match again */
   again(): void;
-  /** Solo: main menu · online: leave the room */
+  /** Back to the main menu */
   menu(): void;
 }
 
@@ -32,7 +32,6 @@ export interface ResultsInfo {
   title: string;
   /** Bottom bar, e.g. "UrSim · solo play" */
   event: string;
-  online: boolean;
 }
 
 const NAMES: Record<Alliance, TextKey> = { red: 'results.red', blue: 'results.blue' };
@@ -79,7 +78,6 @@ export class ResultsScreen implements Screen {
   private readonly hint = h('span', { class: 'fr-hint' });
   private readonly clock = h('div', { class: 'fr-clock' });
   private readonly record: Record<Alliance, HTMLElement> = { red: h('div', { class: 'fr-record' }), blue: h('div', { class: 'fr-record' }) };
-  private online = false;
   private model: PadModel | null = null;
   private shownAt = 0;
 
@@ -98,8 +96,8 @@ export class ResultsScreen implements Screen {
     this.model = model;
     const pad = model !== 'keyboard';
     this.hint.replaceChildren(
-      h('span', {}, h('span', { class: 'key' }, 'R'), pad ? keyChip(model, 'a') : '', t(this.online ? 'results.toLobby' : 'results.again')),
-      h('span', {}, keyChip('keyboard', 'guide'), pad ? keyChip(model, 'b') : '', t(this.online ? 'results.leave' : 'results.menu')),
+      h('span', {}, h('span', { class: 'key' }, 'R'), pad ? keyChip(model, 'a') : '', t('results.again')),
+      h('span', {}, keyChip('keyboard', 'guide'), pad ? keyChip(model, 'b') : '', t('results.menu')),
     );
   }
 
@@ -110,7 +108,6 @@ export class ResultsScreen implements Screen {
   }
 
   show(info: ResultsInfo): void {
-    this.online = info.online;
     this.model = null;
     this.shownAt = performance.now();
     this.clock.textContent = clockText(NEXT_MATCH);

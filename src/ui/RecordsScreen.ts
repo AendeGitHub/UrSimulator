@@ -1,7 +1,6 @@
 // High score tables: the top 100 solo match scores for each robot, one line per player.
 
-import { fetchRecords, restoreRecords, type RecordEntry } from '../net/records';
-import { cleanName } from '../net/protocol';
+import { cleanName, fetchRecords, restoreRecords, type RecordEntry } from '../net/records';
 import { ROBOTS, robotById } from '../robot/robots';
 import { h } from './dom';
 import { ht, language, t } from './i18n';
@@ -9,7 +8,7 @@ import type { Screen } from './menus';
 import { MenuNav } from './MenuNav';
 
 export interface RecordsContext {
-  /** Game server address (the records live next to the online rooms) */
+  /** Address of the server with the high score tables */
   server(): string;
   /** The player's name as saved in the settings */
   name(): string;

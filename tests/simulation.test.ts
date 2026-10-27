@@ -3,7 +3,6 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { FieldLayout } from '../src/field/layout';
 import { parseColliders } from '../src/sim/colliders';
 import { PHYSICS_DT, Simulation, initPhysics } from '../src/sim/Simulation';
-import { decodeState, encodeState } from '../src/sim/state';
 import { idleInput } from '../src/sim/types';
 import { cellFrame } from '../src/field/hiveGeometry';
 import { total } from '../src/game/scoring';
@@ -57,29 +56,16 @@ describe('headless simulation', () => {
     expect(toasts.some(t => t.includes('улей перевернулся'))).toBe(true);
   });
 
-  it('supports four robots and round-trips the state through a snapshot', () => {
+  it('supports four robots', () => {
     const { sim } = makeSim();
     for (const s of ['red1', 'red2', 'blue1', 'blue2'] as const) sim.addRobot(s, s);
     sim.start('match');
     run(sim, 0.2);
     const state = sim.state();
-    const decoded = decodeState(encodeState(state));
-    expect(decoded.robots.map(r => r.slot)).toEqual(['red1', 'red2', 'blue1', 'blue2']);
-    expect(decoded.robots[0].stored).toHaveLength(4);
-    expect(decoded.period).toBe('auto');
-    expect(decoded.robots[2].x).toBeCloseTo(state.robots[2].x, 4);
-    expect(decoded.robots.map(r => r.arm)).toEqual([0, 0, 0, 0]);
-    // A snapshot from a server before the second turret (9 bytes a robot at the end), or before the
-    // arm too (1 more), still reads.
-    const full = encodeState(state);
-    const v11 = decodeState(full.slice(0, full.byteLength - 4 * 9));
-    expect(v11.robots[0].turretYaw2).toBe(0);
-    expect(v11.robots.map(r => r.arm)).toEqual([0, 0, 0, 0]);
-    expect(decodeState(full.slice(0, full.byteLength - 4 * 10)).robots[0].arm).toBe(0);
-    for (let i = 0; i < state.balls.transforms.length; i += 7) {
-      expect(decoded.balls.transforms[i]).toBeCloseTo(state.balls.transforms[i], 2);
-    }
-    expect(encodeState(state).byteLength).toBeLessThan(1500);
+    expect(state.robots.map(r => r.slot)).toEqual(['red1', 'red2', 'blue1', 'blue2']);
+    expect(state.robots[0].stored).toHaveLength(4);
+    expect(state.period).toBe('auto');
+    expect(state.robots.map(r => r.arm)).toEqual([0, 0, 0, 0]);
   });
 });
 

@@ -1,5 +1,9 @@
 // High score tables on the game server (server/Records.ts): top 100 solo match scores per robot.
 
+export const DEFAULT_PORT = 8787;
+/** The public server; the desktop app (loaded from app://) keeps its high scores there. */
+export const PUBLIC_SERVER_URL = 'https://ursim.onrender.com';
+
 export interface RecordEntry {
   name: string;
   score: number;
@@ -12,12 +16,25 @@ export interface SubmitResult {
   improved: boolean;
 }
 
-/** The records API lives on the same server as the online rooms (ws://host/ws → http://host/api/records). */
+/** Where the high score server is: ?server=… in the address, the Vite dev setup, or the page's own host. */
+export function defaultServerUrl(): string {
+  const param = new URLSearchParams(location.search).get('server');
+  if (param) return param;
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return PUBLIC_SERVER_URL;
+  if (import.meta.env.DEV) return `http://${location.hostname || 'localhost'}:${DEFAULT_PORT}`;
+  return location.origin;
+}
+
+/** The records API of a server address (an old ws://host/ws one works too). */
 export function recordsUrl(serverUrl: string): string {
   const url = new URL(serverUrl.replace(/^ws/, 'http'));
   url.pathname = '/api/records';
   url.search = '';
   return url.toString();
+}
+
+export function cleanName(name: string, fallback = 'Игрок'): string {
+  return name.replace(/\s+/g, ' ').trim().slice(0, 16) || fallback;
 }
 
 export async function fetchRecords(serverUrl: string, robot: string): Promise<RecordEntry[]> {

@@ -1,6 +1,6 @@
 // All POLLEN and NECTAR in a match: physics bodies and who holds them.
 // The ball list is built the same way everywhere (ballSpecs), so ball ids match between
-// the server, the browser simulation and the renderer.
+// the simulation and the renderer.
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import { NECTAR_RADIUS, POLLEN_RADIUS, type FieldLayout, type Vec3 } from '../field/layout';
@@ -49,7 +49,7 @@ const BALL_FRICTION = 0.55;
 const AIR_DAMPING = 0.02;
 const FLOOR_DAMPING = 0.6;
 /**
- * Continuous collision detection costs server CPU on every moving ball, and only a fast ball can
+ * Continuous collision detection costs CPU on every moving ball, and only a fast ball can
  * jump through a thin HIVE cell wall in one step (a shot covers 7 cm per step). Slower balls go
  * without it.
  */

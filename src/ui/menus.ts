@@ -3,7 +3,7 @@
 import { modelName } from '../input/gamepad';
 import type { InputManager } from '../input/InputManager';
 import { h } from './dom';
-import { ht, setText, t, type TextKey } from './i18n';
+import { ht, t, type TextKey } from './i18n';
 import { MenuNav } from './MenuNav';
 
 export interface Screen {
@@ -19,7 +19,6 @@ export interface Screen {
 export interface MainMenuActions {
   match(): void;
   practice(): void;
-  online(): void;
   records(): void;
   settings(): void;
 }
@@ -55,7 +54,7 @@ export class MainMenu implements Screen {
     this.page = page;
     const a = this.actions;
     this.list.replaceChildren(...(page === 'root'
-      ? [item('menu.play', () => this.open('play')), item('menu.online', a.online), item('menu.records', a.records), item('menu.settings', a.settings)]
+      ? [item('menu.play', () => this.open('play')), item('menu.records', a.records), item('menu.settings', a.settings)]
       : [ht('div', { class: 'menu-heading' }, 'menu.play'), item('menu.match', a.match), item('menu.practice', a.practice), item('common.back', () => this.open('root'))]));
     this.nav.focusFirst();
   }
@@ -85,41 +84,23 @@ export interface PauseActions {
   resume(): void;
   resetRobot(): void;
   settings(): void;
-  /** Host only: everyone back to the room lobby */
-  stopOnline(): void;
   exit(): void;
 }
 
 export class PauseMenu implements Screen {
   readonly el: HTMLElement;
   readonly nav: MenuNav;
-  private readonly title = ht('div', { class: 'menu-heading' }, 'pause.title');
-  private readonly reset: HTMLButtonElement;
-  private readonly stop: HTMLButtonElement;
-  private readonly exit: HTMLButtonElement;
 
   constructor(actions: PauseActions) {
-    this.reset = item('pause.restart', () => actions.resetRobot());
-    this.stop = item('pause.toLobby', () => actions.stopOnline());
-    this.exit = item('pause.toMenu', () => actions.exit());
     this.el = h('div', { class: 'screen menu-pause' },
       h('div', { class: 'menu-list' },
-        this.title,
+        ht('div', { class: 'menu-heading' }, 'pause.title'),
         item('pause.resume', () => actions.resume()),
-        this.reset,
-        this.stop,
+        item('pause.restart', () => actions.resetRobot()),
         item('menu.settings', () => actions.settings()),
-        this.exit,
+        item('pause.toMenu', () => actions.exit()),
       ),
     );
     this.nav = new MenuNav(this.el, actions.resume);
-  }
-
-  /** Online games keep running behind the menu and cannot be restarted by guests. */
-  configure(online: boolean, host: boolean): void {
-    setText(this.title, online ? 'pause.titleOnline' : 'pause.title');
-    this.reset.hidden = online;
-    this.stop.hidden = !(online && host);
-    setText(this.exit, online ? 'online.leave' : 'pause.toMenu');
   }
 }

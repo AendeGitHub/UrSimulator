@@ -68,9 +68,11 @@ describe('high scores', () => {
     expect(calls[0][1]).toBe('ursim:records:uran-v2');
   });
 
-  it('finds the records API next to the WebSocket server', () => {
+  it('finds the records API on the game server', () => {
+    expect(recordsUrl('https://ursim.onrender.com')).toBe('https://ursim.onrender.com/api/records');
+    expect(recordsUrl('http://localhost:8787/')).toBe('http://localhost:8787/api/records');
+    // Addresses saved by versions with online rooms
     expect(recordsUrl('wss://ursim.onrender.com/ws')).toBe('https://ursim.onrender.com/api/records');
-    expect(recordsUrl('ws://localhost:8787/ws')).toBe('http://localhost:8787/api/records');
   });
 });
 
@@ -103,7 +105,7 @@ describe('high scores kept in the browser', () => {
     const real = globalThis.fetch;
     globalThis.fetch = fake;
     try {
-      await restoreRecords('wss://example.test/ws', ['bumble-v', 'uran-v2'], { 'bumble-v': [{ name: 'Max', score: 228 }, { name: 'Sasha', score: 60 }] });
+      await restoreRecords('https://example.test', ['bumble-v', 'uran-v2'], { 'bumble-v': [{ name: 'Max', score: 228 }, { name: 'Sasha', score: 60 }] });
     } finally {
       globalThis.fetch = real;
     }

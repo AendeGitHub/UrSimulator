@@ -1,6 +1,6 @@
 // UrSim desktop app: the built web game (copied into ./app by tools/prepare-desktop.mjs) in its
-// own window. Online rooms and high scores use the public server (src/net/NetSession.ts), so the
-// app needs no server of its own.
+// own window. High scores go to the public server (src/net/records.ts), so the app needs no server
+// of its own.
 //
 //   npm run desktop        (from the project root: build the game and open the app)
 //   npm run desktop:dist   (zip for this computer's OS into desktop/release)

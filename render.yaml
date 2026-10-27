@@ -1,4 +1,4 @@
-# Render.com blueprint: one web service that serves the game and runs the online rooms.
+# Render.com blueprint: one web service that serves the game and keeps the high score tables.
 # Dashboard → New → Blueprint → pick this repository.
 services:
   - type: web
@@ -13,6 +13,3 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.11.0
-      # The free plan has 0.1 CPU whatever the machine shows: one room worker is plenty.
-      - key: ROOM_WORKERS
-        value: "1"

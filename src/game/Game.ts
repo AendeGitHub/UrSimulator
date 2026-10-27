@@ -1,4 +1,4 @@
-// Owns the scene, input and screens; draws whatever the current session (solo or online) reports.
+// Owns the scene, input and screens; draws the current game, side by side when two drivers play.
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -7,9 +7,7 @@ import type { FieldLayout } from '../field/layout';
 import { withDefaults, type Bindings } from '../input/bindings';
 import { modelName } from '../input/gamepad';
 import { InputManager } from '../input/InputManager';
-import { NetSession, defaultServerUrl } from '../net/NetSession';
-import { cleanName, type RoomInfo } from '../net/protocol';
-import { rememberRecord, restoreRecords, submitRecord } from '../net/records';
+import { defaultServerUrl, rememberRecord, restoreRecords, submitRecord } from '../net/records';
 import type { Alliance } from '../robot/robotConfig';
 import { DEFAULT_ROBOT_ID, ROBOTS, robotById } from '../robot/robots';
 import type { BallKind } from '../sim/BallSim';
@@ -22,9 +20,8 @@ import { slotAlliance, type GameMode, type RobotInput, type Slot } from '../sim/
 import { GamepadScreen } from '../ui/GamepadScreen';
 import { Hud } from '../ui/Hud';
 import { MainMenu, PauseMenu, type Screen } from '../ui/menus';
-import { ConnectScreen, LobbyScreen } from '../ui/online';
 import { RecordsScreen } from '../ui/RecordsScreen';
-import { RobotSelectScreen, type SelectPurpose, type SelectSettings } from '../ui/RobotSelect';
+import { RobotSelectScreen, isSplit, type Pad2Role, type SelectPurpose, type SelectSettings } from '../ui/RobotSelect';
 import { ResultsScreen, type ResultsTeam } from '../ui/ResultsScreen';
 import { LANGUAGES, defaultLanguage, localize, setLanguage, t, type Language } from '../ui/i18n';
 import { DEFAULT_GRAPHICS, SettingsScreen, cleanSensitivity, type GraphicsSettings, type QualityPreset, type Sensitivity, type SettingsValues } from '../ui/SettingsScreen';
@@ -35,7 +32,7 @@ import { FieldView } from '../view/FieldView';
 import { RobotView, robotModel, setModelDetail } from '../view/RobotView';
 import { ScreenEffects } from '../view/ScreenEffects';
 import { total, type AllianceScore } from './scoring';
-import { LocalSession, type Session, type SessionEvents } from './Session';
+import { Session, type Driver, type SessionEvents } from './Session';
 
 const SETTINGS_KEY = 'ursim.settings';
 /** Where the robot stands on the selection screen (x, z): open floor on the red side. */
@@ -46,7 +43,7 @@ const PREVIEW_SPOT: [number, number] = [-1.05, 0.95];
  */
 const MENU_VIEW = { angle: 0.62 * Math.PI, sway: 0.06 * Math.PI, distance: 4.25, height: 3.2, shift: 0.95 };
 
-type State = 'menu' | 'select' | 'playing' | 'paused' | 'results' | 'lobby';
+type State = 'menu' | 'select' | 'playing' | 'paused' | 'results';
 
 interface Settings {
   robot: string;
@@ -54,7 +51,10 @@ interface Settings {
   fieldCentric: boolean;
   camera: CameraMode;
   name: string;
-  server: string;
+  /** gamepad2's robot and alliance on a split screen, and whether it drives one at all */
+  robot2: string;
+  alliance2: Alliance;
+  pad2: Pad2Role;
   bindings: Bindings;
   sensitivity: Sensitivity;
   graphics: GraphicsSettings;
@@ -74,8 +74,10 @@ export function loadSettings(): Settings {
     alliance: 'red',
     fieldCentric: true,
     name: '',
-    server: defaultServerUrl(),
+    robot2: DEFAULT_ROBOT_ID,
+    alliance2: 'red',
     ...saved,
+    pad2: saved.pad2 === 'operator' ? 'operator' : 'robot',
     camera: CAMERA_MODES.includes(saved.camera as CameraMode) ? saved.camera as CameraMode : 'driver',
     // Nested settings are merged so options added in a later version get their defaults.
     bindings: withDefaults(saved.bindings),
@@ -130,11 +132,35 @@ const FPS_HIGH = 58;
 /** Driver stations: "1" stands closest to the audience (+Z). */
 const DRIVER_Z: Record<Slot, number> = { red1: 0.6, red2: -0.6, blue1: 0.6, blue2: -0.6 };
 
+const slotOf = (alliance: Alliance, station: 1 | 2): Slot => `${alliance}${station}`;
+
+/** One picture on the screen: a camera, with ambient occlusion and black outlines on top. */
+interface View {
+  rig: CameraRig;
+  effects: ScreenEffects;
+}
+
+/** A driver at this computer, with their robot and their part of the screen. */
+interface Player {
+  slot: Slot;
+  /**
+   * Split screen: the gamepad this player drives with (gamepad1 also has the keyboard). Solo: none,
+   * so gamepad2 runs the mechanisms of the same robot as in FTC.
+   */
+  pad?: 1 | 2;
+  view: View;
+  fieldCentric: boolean;
+  slow: boolean;
+}
+
 export class Game {
   private readonly renderer: THREE.WebGLRenderer;
-  /** Ambient occlusion and black outlines on top of the rendered scene */
-  private readonly effects: ScreenEffects;
   private readonly scene = new THREE.Scene();
+  /** Left and right half of a split screen; the first one is the whole screen otherwise. */
+  private readonly views: View[];
+  /** Where each view is drawn (x, y, width, height in CSS pixels) */
+  private viewRects: [number, number, number, number][] = [];
+  /** The first view's camera, also used by the menus */
   private readonly rig: CameraRig;
   private readonly input = new InputManager();
   private readonly hud = new Hud();
@@ -149,12 +175,12 @@ export class Game {
   private preview: RobotView | null = null;
 
   private session: Session | null = null;
-  private net: NetSession | null = null;
+  private players: Player[] = [];
 
   private state: State = 'menu';
   private screen: Screen | null = null;
   private readonly screens: {
-    main: MainMenu; select: RobotSelectScreen; pause: PauseMenu; settings: SettingsScreen; pads: GamepadScreen; results: ResultsScreen; connect: ConnectScreen; lobby: LobbyScreen; records: RecordsScreen;
+    main: MainMenu; select: RobotSelectScreen; pause: PauseMenu; settings: SettingsScreen; pads: GamepadScreen; results: ResultsScreen; records: RecordsScreen;
   };
   /** Screens to go back to (main menu → settings → gamepads) */
   private readonly stack: Screen[] = [];
@@ -168,9 +194,9 @@ export class Game {
   private qualityFloor = 0;
   private perf = { time: 0, frames: 0, goodTime: 0 };
   private menuOrbit = 0;
-  private lastPad1 = '';
-  private slowMode = false;
-  private lastSoloMode: GameMode = 'practice';
+  /** gamepad1 and gamepad2 as last announced */
+  private readonly lastPads = ['', ''];
+  private lastMode: GameMode = 'practice';
   /** Matches finished since the page opened, for the results title */
   private matchNumber = 0;
 
@@ -180,13 +206,18 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     // Plain PCF: soft PCF samples the shadow map many more times for every lit pixel.
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // Drawn once a frame (render()), not again for every view and effect pass that draws the scene.
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.append(this.renderer.domElement);
 
-    this.rig = new CameraRig();
-    this.effects = new ScreenEffects(this.renderer, this.scene, this.rig.camera);
+    this.views = [0, 1].map(() => {
+      const rig = new CameraRig();
+      return { rig, effects: new ScreenEffects(this.renderer, this.scene, rig.camera) };
+    });
+    this.rig = this.views[0].rig;
     this.overlay = document.createElement('div');
     this.overlay.className = 'overlay';
     container.append(this.hud.el, this.overlay);
@@ -201,7 +232,6 @@ export class Game {
       main: new MainMenu({
         match: () => this.openSelect('match'),
         practice: () => this.openSelect('practice'),
-        online: () => this.openSelect('online'),
         records: () => {
           this.screens.records.open(this.settings.robot);
           this.openSub(this.screens.records);
@@ -210,14 +240,13 @@ export class Game {
       }),
       select: new RobotSelectScreen(this.selectSettings(), {
         change: settings => this.applySelect(settings),
-        start: purpose => (purpose === 'online' ? this.openConnect() : this.startSolo(purpose)),
+        start: purpose => this.startGame(purpose),
         back: () => this.toMenu(),
       }),
       pause: new PauseMenu({
         resume: () => this.resume(),
-        resetRobot: () => this.startSolo(this.lastSoloMode),
+        resetRobot: () => this.startGame(this.lastMode),
         settings: openSettings,
-        stopOnline: () => this.net?.stop(),
         exit: () => this.toMenu(),
       }),
       settings: new SettingsScreen({
@@ -231,17 +260,11 @@ export class Game {
       }),
       pads: new GamepadScreen(this.input, back),
       results: new ResultsScreen({
-        again: () => (this.net ? this.showLobby() : this.startSolo(this.lastSoloMode)),
+        again: () => this.startGame(this.lastMode),
         menu: () => this.toMenu(),
       }),
-      connect: new ConnectScreen({ name: this.settings.name, server: this.settings.server }, {
-        create: (name, server, format) => this.connect(name, server, net => net.create(format)),
-        join: (name, server, code) => this.connect(name, server, net => net.join(code)),
-        // Also drops a connection still on its way, so its room can't open the lobby over the menu.
-        back: () => this.toMenu(),
-      }),
       records: new RecordsScreen({
-        server: () => this.settings.server || defaultServerUrl(),
+        server: defaultServerUrl,
         name: () => this.settings.name,
         rename: name => {
           this.settings.name = name;
@@ -249,19 +272,13 @@ export class Game {
         },
         back,
       }),
-      lobby: new LobbyScreen({
-        takeSlot: slot => this.net?.takeSlot(slot),
-        start: mode => this.net?.start(mode, this.settings.rules),
-        leave: () => this.toMenu(),
-      }),
     };
 
     this.setupLighting();
     this.applySettings();
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => {
-      // Solo games pause in the background; online games keep running on the server.
-      if (document.hidden && this.state === 'playing' && !this.session?.online) this.pause();
+      if (document.hidden && this.state === 'playing') this.pause();
     });
     this.resize();
   }
@@ -293,7 +310,7 @@ export class Game {
         if (best > 0) rememberRecord(id, game.settings.name, best);
       }
     }
-    restoreRecords(game.settings.server || defaultServerUrl(), ROBOTS.map(r => r.id)).catch(() => undefined);
+    restoreRecords(defaultServerUrl(), ROBOTS.map(r => r.id)).catch(() => undefined);
     return game;
   }
 
@@ -337,8 +354,8 @@ export class Game {
   }
 
   private selectSettings(): SelectSettings {
-    const { robot, alliance, camera, fieldCentric, name } = this.settings;
-    return { robot, alliance, camera, fieldCentric, name };
+    const { robot, alliance, camera, fieldCentric, name, robot2, alliance2, pad2 } = this.settings;
+    return { robot, alliance, camera, fieldCentric, name, robot2, alliance2, pad2 };
   }
 
   private openSelect(purpose: SelectPurpose): void {
@@ -347,16 +364,6 @@ export class Game {
     this.screens.select.open(purpose, this.selectSettings());
     this.show(this.screens.select);
     this.showPreview();
-  }
-
-  /**
-   * Online, once the robot is picked: the connect screen in the menu state, the one in which
-   * room updates open the lobby and server errors show on this screen.
-   */
-  private openConnect(): void {
-    this.hidePreview();
-    this.state = 'menu';
-    this.show(this.screens.connect);
   }
 
   private applySelect(settings: SelectSettings): void {
@@ -396,74 +403,44 @@ export class Game {
     this.hidePreview();
     this.session?.dispose();
     this.session = null;
-    this.net = null;
+    this.setPlayers([]);
     for (const view of this.robotViews.values()) view.dispose();
     this.robotViews.clear();
   }
 
-  private startSolo(mode: GameMode): void {
+  /** gamepad1's robot, and gamepad2's on a split screen when two gamepads are connected. */
+  private startGame(mode: GameMode): void {
     this.endSession();
-    this.lastSoloMode = mode;
-    const slot: Slot = this.settings.alliance === 'red' ? 'red1' : 'blue1';
-    this.session = new LocalSession(this.layout, this.colliders, slot, this.settings.robot, mode, this.settings.rules, this.sessionEvents);
+    this.lastMode = mode;
+    const s = this.settings;
+    const drivers: Driver[] = [{ slot: slotOf(s.alliance, 1), robot: s.robot }];
+    // The same alliance: its second driver station; the other alliance: that one's first.
+    if (isSplit(this.input, s)) drivers.push({ slot: slotOf(s.alliance2, s.alliance2 === s.alliance ? 2 : 1), robot: s.robot2 });
+    this.session = new Session(this.layout, this.colliders, drivers, mode, s.rules, this.sessionEvents);
+    const split = drivers.length > 1;
+    this.setPlayers(drivers.map((d, i) => ({
+      slot: d.slot,
+      pad: split ? (i === 0 ? 1 : 2) : undefined,
+      view: this.views[i],
+      fieldCentric: s.fieldCentric,
+      slow: false,
+    })));
     this.enterPlay();
   }
 
-  private connect(name: string, server: string, action: (net: NetSession) => void): void {
-    this.endSession();
-    this.settings.name = cleanName(name, t('common.player'));
-    this.settings.server = server || defaultServerUrl();
-    this.saveSettings();
-    const net = new NetSession(this.settings.server, this.settings.name, this.settings.robot, {
-      ...this.sessionEvents,
-      room: room => this.onRoom(room),
-      error: message => {
-        if (this.state === 'lobby' || this.state === 'menu') this.screens.connect.setStatus(message, true);
-        else this.hud.toast(message);
-      },
-      closed: () => {
-        if (this.net !== net) return;
-        this.endSession();
-        this.hud.el.hidden = true;
-        this.state = 'menu';
-        this.show(this.screens.connect);
-        this.screens.connect.setStatus(t('online.lost'), true);
-      },
-    });
-    this.net = net;
-    this.session = net;
-    action(net);
-  }
-
-  private onRoom(room: RoomInfo | null): void {
-    if (!room || !this.net) {
-      if (this.net) this.toMenu();
-      return;
-    }
-    if (room.running && this.net.localSlot !== undefined && (this.state === 'lobby' || this.state === 'menu')) {
-      this.enterPlay();
-    } else if (!room.running && (this.state === 'playing' || this.state === 'paused')) {
-      this.showLobby();
-    } else if (this.state === 'lobby' || this.state === 'menu') {
-      this.showLobby();
-    }
-  }
-
-  private showLobby(): void {
-    if (!this.net?.room) return;
-    this.state = 'lobby';
-    this.hud.el.hidden = true;
-    this.screens.lobby.show(this.net.room, this.net.myId, this.settings.server);
-    this.show(this.screens.lobby);
+  /** Splits the screen in two for two players (and joins it again). */
+  private setPlayers(players: Player[]): void {
+    const wasSplit = this.players.length > 1;
+    this.players = players;
+    if (wasSplit !== players.length > 1) this.resize();
   }
 
   private enterPlay(): void {
-    const slot = this.session?.localSlot ?? null;
-    const alliance = slot ? slotAlliance(slot) : 'red';
-    this.rig.alliance = alliance;
-    this.rig.driverZ = slot ? DRIVER_Z[slot] : 0.6;
-    this.rig.setMode(slot ? this.settings.camera : 'audience');
-    this.slowMode = false;
+    for (const p of this.players) {
+      p.view.rig.alliance = slotAlliance(p.slot);
+      p.view.rig.driverZ = DRIVER_Z[p.slot];
+      p.view.rig.setMode(this.settings.camera);
+    }
     this.resume();
   }
 
@@ -498,32 +475,30 @@ export class Game {
 
   private pause(): void {
     this.state = 'paused';
-    this.screens.pause.configure(!!this.session?.online, !!this.net?.isHost);
     this.show(this.screens.pause);
   }
 
   private showResults(score: Record<Alliance, AllianceScore>): void {
     this.state = 'results';
     this.matchNumber++;
-    const slot = this.session?.localSlot ?? null;
-    const names = this.session?.names() ?? {};
     const teams: Record<Alliance, ResultsTeam[]> = { red: [], blue: [] };
-    // Online the room knows every driver even if the last snapshot is already gone.
-    const robots = this.net?.room?.players.flatMap(p => (p.slot ? [{ slot: p.slot, robot: p.robot }] : [])) ?? this.session?.state()?.robots ?? [];
-    for (const r of robots) {
+    for (const r of this.session?.state().robots ?? []) {
       const def = robotById(r.robot);
-      teams[slotAlliance(r.slot)].push({ name: names[r.slot] ?? def.team, logo: def.teamLogo });
+      teams[slotAlliance(r.slot)].push({ name: def.team, logo: def.teamLogo });
     }
-    const room = this.net?.room;
+    const solo = this.players.length === 1;
     this.screens.results.show({
       score,
       teams,
-      title: t(room ? 'results.onlineMatch' : 'results.match', { n: this.matchNumber }),
-      event: room ? t('results.room', { code: room.code }) : t('results.solo'),
-      online: !!this.net,
+      title: t('results.match', { n: this.matchNumber }),
+      event: t(solo ? 'results.solo' : 'results.split'),
     });
     this.show(this.screens.results);
-    if (slot && !this.net) this.saveRecord(slotAlliance(slot), total(score[slotAlliance(slot)]));
+    // Only solo matches go into the high score table.
+    if (solo) {
+      const alliance = slotAlliance(this.players[0].slot);
+      this.saveRecord(alliance, total(score[alliance]));
+    }
   }
 
   /** Solo match: into the robot's high score table (and a personal best kept in this browser). */
@@ -544,7 +519,7 @@ export class Game {
       return;
     }
     rememberRecord(robot, name, points);
-    submitRecord(this.settings.server || defaultServerUrl(), robot, name, points)
+    submitRecord(defaultServerUrl(), robot, name, points)
       .then(r => {
         if (this.state !== 'results' || !r.improved) return;
         this.screens.results.setRecord(alliance, r.rank === 1 ? t('results.topScore') : r.rank ? t('results.rank', { rank: r.rank }) : t('results.personalBest'));
@@ -577,12 +552,28 @@ export class Game {
 
   // ---- loop ------------------------------------------------------------------
 
+  /** Two players get the left and right half of the screen, one player all of it. */
   private resize(): void {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     this.renderer.setSize(w, h);
-    this.effects.setSize(w, h, this.renderer.getPixelRatio());
-    this.rig.resize(w, h);
+    const left = Math.floor(w / 2);
+    this.viewRects = this.players.length > 1 ? [[0, 0, left, h], [left, 0, w - left, h]] : [[0, 0, w, h]];
+    this.viewRects.forEach(([, , vw, vh], i) => {
+      this.views[i].effects.setSize(vw, vh, this.renderer.getPixelRatio());
+      this.views[i].rig.resize(vw, vh);
+    });
+  }
+
+  private render(dt: number): void {
+    this.renderer.shadowMap.needsUpdate = true;
+    this.renderer.setScissorTest(this.viewRects.length > 1);
+    this.viewRects.forEach(([x, y, w, h], i) => {
+      this.renderer.setViewport(x, y, w, h);
+      this.renderer.setScissor(x, y, w, h);
+      this.views[i].effects.render(dt);
+    });
+    this.renderer.setScissorTest(false);
   }
 
   private settingsValues(): SettingsValues {
@@ -596,8 +587,10 @@ export class Game {
     setLanguage(this.settings.language);
     this.input.bindings = this.settings.bindings;
     this.spot.castShadow = g.shadows;
-    this.effects.setOutlines(g.outlines);
-    this.effects.setAntialias(g.antialias);
+    for (const { effects } of this.views) {
+      effects.setOutlines(g.outlines);
+      effects.setAntialias(g.antialias);
+    }
     // Robots switch to their lighter model on Low (views are rebuilt with it on the next frame).
     setModelDetail(g.quality === 'low' ? 'low' : 'high');
     this.hud.showFps(g.fps);
@@ -647,7 +640,7 @@ export class Game {
     this.quality = level;
     const q = QUALITY[level];
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.ratio));
-    this.effects.setAmbientOcclusion(q.ao);
+    for (const { effects } of this.views) effects.setAmbientOcclusion(q.ao);
     this.resize();
   }
 
@@ -658,34 +651,30 @@ export class Game {
 
     if (this.state === 'playing') {
       this.handleGameplayButtons();
-      if (this.state === 'playing') this.session?.update(dt, this.readDriverInput());
+      if (this.state === 'playing') this.session?.update(dt, this.readInputs());
     } else {
-      // Online games keep going behind menus; the robot just gets no input.
-      if (this.session?.online) this.session.update(dt, null);
       const screen = this.screen;
       if (screen) {
         screen.update?.(this.input);
         // A screen may have just switched to another one; that one starts reading input next frame.
         if (this.screen === screen && !screen.blocksNav) screen.nav.update(this.input);
-        if (this.state === 'paused' && this.screen === this.screens.pause && this.input.triggered('pause')) this.resume();
+        if (this.state === 'paused' && this.screen === this.screens.pause && this.pausePressed()) this.resume();
       }
     }
 
     const world = this.session?.state() ?? null;
-    if (world) this.draw(world, this.state === 'paused' && !this.session?.online ? 0 : dt);
-    const mine = world?.robots.find(r => r.slot === this.session?.localSlot) ?? null;
+    if (world) this.draw(world, this.state === 'paused' ? 0 : dt);
     if (this.state !== 'select' && this.rig.camera.view?.enabled) this.rig.camera.clearViewOffset();
     if (this.state === 'menu') this.updateMenuCamera(dt);
     else if (this.state === 'select') this.updatePreviewCamera(dt);
-    else this.rig.update(mine, dt);
+    else for (const p of this.players) p.view.rig.update(world?.robots.find(r => r.slot === p.slot) ?? null, dt);
     if (world && (this.state === 'playing' || this.state === 'paused')) this.updateHud(world);
-    this.effects.render(dt);
+    this.render(dt);
   }
 
   private draw(world: WorldState, dt: number): void {
     this.field.setHiveAngles(world.hiveAngles);
     this.ballsView.update(world.balls, heldBallPositions(world, id => this.ballsView.specs[id].kind), dt);
-    const names = this.session?.names() ?? {};
     const present = new Set(world.robots.map(r => r.slot));
     for (const [slot, view] of this.robotViews) {
       if (!present.has(slot)) {
@@ -695,8 +684,8 @@ export class Game {
     }
     for (const r of world.robots) {
       const def = robotById(r.robot);
-      // Team numbers on the signs, like real robots; online, the player's name says who drives which.
-      const sign = (this.session?.online ? names[r.slot] : undefined) ?? def.number;
+      // Team numbers on the signs, like real robots.
+      const sign = def.number;
       let view = this.robotViews.get(r.slot);
       if (view && (view.def !== def || view.model !== robotModel(def))) {
         view.dispose();
@@ -713,38 +702,57 @@ export class Game {
   }
 
   private updateHud(world: WorldState): void {
-    const slot = this.session?.localSlot ?? null;
-    const mine = world.robots.find(r => r.slot === slot);
+    // The battery blocks show only when the battery rule is on.
+    const battery = this.settings.rules.battery;
     this.hud.update({
-      alliance: slot ? slotAlliance(slot) : 'red',
       clock: matchClock(world.period, world.periodTime),
       score: { red: total(world.score.red), blue: total(world.score.blue) },
       cards: {
         red: world.score.red.redCards ? 'red' : world.score.red.yellowCards ? 'yellow' : 'none',
         blue: world.score.blue.redCards ? 'red' : world.score.blue.yellowCards ? 'yellow' : 'none',
       },
-      // The battery block shows only when the battery rule is on (the host's choice online).
-      battery: mine && (this.net ? this.net.room?.rules.battery : this.settings.rules.battery) ? { voltage: mine.voltage, min: mine.minVoltage } : null,
+      drivers: this.players.map(p => {
+        const robot = world.robots.find(r => r.slot === p.slot);
+        return { slot: p.slot, battery: robot && battery ? { voltage: robot.voltage, min: robot.minVoltage } : null };
+      }),
     });
+  }
+
+  /** Pause on gamepad1 or the keyboard, and on gamepad2 when it drives its own robot. */
+  private pausePressed(): boolean {
+    return this.input.triggered('pause') || (this.players.length > 1 && this.input.triggered('pause', 2));
   }
 
   private handleGameplayButtons(): void {
     const input = this.input;
-    if (input.triggered('pause')) return this.pause();
-    // The camera is picked before the match; only the follow camera turns around during play.
-    if (input.triggered('camera') && this.rig.mode === 'follow') this.rig.flip();
-    if (input.triggered('fieldCentric')) {
-      this.settings.fieldCentric = !this.settings.fieldCentric;
-      this.saveSettings();
+    if (this.pausePressed()) return this.pause();
+    for (const p of this.players) {
+      // The camera is picked before the match; only the follow camera turns around during play.
+      if (input.triggered('camera', p.pad) && p.view.rig.mode === 'follow') p.view.rig.flip();
+      if (input.triggered('fieldCentric', p.pad)) {
+        p.fieldCentric = !p.fieldCentric;
+        // gamepad1's choice is kept for the next game.
+        if (p.pad !== 2) {
+          this.settings.fieldCentric = p.fieldCentric;
+          this.saveSettings();
+        }
+      }
+      if (input.triggered('slow', p.pad)) p.slow = !p.slow;
     }
-    if (input.triggered('slow')) this.slowMode = !this.slowMode;
-    if (input.keyboard.pressed('KeyR') && !this.session?.online) this.startSolo(this.lastSoloMode);
+    if (input.keyboard.pressed('KeyR')) this.startGame(this.lastMode);
   }
 
-  /** gamepad1 drives; mechanisms listen to both gamepads, so a second driver can run them as in FTC. */
-  private readDriverInput(): RobotInput {
+  private readInputs(): Partial<Record<Slot, RobotInput>> {
+    return Object.fromEntries(this.players.map(p => [p.slot, this.readDriverInput(p)]));
+  }
+
+  /**
+   * Solo: gamepad1 drives; mechanisms listen to both gamepads, so a second driver can run them as
+   * in FTC. Split screen: each player's own gamepad.
+   */
+  private readDriverInput(p: Player): RobotInput {
     const input = this.input;
-    const { lx, ly, rx } = input.driveSticks();
+    const { lx, ly, rx } = input.driveSticks(p.pad);
     const { drive, turn } = this.settings.sensitivity;
     // Sensitivity scales the stick; the drive vector keeps its direction when it hits full speed.
     const k = drive / Math.max(1, Math.hypot(lx, ly) * drive);
@@ -752,16 +760,16 @@ export class Game {
       lx: lx * k,
       ly: ly * k,
       rx: Math.max(-1, Math.min(1, rx * turn)),
-      fieldCentric: this.settings.fieldCentric,
-      slow: this.slowMode,
-      intake: input.held('intake'),
-      eject: input.held('eject'),
-      transfer: input.held('transfer'),
-      shooterOn: input.triggered('shooterOn'),
-      shooterOff: input.triggered('shooterOff'),
-      imuReset: input.triggered('imuReset'),
-      armUp: input.triggered('armUp'),
-      armDown: input.triggered('armDown'),
+      fieldCentric: p.fieldCentric,
+      slow: p.slow,
+      intake: input.held('intake', p.pad),
+      eject: input.held('eject', p.pad),
+      transfer: input.held('transfer', p.pad),
+      shooterOn: input.triggered('shooterOn', p.pad),
+      shooterOff: input.triggered('shooterOff', p.pad),
+      imuReset: input.triggered('imuReset', p.pad),
+      armUp: input.triggered('armUp', p.pad),
+      armDown: input.triggered('armDown', p.pad),
     };
   }
 
@@ -792,11 +800,13 @@ export class Game {
   }
 
   private announcePads(): void {
-    const p1 = this.input.slotInfo(0);
-    const key = p1 ? `${p1.index}|${p1.model}` : '';
-    if (key === this.lastPad1) return;
-    if (p1) this.hud.toast(t('pad.connected', { model: modelName(p1.model) }));
-    else if (this.lastPad1) this.hud.toast(t('pad.disconnected'));
-    this.lastPad1 = key;
+    for (const slot of [0, 1] as const) {
+      const pad = this.input.slotInfo(slot);
+      const key = pad ? `${pad.index}|${pad.model}` : '';
+      if (key === this.lastPads[slot]) continue;
+      if (pad) this.hud.toast(t('pad.connected', { model: modelName(pad.model), n: slot + 1 }));
+      else if (this.lastPads[slot]) this.hud.toast(t(slot === 0 ? 'pad.disconnected' : 'pad.disconnected2'));
+      this.lastPads[slot] = key;
+    }
   }
 }
