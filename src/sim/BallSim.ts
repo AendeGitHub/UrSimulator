@@ -9,9 +9,10 @@ import { SLOTS, type Slot } from './types';
 
 export type BallColor = 'yellow' | Alliance;
 export type BallState = 'field' | 'held' | 'staged';
+export type BallKind = 'pollen' | 'nectar';
 
 export interface BallSpec {
-  kind: 'pollen' | 'nectar';
+  kind: BallKind;
   color: BallColor;
   radius: number;
   /** field: free physics body · held: inside a robot · staged: waiting with the human player */

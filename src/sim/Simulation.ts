@@ -131,7 +131,7 @@ export class Simulation {
     this.removeRobot(slot);
     const def = robotById(robotId);
     const robot = new RobotSim(this.world, slot, def.config, this.startPose(slot, def.config.length));
-    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter);
+    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter, def.intakes);
     mech.reset(this.balls.preloads(slot));
     mech.onPickup = (b, at) => this.judgePickup(robot, b, at);
     robot.battery.enabled = this.rules.battery;

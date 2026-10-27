@@ -8,10 +8,15 @@ import { idleInput } from '../src/sim/types';
 import { cellFrame } from '../src/field/hiveGeometry';
 import { total } from '../src/game/scoring';
 import type { Ball } from '../src/sim/BallSim';
+import { ROBOTS, URAN_V1 } from '../src/robot/robots';
 
 const layout: FieldLayout = JSON.parse(fs.readFileSync('public/assets/field-layout.json', 'utf8'));
 const bin = fs.readFileSync('public/assets/field-colliders.bin');
 const colliders = parseColliders(bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer);
+
+/** No robot in the game takes NECTAR yet; the NECTAR rules are tested with this one. */
+const NECTAR_ROBOT = 'test-nectar';
+ROBOTS.push({ ...URAN_V1, id: NECTAR_ROBOT, intakes: ['pollen', 'nectar'] });
 
 function makeSim() {
   const toasts: string[] = [];
@@ -192,9 +197,20 @@ describe('referee (manual 11.4)', () => {
     return p.mech.stored.includes(b);
   }
 
-  it('G408: a warning, then one yellow card per match for more opponent NECTAR', () => {
+  it('URAN V1 picks up POLLEN and drives over NECTAR', () => {
     const { sim } = makeSim();
     const p = sim.addRobot('red1', 'test');
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    const nectar = sim.balls.all.find(b => b.kind === 'nectar' && b.color === 'red' && b.state === 'staged')!;
+    expect(intake(sim, 'red1', nectar, -1.0, -0.8)).toBe(false);
+    const pollen = sim.balls.all.find(b => b.kind === 'pollen' && b.state === 'field')!;
+    expect(intake(sim, 'red1', pollen, -1.0, 0.2)).toBe(true);
+  });
+
+  it('G408: a warning, then one yellow card per match for more opponent NECTAR', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', NECTAR_ROBOT);
     sim.start('match');
     p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
     const blue = sim.balls.all.filter(b => b.kind === 'nectar' && b.color === 'blue' && b.state === 'staged').slice(0, 3);
@@ -326,7 +342,7 @@ describe('referee (manual 11.4)', () => {
 
   it('calls nothing in practice', () => {
     const { sim } = makeSim();
-    const p = sim.addRobot('red1', 'test');
+    const p = sim.addRobot('red1', 'test', NECTAR_ROBOT);
     sim.start('practice');
     p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
     const blue = sim.balls.all.find(b => b.kind === 'nectar' && b.color === 'blue' && b.state === 'staged')!;

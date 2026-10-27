@@ -1,5 +1,6 @@
 // Playable robots. Each one is a team's real robot: its CAD model and how it drives and shoots.
 
+import type { BallKind } from '../sim/BallSim';
 import type { RobotConfig } from './robotConfig';
 
 /** Where the shooter is and how well it hits depending on distance to the target. */
@@ -28,6 +29,8 @@ export interface RobotDefinition {
   model: string;
   config: RobotConfig;
   shooter: ShooterSpec;
+  /** Game pieces the intake picks up; it drives over the others */
+  intakes: BallKind[];
   /**
    * Where held balls sit in the model (robot frame: forward, up, right; m): `first` is the ball
    * next to be shot, each further ball is `step` closer to the intake.
@@ -62,6 +65,8 @@ export const URAN_V1: RobotDefinition = {
   // hood on the flywheel side, which faces the back of the robot in the CAD. From the opening side
   // of a cell the field allows at most ~2.3 m, so the accuracy scale fits that.
   shooter: { at: [-0.022, 0.003], height: 0.26, exit: 0.1, sweetSpot: 1.0, maxRange: 2.2, modelYaw: Math.PI },
+  // URAN V1 plays POLLEN only: NECTAR stays on the field.
+  intakes: ['pollen'],
   // A row under the transfer rollers, from the turret forward to the intake.
   storage: { first: [-0.075, 0.1, 0], step: [0.072, 0, 0] },
 };

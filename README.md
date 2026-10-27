@@ -8,7 +8,7 @@
 
 ![Main menu](docs/menu.jpg)
 
-Drive **URAN V1**, a real competition robot built from its team's CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN and NECTAR, launch them into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. Play **online 1 vs 1 or 2 vs 2** with friends: they join your room with a 4-letter code. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
+Drive **URAN V1**, a real competition robot built from its team's CAD (mecanum drive, auto-aiming turret, intake and flywheel shooter), around the BIOBUZZ field. Collect POLLEN, launch it into your HIVE to tip it, and play full **2:30 matches** with live scoring and an automatic referee, or practice without a clock. Play **online 1 vs 1 or 2 vs 2** with friends: they join your room with a 4-letter code. Every robot has its own **top 100 high score** table. The interface is in English and Russian.
 
 ![In game](docs/game.jpg)
 
@@ -71,7 +71,7 @@ flowchart LR
 
 **Desktop app and CI.** The same build runs in Electron, served over a custom `app://` protocol so that fetch, WebAssembly and localStorage work as on the website. GitHub Actions builds the Windows, macOS (universal) and Linux zips on native runners.
 
-**Tests.** 90 Vitest tests in 13 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules, server rooms and house rules, input bindings, high scores and translations.
+**Tests.** 91 Vitest tests in 13 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules, server rooms and house rules, input bindings, high scores and translations.
 
 | Area | Tools |
 |---|---|
@@ -100,6 +100,7 @@ Before a match, practice or online game you pick a robot: team, specs, alliance,
 - The turret turns to the target by itself; the wheels, intake, transfer and flywheel spin like on the real robot.
 - Shooter accuracy depends on the distance to the cell: within 1 m it almost always scores, at 2.2 m the spread is large.
 - The URAN V1 intake can't reach balls inside the flowers.
+- URAN V1 picks up and shoots only POLLEN; it drives over NECTAR (`intakes` in `src/robot/robots.ts`).
 
 Adding a robot from CAD (STEP):
 

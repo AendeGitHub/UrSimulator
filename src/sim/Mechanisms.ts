@@ -4,7 +4,7 @@ import type { Vec3 } from '../field/layout';
 import { launchVelocity, solveShot, type ShotSolution } from '../game/ballistics';
 import { wrapAngle } from '../robot/mecanum';
 import type { ShooterSpec } from '../robot/robots';
-import type { Ball, BallSim } from './BallSim';
+import type { Ball, BallKind, BallSim } from './BallSim';
 import type { RobotSim } from './RobotSim';
 
 /** G407: a robot may not control more than 4 scoring elements. */
@@ -92,6 +92,7 @@ export class Mechanisms {
     private readonly target: () => Vec3,
     private readonly flowers: [number, number][],
     private readonly spec: ShooterSpec,
+    private readonly intakes: readonly BallKind[],
   ) {}
 
   reset(preloads: Ball[]): void {
@@ -158,7 +159,7 @@ export class Mechanisms {
     const [fx, fz] = [Math.cos(yaw), -Math.sin(yaw)];
     const front = this.robot.cfg.length / 2;
     for (const b of this.balls.all) {
-      if (b.state !== 'field') continue;
+      if (b.state !== 'field' || !this.intakes.includes(b.kind)) continue;
       const [x, y, z] = this.balls.position(b);
       if (y < FLOWER_TUBE.height && this.flowers.some(([fx, fz]) => Math.hypot(x - fx, z - fz) < FLOWER_TUBE.radius)) continue;
       const dx = x - px;
