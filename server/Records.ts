@@ -2,7 +2,9 @@
 //
 // Stored in a JSON file by default. Free hosting (Render free plan) wipes the disk on every
 // restart, so when UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set the records live
-// in an Upstash Redis database instead (free tier, survives restarts).
+// in an Upstash Redis database instead (free tier, survives restarts). Without one, the tables
+// come back from the copies players' browsers keep (restore) and, on a deploy, from the server
+// version being replaced.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -87,8 +89,22 @@ export class UpstashStore implements RecordsStore {
 /** Players are told apart by name, ignoring case. */
 const playerKey = (name: string) => name.toLowerCase();
 
+/** Best score first; equal scores: whoever got there first stays ahead. */
+const byRank = (a: RecordEntry, b: RecordEntry) => b.score - a.score || a.date.localeCompare(b.date);
+
+/** A row sent back by a browser or another server, or null when it is not a valid one. */
+export function cleanEntry(raw: unknown, now = new Date()): RecordEntry | null {
+  const e = raw as Partial<RecordEntry> | null;
+  if (!e || typeof e.name !== 'string' || !e.name.trim()) return null;
+  if (typeof e.score !== 'number' || !Number.isInteger(e.score) || e.score < 0 || e.score > MAX_SCORE) return null;
+  const time = typeof e.date === 'string' ? Date.parse(e.date) : NaN;
+  // A date from the future would put the row behind ones it tied with later.
+  const date = new Date(Number.isFinite(time) ? Math.min(time, now.getTime()) : now.getTime());
+  return { name: cleanName(e.name), score: e.score, date: date.toISOString() };
+}
+
 export class Records {
-  /** Submissions for one robot run one after another, so two at once cannot overwrite each other. */
+  /** Changes to one robot's table run one after another, so two at once cannot overwrite each other. */
   private queue = new Map<string, Promise<unknown>>();
 
   constructor(private readonly store: RecordsStore) {}
@@ -101,8 +117,14 @@ export class Records {
     return (await this.store.load(robot)).slice(0, RECORDS_LIMIT);
   }
 
+  private queued<T>(robot: string, run: () => Promise<T>): Promise<T> {
+    const result = (this.queue.get(robot) ?? Promise.resolve()).then(run, run);
+    this.queue.set(robot, result.catch(() => undefined));
+    return result;
+  }
+
   submit(robot: string, rawName: string, score: number, now = new Date()): Promise<SubmitResult> {
-    const run = async (): Promise<SubmitResult> => {
+    return this.queued(robot, async (): Promise<SubmitResult> => {
       const name = cleanName(rawName);
       const entries = await this.store.load(robot);
       const key = playerKey(name);
@@ -112,8 +134,7 @@ export class Records {
         // One player = one record: the better score replaces the old one.
         const next = entries.filter(e => playerKey(e.name) !== key);
         next.push({ name, score, date: now.toISOString() });
-        // Equal scores: whoever got there first stays ahead.
-        next.sort((a, b) => b.score - a.score || a.date.localeCompare(b.date));
+        next.sort(byRank);
         const kept = next.slice(0, RECORDS_LIMIT);
         await this.store.save(robot, kept);
         const index = kept.findIndex(e => playerKey(e.name) === key);
@@ -121,10 +142,29 @@ export class Records {
       }
       const index = entries.indexOf(mine!);
       return { rank: index + 1, best: mine!.score, improved };
-    };
-    const result = (this.queue.get(robot) ?? Promise.resolve()).then(run, run);
-    this.queue.set(robot, result.catch(() => undefined));
-    return result;
+    });
+  }
+
+  /**
+   * Puts back rows a wiped table lost, with their own dates. A player keeps the better of the
+   * two scores; rows the table already has stay as they are. Returns the table afterwards.
+   */
+  restore(robot: string, rows: readonly RecordEntry[]): Promise<RecordEntry[]> {
+    return this.queued(robot, async () => {
+      const entries = await this.store.load(robot);
+      const byPlayer = new Map(entries.map(e => [playerKey(e.name), e]));
+      let changed = false;
+      for (const row of rows) {
+        const there = byPlayer.get(playerKey(row.name));
+        if (there && there.score >= row.score) continue;
+        byPlayer.set(playerKey(row.name), row);
+        changed = true;
+      }
+      if (!changed) return entries.slice(0, RECORDS_LIMIT);
+      const kept = [...byPlayer.values()].sort(byRank).slice(0, RECORDS_LIMIT);
+      await this.store.save(robot, kept);
+      return kept;
+    });
   }
 }
 

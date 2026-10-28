@@ -26,9 +26,9 @@ export function defaultServerUrl(): string {
 }
 
 /** The records API of a server address (an old ws://host/ws one works too). */
-export function recordsUrl(serverUrl: string): string {
+export function recordsUrl(serverUrl: string, action = ''): string {
   const url = new URL(serverUrl.replace(/^ws/, 'http'));
-  url.pathname = '/api/records';
+  url.pathname = action ? `/api/records/${action}` : '/api/records';
   url.search = '';
   return url.toString();
 }
@@ -53,6 +53,17 @@ export async function submitRecord(serverUrl: string, robot: string, name: strin
   return (await res.json()) as SubmitResult;
 }
 
+/** Gives a restarted server back rows it lost, with their dates; answers with the whole table. */
+export async function sendBackRecords(serverUrl: string, robot: string, entries: RecordEntry[]): Promise<RecordEntry[]> {
+  const res = await fetch(recordsUrl(serverUrl, 'restore'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ robot, entries }),
+  });
+  if (!res.ok) throw new Error(`records ${res.status}`);
+  return ((await res.json()) as { entries: RecordEntry[] }).entries;
+}
+
 /** A best score this browser sent to the server, kept so a wiped table can get it back. */
 export interface SavedRecord {
   name: string;
@@ -60,8 +71,11 @@ export interface SavedRecord {
 }
 
 const SAVED_KEY = 'ursim.records';
+const TABLES_KEY = 'ursim.tables';
 /** The server's tables hold this many rows (server/Records.ts RECORDS_LIMIT). */
 const TABLE_ROWS = 100;
+
+type Store = Pick<Storage, 'getItem' | 'setItem'>;
 
 /** Bests sent from this browser, by robot id. */
 export function savedRecords(storage: Pick<Storage, 'getItem'> = localStorage): Record<string, SavedRecord[]> {
@@ -87,21 +101,67 @@ export function rememberRecord(robot: string, name: string, score: number, stora
   }
 }
 
+/** The last copy of each robot's whole table this browser got from the server. */
+export function savedTables(storage: Pick<Storage, 'getItem'> = localStorage): Record<string, RecordEntry[]> {
+  try {
+    const tables = JSON.parse(storage.getItem(TABLES_KEY) ?? '{}');
+    return tables && typeof tables === 'object' ? tables : {};
+  } catch {
+    return {};
+  }
+}
+
+function rememberTable(robot: string, entries: RecordEntry[], storage: Store): void {
+  try {
+    storage.setItem(TABLES_KEY, JSON.stringify({ ...savedTables(storage), [robot]: entries }));
+  } catch {
+    // No storage: this browser cannot help a wiped server.
+  }
+}
+
+/** One row per player (the best score; equal scores: the earlier date), best first, top 100. */
+export function mergeTables(...tables: readonly RecordEntry[][]): RecordEntry[] {
+  const best = new Map<string, RecordEntry>();
+  for (const e of tables.flat()) {
+    const key = e.name.toLowerCase();
+    const there = best.get(key);
+    if (!there || e.score > there.score || (e.score === there.score && e.date < there.date)) best.set(key, e);
+  }
+  return [...best.values()].sort((a, b) => b.score - a.score || a.date.localeCompare(b.date)).slice(0, TABLE_ROWS);
+}
+
 /**
- * Sends the server this browser's bests its table no longer has. Without a database (free
- * Render, no Upstash) the server forgets every table when it restarts, which is whenever it
- * sleeps after 15 minutes without players and on every update.
+ * Fetches the tables and gives the server back the rows it lost: this browser's own bests and
+ * every row of the copies it kept. Without a database (free Render, no Upstash) the server
+ * forgets every table when it restarts, which is whenever it sleeps after 15 minutes without
+ * players and on every update; any player who saw a table before that brings it back.
  */
-export async function restoreRecords(serverUrl: string, robots: readonly string[], saved = savedRecords()): Promise<void> {
+export async function restoreRecords(
+  serverUrl: string,
+  robots: readonly string[],
+  saved = savedRecords(),
+  storage: Store = localStorage,
+  now = new Date(),
+): Promise<Record<string, RecordEntry[]>> {
+  const tables = savedTables(storage);
+  const result: Record<string, RecordEntry[]> = {};
   await Promise.all(robots.map(async robot => {
-    const mine = saved[robot];
-    if (!mine?.length) return;
     const table = await fetchRecords(serverUrl, robot);
-    // A full table whose last row beats a score has no place for it anyway.
-    const lowest = table.length >= TABLE_ROWS ? table[table.length - 1].score : -1;
-    for (const r of mine) {
-      const there = table.find(e => e.name.toLowerCase() === r.name.toLowerCase());
-      if ((there ? there.score : lowest) < r.score) await submitRecord(serverUrl, robot, r.name, r.score);
+    const mine = (saved[robot] ?? []).map(r => ({ name: r.name, score: r.score, date: now.toISOString() }));
+    const kept = mergeTables(table, tables[robot] ?? [], mine);
+    const there = new Map(table.map(e => [e.name.toLowerCase(), e.score]));
+    const lost = kept.filter(e => (there.get(e.name.toLowerCase()) ?? -1) < e.score);
+    let final = table;
+    if (lost.length) {
+      try {
+        final = await sendBackRecords(serverUrl, robot, lost);
+      } catch {
+        // An older server without restore: keep the rows here for the next try.
+        final = kept;
+      }
     }
+    rememberTable(robot, final, storage);
+    result[robot] = final;
   }));
+  return result;
 }

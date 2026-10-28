@@ -71,7 +71,7 @@ flowchart LR
 
 **Desktop app and CI.** The same build runs in Electron, served over a custom `app://` protocol so that fetch, WebAssembly and localStorage work as on the website. GitHub Actions builds the Windows, macOS (universal) and Linux zips on native runners.
 
-**Tests.** 96 Vitest tests in 11 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules and house rules, input bindings, high scores and translations.
+**Tests.** 100 Vitest tests in 11 files cover the simulation (scoring, HIVE tipping, battery, transfer), the referee rules and house rules, input bindings, high scores and translations.
 
 | Area | Tools |
 |---|---|
@@ -155,7 +155,7 @@ The server keeps the high scores. With no setup it writes them to `data/records.
 
 After the restart the server log shows `High scores: upstash`, and `https://<address>/health` shows `"records": "upstash"` (`"file"` means the tables are lost on the next restart).
 
-Without a database the game still gets its own best scores back: each browser remembers the bests it sent and sends them again when a restarted server no longer has them (at start and when High scores opens).
+Without a database the tables still come back after a restart, only less surely. Each browser keeps a copy of every table it has seen and its own bests, and sends a restarted server the rows it lost, with their dates (at start and when High scores opens). On a deploy the new server also copies the tables from the old one while it still answers. A record no other browser saw before the restart returns only when its player comes back, so the database is still the way to keep every record.
 
 Running the high score server locally next to the game (two terminals):
 

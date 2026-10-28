@@ -1,6 +1,6 @@
 // High score tables: the top 100 solo match scores for each robot, one line per player.
 
-import { cleanName, fetchRecords, restoreRecords, type RecordEntry } from '../net/records';
+import { cleanName, restoreRecords, type RecordEntry } from '../net/records';
 import { ROBOTS, robotById } from '../robot/robots';
 import { h } from './dom';
 import { ht, language, t } from './i18n';
@@ -72,9 +72,8 @@ export class RecordsScreen implements Screen {
     this.body.replaceChildren(h('p', { class: 'muted' }, t('records.loading')));
     let entries: RecordEntry[];
     try {
-      // The server may have restarted since this player's best went in: send it again first.
-      await restoreRecords(this.ctx.server(), [this.robot]).catch(() => undefined);
-      entries = await fetchRecords(this.ctx.server(), this.robot);
+      // The server may have restarted since this browser last saw the table: it gets back the rows it lost.
+      entries = (await restoreRecords(this.ctx.server(), [this.robot]))[this.robot];
     } catch {
       if (id === this.request) this.body.replaceChildren(h('p', { class: 'warn' }, t('records.offline')));
       return;

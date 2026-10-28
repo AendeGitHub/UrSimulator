@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FileStore, RECORDS_LIMIT, Records, UpstashStore, type RecordEntry, type RecordsStore } from '../server/Records';
-import { recordsUrl, rememberRecord, restoreRecords, savedRecords } from '../src/net/records';
+import { FileStore, RECORDS_LIMIT, Records, UpstashStore, cleanEntry, type RecordEntry, type RecordsStore } from '../server/Records';
+import { mergeTables, recordsUrl, rememberRecord, restoreRecords, savedRecords, savedTables } from '../src/net/records';
 
 class MemoryStore implements RecordsStore {
   readonly tables = new Map<string, RecordEntry[]>();
@@ -68,8 +68,32 @@ describe('high scores', () => {
     expect(calls[0][1]).toBe('ursim:records:uran-v2');
   });
 
+  it('puts back the rows a wiped table lost with their dates, keeping better scores it has', async () => {
+    const records = new Records(new MemoryStore());
+    await records.submit('uran-v2', 'Sasha', 80, new Date('2026-10-28T12:00:00Z'));
+    await records.submit('uran-v2', 'Max', 40, new Date('2026-10-28T12:00:00Z'));
+    const table = await records.restore('uran-v2', [
+      { name: 'Nurtas', score: 305, date: '2026-10-27T15:00:00.000Z' },
+      { name: 'sasha', score: 60, date: '2026-10-20T10:00:00.000Z' },
+      { name: 'MAX', score: 90, date: '2026-10-21T10:00:00.000Z' },
+    ]);
+    expect(table.map(e => `${e.name} ${e.score} ${e.date.slice(0, 10)}`)).toEqual(['Nurtas 305 2026-10-27', 'MAX 90 2026-10-21', 'Sasha 80 2026-10-28']);
+    expect(await records.submit('uran-v2', 'Nurtas', 200)).toEqual({ rank: 1, best: 305, improved: false });
+  });
+
+  it('accepts only real rows sent back', () => {
+    const now = new Date('2026-10-28T12:00:00Z');
+    expect(cleanEntry({ name: '  Max  ', score: 120, date: '2026-10-01T00:00:00.000Z' }, now)).toEqual({ name: 'Max', score: 120, date: '2026-10-01T00:00:00.000Z' });
+    expect(cleanEntry({ name: 'Max', score: 120, date: '2030-01-01T00:00:00.000Z' }, now)!.date).toBe(now.toISOString());
+    expect(cleanEntry({ name: 'Max', score: 120, date: 'soon' }, now)!.date).toBe(now.toISOString());
+    for (const bad of [null, {}, { name: ' ', score: 1 }, { name: 'Max', score: -1 }, { name: 'Max', score: 1.5 }, { name: 'Max', score: 99_999 }, { name: 'Max', score: '100' }]) {
+      expect(cleanEntry(bad, now)).toBeNull();
+    }
+  });
+
   it('finds the records API on the game server', () => {
     expect(recordsUrl('https://ursim.onrender.com')).toBe('https://ursim.onrender.com/api/records');
+    expect(recordsUrl('https://ursim.onrender.com', 'restore')).toBe('https://ursim.onrender.com/api/records/restore');
     expect(recordsUrl('http://localhost:8787/')).toBe('http://localhost:8787/api/records');
     // Addresses saved by versions with online rooms
     expect(recordsUrl('wss://ursim.onrender.com/ws')).toBe('https://ursim.onrender.com/api/records');
@@ -91,25 +115,63 @@ describe('high scores kept in the browser', () => {
     expect(savedRecords(storage)['bumble-v']).toEqual([{ name: 'Sasha', score: 50 }, { name: 'MAX', score: 150 }]);
   });
 
-  it('sends a restarted server the bests its table lost, and nothing it still has', async () => {
-    const server = new Records(new MemoryStore());
-    await server.submit('bumble-v', 'Sasha', 70);
-    const posts: string[] = [];
+  /** A records server in memory behind fetch; `posts` lists the rows each restore sent back. */
+  async function withServer(server: Records, run: (posts: string[][]) => Promise<void>): Promise<void> {
+    const posts: string[][] = [];
     const fake = (async (url: string, init?: RequestInit) => {
       const robot = new URL(url).searchParams.get('robot');
       if (!init) return new Response(JSON.stringify({ robot, entries: await server.top(robot!) }));
-      const body = JSON.parse(String(init.body));
-      posts.push(`${body.name} ${body.score}`);
-      return new Response(JSON.stringify(await server.submit(body.robot, body.name, body.score)));
+      const body = JSON.parse(String(init.body)) as { robot: string; entries: RecordEntry[] };
+      posts.push(body.entries.map(e => `${e.name} ${e.score}`));
+      return new Response(JSON.stringify({ robot: body.robot, entries: await server.restore(body.robot, body.entries) }));
     }) as typeof fetch;
     const real = globalThis.fetch;
     globalThis.fetch = fake;
     try {
-      await restoreRecords('https://example.test', ['bumble-v', 'uran-v2'], { 'bumble-v': [{ name: 'Max', score: 228 }, { name: 'Sasha', score: 60 }] });
+      await run(posts);
     } finally {
       globalThis.fetch = real;
     }
-    expect(posts).toEqual(['Max 228']);
+  }
+
+  it('sends a restarted server the bests its table lost, and nothing it still has', async () => {
+    const server = new Records(new MemoryStore());
+    await server.submit('bumble-v', 'Sasha', 70);
+    await withServer(server, async posts => {
+      await restoreRecords('https://example.test', ['bumble-v', 'uran-v2'], { 'bumble-v': [{ name: 'Max', score: 228 }, { name: 'Sasha', score: 60 }] }, memory());
+      expect(posts).toEqual([['Max 228']]);
+    });
     expect((await server.top('bumble-v')).map(e => `${e.name} ${e.score}`)).toEqual(['Max 228', 'Sasha 70']);
+  });
+
+  it("brings back other players' records too: every browser keeps the tables it saw", async () => {
+    const storage = memory();
+    // Before the restart: another player's 300 is in the table this browser opens.
+    const before = new Records(new MemoryStore());
+    await before.submit('uran-v2', 'Nurtas', 305, new Date('2026-10-27T15:00:00Z'));
+    await before.submit('uran-v2', 'Max', 120, new Date('2026-10-27T16:00:00Z'));
+    await withServer(before, async () => {
+      await restoreRecords('https://example.test', ['uran-v2'], {}, storage);
+    });
+    expect(savedTables(storage)['uran-v2'].map(e => e.name)).toEqual(['Nurtas', 'Max']);
+
+    // The server restarted with an empty table and someone already played.
+    const after = new Records(new MemoryStore());
+    await after.submit('uran-v2', 'Dana', 150);
+    await withServer(after, async posts => {
+      const tables = await restoreRecords('https://example.test', ['uran-v2'], {}, storage);
+      expect(posts).toEqual([['Nurtas 305', 'Max 120']]);
+      expect(tables['uran-v2'].map(e => `${e.name} ${e.score}`)).toEqual(['Nurtas 305', 'Dana 150', 'Max 120']);
+    });
+    const top = await after.top('uran-v2');
+    expect(top[0]).toEqual({ name: 'Nurtas', score: 305, date: '2026-10-27T15:00:00.000Z' });
+  });
+
+  it('merges tables into one row per player, best first, the earlier date on a tie', () => {
+    const row = (name: string, score: number, date: string): RecordEntry => ({ name, score, date });
+    expect(mergeTables(
+      [row('Max', 100, '2026-10-02'), row('Sasha', 90, '2026-10-01')],
+      [row('max', 100, '2026-10-01'), row('Sasha', 95, '2026-10-03'), row('Dana', 10, '2026-10-01')],
+    )).toEqual([row('max', 100, '2026-10-01'), row('Sasha', 95, '2026-10-03'), row('Dana', 10, '2026-10-01')]);
   });
 });
