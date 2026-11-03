@@ -44,7 +44,9 @@ class GBufferPass extends Pass {
     const hidden: THREE.Object3D[] = [];
     this.scene.traverseVisible(obj => {
       const seeThrough = obj instanceof THREE.Mesh && ([] as THREE.Material[]).concat(obj.material).some(m => m.transparent);
-      if (seeThrough || obj instanceof THREE.Points || obj instanceof THREE.Line || obj instanceof THREE.Sprite) hidden.push(obj);
+      // The hall (userData.noGBuffer) gets neither outlines nor ambient occlusion: in the dark
+      // around the field they don't show, and skipping it saves drawing it a second time.
+      if (seeThrough || obj.userData.noGBuffer || obj instanceof THREE.Points || obj instanceof THREE.Line || obj instanceof THREE.Sprite) hidden.push(obj);
     });
     for (const obj of hidden) obj.visible = false;
     const { background, overrideMaterial } = this.scene;
@@ -64,8 +66,10 @@ class GBufferPass extends Pass {
   }
 }
 
-/** GTAO from the shared buffer, computed at half resolution (it is smooth anyway). */
+/** GTAO from the shared buffer, computed at half resolution (it is smooth anyway), full on Ultra. */
 class AmbientOcclusionPass extends GTAOPass {
+  fullResolution = false;
+
   constructor(scene: THREE.Scene, camera: THREE.Camera, gbuffer: THREE.WebGLRenderTarget) {
     super(scene, camera, 1, 1);
     this.setGBuffer(gbuffer.depthTexture ?? undefined, gbuffer.texture);
@@ -77,7 +81,8 @@ class AmbientOcclusionPass extends GTAOPass {
   }
 
   override setSize(width: number, height: number): void {
-    super.setSize(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
+    const k = this.fullResolution ? 1 : 2;
+    super.setSize(Math.max(1, Math.round(width / k)), Math.max(1, Math.round(height / k)));
   }
 }
 
@@ -202,6 +207,14 @@ export class ScreenEffects {
   setOutlines(on: boolean): void {
     this.outline.enabled = on;
     this.updateGBuffer();
+  }
+
+  /** Ultra: ambient occlusion at full resolution with twice the samples (takes effect on the next resize). */
+  setUltra(on: boolean): void {
+    if (this.ao.fullResolution === on) return;
+    this.ao.fullResolution = on;
+    this.ao.updateGtaoMaterial({ samples: on ? 16 : 8 });
+    this.ao.updatePdMaterial({ samples: on ? 16 : 8 });
   }
 
   /** With neither effect on, the extra normal/depth render of the scene is skipped entirely. */

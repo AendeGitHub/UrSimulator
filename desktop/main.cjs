@@ -1,13 +1,14 @@
 // UrSim desktop app: the built web game (copied into ./app by tools/prepare-desktop.mjs) in its
 // own window. High scores go to the public server (src/net/records.ts), so the app needs no server
-// of its own.
+// of its own. Signing in with Google goes through the player's browser (signin.cjs).
 //
 //   npm run desktop        (from the project root: build the game and open the app)
 //   npm run desktop:dist   (zip for this computer's OS into desktop/release)
 
-const { app, BrowserWindow, net, protocol, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, net, protocol, shell } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { signInThroughBrowser } = require('./signin.cjs');
 
 const GAME_DIR = path.join(__dirname, 'app');
 
@@ -36,7 +37,7 @@ function createWindow() {
     backgroundColor: '#090b0f',
     autoHideMenuBar: true,
     icon: path.join(GAME_DIR, 'icon.png'),
-    webPreferences: { contextIsolation: true, sandbox: true },
+    webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.cjs') },
   });
   win.loadURL('app://ursim/index.html');
   // F11 toggles fullscreen, as in most games.
@@ -52,6 +53,25 @@ function createWindow() {
     return { action: 'deny' };
   });
 }
+
+// The game asks to sign in with a service on its server: in the player's browser, then back here.
+ipcMain.handle('ursim:sign-in', async (event, provider, server) => {
+  let url;
+  try {
+    url = new URL(server);
+  } catch {
+    return null;
+  }
+  if (typeof provider !== 'string' || !/^[a-z]{2,16}$/.test(provider) || (url.protocol !== 'https:' && url.protocol !== 'http:')) return null;
+  const token = await signInThroughBrowser(url.origin, provider, link => shell.openExternal(link));
+  // Back in front of the browser.
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+  return token;
+});
 
 app.whenReady().then(() => {
   serveGame();

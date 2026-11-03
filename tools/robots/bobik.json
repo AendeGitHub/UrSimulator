@@ -1,0 +1,21 @@
+{
+  "comment": "Bobik (team RoboRangers 25590, Fusion 360 STEP export RoboRangers-Robotv2, part names in Romanian). Coordinates are in the CAD frame (meters, Z up, front = -X, left = -Y). Parts are matched in order: the first rule that fits a CAD part wins. The launcher (Ansamblu lansator) is the turret: a flywheel low at the front and a roller high at the back squeeze a POLLEN between them and throw it forward. The intake (Ansamblu de colectare) is four roller shafts on one motor that carry balls under them from the front up the channel to the turret. The push-back arm (two side plates and the plate across their ends, Piesă 27/29/7) turns on the frame's front corners and is raised in the CAD: it is written lowered, 50° down, with its plate 2 cm over the tiles (over a FLOWER's bottom ring). Only the chassis belts (Curea dințată … a șasiului) stay still: the launcher's belts turn with the turret.",
+  "up": "+z",
+  "forward": "-x",
+  "dropSmallerThan": 0.008,
+  "fixed": ["Curea dințată frontală a șasiului", "Curea dințată posterioară a șasiului"],
+  "parts": [
+    { "name": "flywheel", "parent": "turret", "ancestor": "Ansamblu volant <1>:1", "pivot": [-0.113, 0, 0.275], "axis": "y", "reverse": true },
+    { "name": "flywheel_top", "parent": "turret", "ancestor": "Ansamblu lansator <1>:1", "within": { "x": [-0.03, 0.025], "z": [0.315, 0.37] }, "pivot": [-0.0005, 0, 0.3405], "axis": "y" },
+    { "name": "turret", "ancestor": "Ansamblu lansator <1>:1", "pivot": [-0.055, 0, 0.22], "axis": "z" },
+    { "name": "arm", "ancestor": ["Piesă 27:1", "Piesă 29:1", "Piesă 7:1"], "pivot": [-0.2263, 0, 0.0495], "axis": "y", "turn": -0.873 },
+    { "name": "intake_front", "ancestor": "Ansamblu de colectare:1", "within": { "x": [-0.28, -0.215] }, "pivot": [-0.2465, 0, 0.088], "axis": "y" },
+    { "name": "intake_2", "ancestor": "Ansamblu de colectare:1", "within": { "x": [-0.215, -0.16] }, "pivot": [-0.189, 0, 0.105], "axis": "y" },
+    { "name": "intake_3", "ancestor": "Ansamblu de colectare:1", "within": { "z": [0.1, 0.155] }, "pivot": [-0.134, 0, 0.129], "axis": "y" },
+    { "name": "intake_4", "ancestor": "Ansamblu de colectare:1", "within": { "z": [0.155, 0.22] }, "pivot": [-0.114, 0, 0.186], "axis": "y" },
+    { "name": "wheel_fl", "ancestor": "Roată 1:1", "pivot": [-0.159, -0.13, 0.046], "axis": "y", "mecanum": true },
+    { "name": "wheel_fr", "ancestor": "Roată 3:1", "pivot": [-0.159, 0.13, 0.046], "axis": "y", "mecanum": true },
+    { "name": "wheel_bl", "ancestor": "Roată 2:1", "pivot": [0.08, -0.13, 0.046], "axis": "y", "mecanum": true },
+    { "name": "wheel_br", "ancestor": "Roată 4:1", "pivot": [0.08, 0.13, 0.046], "axis": "y", "mecanum": true }
+  ]
+}

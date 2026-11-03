@@ -1,5 +1,7 @@
 // A HIVE: kinematic body that tips when enough POLLEN / NECTAR land in the upward cell.
 // Tipping rotates the hive 60°, so the full cell turns over and its balls spill out by physics.
+// Each tip scores 20; the balls in the cell score only if they are still in the upward cell at the
+// end of the match (manual 10.5.1).
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import { aimPoint, inCell, stateAngle, tipProgress, upCell, type HiveState, type Vec3 } from '../field/hiveGeometry';
@@ -8,21 +10,18 @@ import type { Ball, BallSim } from './BallSim';
 import type { ColliderPart } from './colliders';
 
 /**
- * A cell tips under 8 POLLEN or 5 NECTAR. In units of 1/5 POLLEN (= 1/8 NECTAR) a POLLEN weighs 5,
- * a NECTAR 8 and the cell tips at 40; mixed loads add up the same way.
+ * A cell tips under the weight of 8 POLLEN. A NECTAR weighs as much as 2 POLLEN, so 4 NECTAR tip it
+ * too, and mixed loads add up the same way.
  */
-export const POLLEN_WEIGHT = 5;
-export const NECTAR_WEIGHT = 8;
-export const TIP_LOAD = 40;
-/**
- * A full cell does not drop at once: the dampers hold it for 3 s, and teams can keep launching
- * into it meanwhile.
- */
-export const TIP_DELAY = 3;
+export const POLLEN_WEIGHT = 1;
+export const NECTAR_WEIGHT = 2;
+export const TIP_LOAD = 8;
+/** A full cell sags on its dampers for a moment before it goes; teams can still launch into it. */
+export const TIP_DELAY = 0.6;
 /** How far the hive sags toward the tip while the dampers give way. */
 const SAG = (6 * Math.PI) / 180;
-/** Seconds the HIVE takes to turn over once the dampers let go */
-const TIP_DURATION = 1.8;
+/** Seconds the HIVE takes to turn over once the dampers let go: 2 s from a full cell to tipped */
+const TIP_DURATION = 1.4;
 
 export class HiveSim {
   state: HiveState = 'A';

@@ -1,17 +1,20 @@
-// Settings from the main menu (MoSim style panel): rebind controls, graphics quality, house
+// Settings from the main menu (MoSim style panel): rebind controls, graphics quality, sound, house
 // rules and the interface language. Every change is saved at once; the game applies it on the spot.
 
+import { SCORE_DISPLAYS, type ScoreDisplay } from '../game/scoreDisplay';
 import { ACTIONS, DEFAULT_BINDINGS, MOVES, actionName, keyLabel, rebind, type ActionId, type Bindings, type MoveId } from '../input/bindings';
 import type { ControlId, PadModel } from '../input/gamepad';
 import type { InputManager } from '../input/InputManager';
 import { controlLabel } from '../input/labels';
+import { ROBOTS } from '../robot/robots';
 import type { RuleId, RuleOptions } from '../sim/Referee';
+import type { FieldLightMode } from '../view/FieldLights';
 import { h } from './dom';
 import { LANGUAGES, LANGUAGE_NAMES, ht, localize, t, type Language, type TextKey } from './i18n';
 import type { Screen } from './menus';
 import { MenuNav } from './MenuNav';
 
-export type QualityPreset = 'auto' | 'high' | 'medium' | 'low';
+export type QualityPreset = 'auto' | 'ultra' | 'high' | 'medium' | 'low';
 
 export interface GraphicsSettings {
   quality: QualityPreset;
@@ -20,9 +23,20 @@ export interface GraphicsSettings {
   /** FXAA: smooths jagged edges for little cost */
   antialias: boolean;
   fps: boolean;
+  /** LED strips on the field wall, and the moving-light show of a final */
+  fieldLights: FieldLightMode;
 }
 
-export const DEFAULT_GRAPHICS: GraphicsSettings = { quality: 'auto', shadows: true, outlines: true, antialias: true, fps: false };
+export const DEFAULT_GRAPHICS: GraphicsSettings = { quality: 'auto', shadows: true, outlines: true, antialias: true, fps: false, fieldLights: 'on' };
+const FIELD_LIGHTS: FieldLightMode[] = ['off', 'on', 'final'];
+
+/** The field timer recording in matches and the menu buttons */
+export interface SoundSettings {
+  match: boolean;
+  buttons: boolean;
+}
+
+export const DEFAULT_SOUND: SoundSettings = { match: true, buttons: true };
 
 /** Multipliers on the driving and turning stick (1 = as the stick says). */
 export interface Sensitivity {
@@ -44,7 +58,9 @@ export interface SettingsValues {
   bindings: Bindings;
   sensitivity: Sensitivity;
   graphics: GraphicsSettings;
+  sound: SoundSettings;
   rules: RuleOptions;
+  scoreDisplay: ScoreDisplay;
   language: Language;
 }
 
@@ -54,11 +70,11 @@ export interface SettingsActions {
   back(): void;
 }
 
-type Tab = 'controls' | 'graphics' | 'rules' | 'language';
+type Tab = 'controls' | 'graphics' | 'sound' | 'interface' | 'rules' | 'language';
 
-const TABS: Tab[] = ['controls', 'graphics', 'rules', 'language'];
+const TABS: Tab[] = ['controls', 'graphics', 'sound', 'interface', 'rules', 'language'];
 
-const QUALITY_ORDER: QualityPreset[] = ['auto', 'high', 'medium', 'low'];
+const QUALITY_ORDER: QualityPreset[] = ['auto', 'ultra', 'high', 'medium', 'low'];
 
 /** What the automatic referee calls during a match (sim/Referee.ts). */
 const RULES: RuleId[] = ['G402', 'G405', 'G408', 'G410', 'G417', 'G421'];
@@ -152,7 +168,10 @@ export class SettingsScreen implements Screen {
       }, `settings.tab.${id}`)),
       ht('button', { class: 'ms-tab', onclick: this.actions.gamepads }, 'settings.gamepads'),
     );
-    const pages = { controls: () => this.controls(), graphics: () => this.graphics(), rules: () => this.rules(), language: () => this.language() };
+    const pages = {
+      controls: () => this.controls(), graphics: () => this.graphics(), sound: () => this.sound(), interface: () => this.interface(),
+      rules: () => this.rules(), language: () => this.language(),
+    };
     this.body.replaceChildren(...pages[this.tab]());
     // The title and Back button, after a language switch
     localize(this.el);
@@ -189,13 +208,15 @@ export class SettingsScreen implements Screen {
       waitingFor(action, 'keys') ? t('settings.pressKey') : keyLabel(b.keys[action]));
     const stick = (move: MoveId) => t(move === 'turnLeft' || move === 'turnRight' ? 'label.rightStick' : 'label.leftStick');
     const s = this.values.sensitivity;
+    // The lift's buttons only while some robot has one.
+    const actions = ACTIONS.filter(a => (a !== 'lift' && a !== 'boxRollers') || ROBOTS.some(d => d.lift));
     return [
       this.stepper('settings.driveSensitivity', s.drive, drive => this.set({ sensitivity: { ...s, drive } })),
       this.stepper('settings.turnSensitivity', s.turn, turn => this.set({ sensitivity: { ...s, turn } })),
       h('div', { class: 'bind-table' },
         h('div', { class: 'bind-head' }, h('span', {}, t('settings.action')), h('span', {}, t('settings.gamepad')), h('span', {}, t('pad.keyboard'))),
         ...MOVES.map(m => h('div', { class: 'bind-row' }, h('span', {}, actionName(m)), h('span', { class: 'bind-fixed' }, stick(m)), keyButton(m))),
-        ...ACTIONS.map(a => h('div', { class: 'bind-row' }, h('span', {}, actionName(a)), padButton(a), keyButton(a)))),
+        ...actions.map(a => h('div', { class: 'bind-row' }, h('span', {}, actionName(a)), padButton(a), keyButton(a)))),
       h('p', { class: 'muted settings-note' }, t('settings.controlsNote')),
       h('button', { class: 'ms-select settings-reset', onclick: () => this.set({ bindings: structuredClone(DEFAULT_BINDINGS), sensitivity: { ...DEFAULT_SENSITIVITY } }) }, t('settings.resetControls')),
     ];
@@ -213,7 +234,32 @@ export class SettingsScreen implements Screen {
       this.row('settings.outlines', onOff(g.outlines), () => patch({ outlines: !g.outlines })),
       this.row('settings.antialias', onOff(g.antialias), () => patch({ antialias: !g.antialias })),
       this.row('settings.fps', onOff(g.fps), () => patch({ fps: !g.fps })),
+      this.row('settings.fieldLights', t(`settings.fieldLights.${g.fieldLights}`), () => patch({ fieldLights: FIELD_LIGHTS[(FIELD_LIGHTS.indexOf(g.fieldLights) + 1) % FIELD_LIGHTS.length] })),
       h('p', { class: 'muted settings-note' }, t('settings.graphicsNote')),
+    ];
+  }
+
+  private sound(): HTMLElement[] {
+    const s = this.values.sound;
+    const patch = (p: Partial<SoundSettings>) => {
+      this.set({ sound: { ...s, ...p } });
+      this.render();
+    };
+    return [
+      this.row('settings.matchSound', onOff(s.match), () => patch({ match: !s.match })),
+      this.row('settings.buttonSound', onOff(s.buttons), () => patch({ buttons: !s.buttons })),
+      h('p', { class: 'muted settings-note' }, t('settings.soundNote')),
+    ];
+  }
+
+  private interface(): HTMLElement[] {
+    const d = this.values.scoreDisplay;
+    return [
+      this.row('settings.scoreDisplay', t(`settings.scoreDisplay.${d}`), () => {
+        this.set({ scoreDisplay: SCORE_DISPLAYS[(SCORE_DISPLAYS.indexOf(d) + 1) % SCORE_DISPLAYS.length] });
+        this.render();
+      }),
+      h('p', { class: 'muted settings-note' }, t('settings.interfaceNote')),
     ];
   }
 
@@ -227,6 +273,7 @@ export class SettingsScreen implements Screen {
       this.row('settings.fouls', onOff(r.fouls), () => patch({ fouls: !r.fouls })),
       this.row('settings.cards', onOff(r.cards), () => patch({ cards: !r.cards })),
       this.row('settings.battery', onOff(r.battery), () => patch({ battery: !r.battery })),
+      this.row('settings.movingShots', onOff(r.movingShots), () => patch({ movingShots: !r.movingShots })),
       h('div', { class: 'rules-list' },
         ...RULES.map(id => h('div', { class: 'rules-item' }, h('span', { class: 'key' }, id), h('span', {}, t(`settings.rule.${id}`))))),
       h('p', { class: 'muted settings-note' }, t('settings.rulesNote')),

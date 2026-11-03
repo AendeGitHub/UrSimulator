@@ -3,6 +3,7 @@
 import { FLOWER_VOLUME, ballInRect, type Zones } from '../field/zones';
 import type { Vec3 } from '../field/layout';
 import type { Alliance } from '../robot/robotConfig';
+import type { Slot } from '../sim/types';
 import { t } from '../ui/i18n';
 
 export const POINTS = {
@@ -27,7 +28,7 @@ export interface BallSnapshot {
 }
 
 export interface FieldScore {
-  /** Elements in the upward cell */
+  /** Elements in the upward cell (they score if still there at the end, manual 10.5.1) */
   cellElements: number;
   flowerBottom: number;
   ownedFlowerElements: number;
@@ -65,6 +66,9 @@ export interface AllianceScore {
   autoTips: number;
   teleopTips: number;
   teleopPark: number;
+  /** Which robots were PARKED (at least partly in the LOADING ZONE, manual 10.5.4): end of AUTO and end of the match */
+  autoParked: Slot[];
+  teleopParked: Slot[];
   /** Rule violations (manual 10.6): a red card disqualifies — 0 match points */
   warnings: number;
   yellowCards: number;
@@ -80,7 +84,7 @@ export interface AllianceScore {
 }
 
 export const emptyScore = (): AllianceScore => ({
-  leave: 0, autoPark: 0, autoTips: 0, teleopTips: 0, teleopPark: 0, warnings: 0, yellowCards: 0, redCards: 0,
+  leave: 0, autoPark: 0, autoTips: 0, teleopTips: 0, teleopPark: 0, autoParked: [], teleopParked: [], warnings: 0, yellowCards: 0, redCards: 0,
   minorFouls: 0, majorFouls: 0, foulPoints: 0, calls: [], field: emptyField(),
 });
 
@@ -113,4 +117,67 @@ export function rankingPoints(s: AllianceScore): { swarm: boolean; pollinator1: 
     pollinator1: tips >= RP_THRESHOLDS.pollinator1,
     pollinator2: tips >= RP_THRESHOLDS.pollinator2,
   };
+}
+
+/** Points by row of the FTC results display: the groups of manual table 10-2, then the opponent's FOULS. */
+export interface ScoreRows {
+  leavePark: number;
+  /** HIVE TIPS and the POLLEN / NECTAR left in the upward CELL */
+  hive: number;
+  flower: number;
+  garden: number;
+  foul: number;
+}
+
+export function scoreRows(s: AllianceScore): ScoreRows {
+  const f = s.field;
+  return {
+    leavePark: s.leave * POINTS.leave + s.autoPark * POINTS.autoPark + s.teleopPark * POINTS.teleopPark,
+    hive: (s.autoTips + s.teleopTips) * POINTS.tip + f.cellElements * POINTS.cellElement,
+    flower: f.flowerBottom * POINTS.flowerBottomNectar + f.ownedFlowerElements * POINTS.ownedFlowerElement,
+    garden: f.gardenElements * POINTS.gardenElement,
+    foul: s.foulPoints,
+  };
+}
+
+/** What the alliance scored on the field itself: no points from the opponent's FOULS, no red card zeroing it. */
+export function earnedPoints(s: AllianceScore): number {
+  const r = scoreRows(s);
+  return r.leavePark + r.hive + r.flower + r.garden;
+}
+
+/** Points scored in AUTO (a ranking tiebreaker, manual table 13-1). */
+export function autoPoints(s: AllianceScore): number {
+  return s.leave * POINTS.leave + s.autoPark * POINTS.autoPark + s.autoTips * POINTS.tip;
+}
+
+export type MatchResult = 'win' | 'tie' | 'loss';
+
+/** The RANKING POINTS of the results display (manual table 10-2): WIN 3 or TIE 1, then SWARM, POLLINATOR 1 and 2. */
+export interface MatchRankingPoints {
+  result: MatchResult;
+  swarm: boolean;
+  pollinator1: boolean;
+  pollinator2: boolean;
+  total: number;
+}
+
+/** The winning alliance, or null for a tie. */
+export function matchWinner(score: Record<Alliance, AllianceScore>): Alliance | null {
+  const red = total(score.red);
+  const blue = total(score.blue);
+  return red === blue ? null : red > blue ? 'red' : 'blue';
+}
+
+/** Both alliances' RP. A DISQUALIFIED alliance (red card) gets none (manual 13.6.3). */
+export function matchRankingPoints(score: Record<Alliance, AllianceScore>): Record<Alliance, MatchRankingPoints> {
+  const winner = matchWinner(score);
+  const of = (a: Alliance): MatchRankingPoints => {
+    if (score[a].redCards > 0) return { result: 'loss', swarm: false, pollinator1: false, pollinator2: false, total: 0 };
+    const result: MatchResult = winner === null ? 'tie' : winner === a ? 'win' : 'loss';
+    const rp = rankingPoints(score[a]);
+    const won = result === 'win' ? 3 : result === 'tie' ? 1 : 0;
+    return { result, ...rp, total: won + Number(rp.swarm) + Number(rp.pollinator1) + Number(rp.pollinator2) };
+  };
+  return { red: of('red'), blue: of('blue') };
 }

@@ -1,6 +1,6 @@
 {
   "name": "ursim",
-  "version": "1.3.0",
+  "version": "2.0.0-beta",
   "private": true,
   "description": "UrSim — FTC BIOBUZZ driving simulator",
   "type": "module",
@@ -11,6 +11,8 @@
     "test": "vitest run",
     "convert:field": "node --max-old-space-size=8192 tools/convert-field.mjs && npm run build:colliders",
     "build:colliders": "node tools/build-colliders.mjs",
+    "train:bot": "tsx tools/train-bot.ts",
+    "arena:bot": "tsx tools/bot-arena.ts",
     "server": "tsx server/index.ts",
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node18 --outdir=dist-server --out-extension:.js=.mjs --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "dev:lan": "vite --host",
@@ -20,7 +22,8 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.14.0",
-    "three": "0.170.0"
+    "three": "0.170.0",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@gltf-transform/core": "4.1.1",
@@ -28,6 +31,7 @@
     "@gltf-transform/functions": "4.1.1",
     "@types/node": "22.9.0",
     "@types/three": "0.170.0",
+    "@types/ws": "8.5.12",
     "esbuild": "0.24.0",
     "meshoptimizer": "0.22.0",
     "occt-import-js": "0.0.22",

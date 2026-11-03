@@ -64,17 +64,23 @@ export function footprint(x: number, z: number, yaw: number, length: number, wid
 
 /** Separating-axis test: convex polygon vs axis-aligned rectangle. */
 export function polygonOverlapsRect(poly: [number, number][], r: Rect): boolean {
-  const rect: [number, number][] = [[r.minX, r.minZ], [r.maxX, r.minZ], [r.maxX, r.maxZ], [r.minX, r.maxZ]];
-  const axes: [number, number][] = [[1, 0], [0, 1]];
-  for (let i = 0; i < poly.length; i++) {
-    const [ax, az] = poly[i];
-    const [bx, bz] = poly[(i + 1) % poly.length];
-    axes.push([bz - az, -(bx - ax)]);
+  return polygonsOverlap(poly, [[r.minX, r.minZ], [r.maxX, r.minZ], [r.maxX, r.maxZ], [r.minX, r.maxZ]]);
+}
+
+/** Separating-axis test: two convex polygons (touching counts as overlapping). */
+export function polygonsOverlap(p: [number, number][], q: [number, number][]): boolean {
+  const axes: [number, number][] = [];
+  for (const poly of [p, q]) {
+    for (let i = 0; i < poly.length; i++) {
+      const [ax, az] = poly[i];
+      const [bx, bz] = poly[(i + 1) % poly.length];
+      axes.push([bz - az, -(bx - ax)]);
+    }
   }
   for (const [nx, nz] of axes) {
     const project = (pts: [number, number][]) => pts.map(([px, pz]) => px * nx + pz * nz);
-    const a = project(poly);
-    const b = project(rect);
+    const a = project(p);
+    const b = project(q);
     if (Math.max(...a) < Math.min(...b) || Math.max(...b) < Math.min(...a)) return false;
   }
   return true;

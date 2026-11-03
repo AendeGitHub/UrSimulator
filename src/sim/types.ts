@@ -17,7 +17,6 @@ export interface RobotInput {
   ly: number;
   rx: number;
   fieldCentric: boolean;
-  slow: boolean;
   intake: boolean;
   eject: boolean;
   transfer: boolean;
@@ -28,12 +27,16 @@ export interface RobotInput {
   /** Raise / lower a robot's front arm (Bumble V) */
   armUp: boolean;
   armDown: boolean;
+  /** Sends a robot's lift (a flower scoring box) up, or down if it is up */
+  lift: boolean;
+  /** Held: the rollers in the lift's box run */
+  boxRollers: boolean;
 }
 
 export const idleInput = (): RobotInput => ({
-  lx: 0, ly: 0, rx: 0, fieldCentric: true, slow: false,
+  lx: 0, ly: 0, rx: 0, fieldCentric: true,
   intake: false, eject: false, transfer: false, shooterOn: false, shooterOff: false, imuReset: false,
-  armUp: false, armDown: false,
+  armUp: false, armDown: false, lift: false, boxRollers: false,
 });
 
 /** Applies a newer input, keeping one-shot presses that have not been used yet. */
@@ -45,6 +48,7 @@ export function mergeInput(current: RobotInput, next: RobotInput): RobotInput {
     imuReset: current.imuReset || next.imuReset,
     armUp: current.armUp || next.armUp,
     armDown: current.armDown || next.armDown,
+    lift: current.lift || next.lift,
   };
 }
 

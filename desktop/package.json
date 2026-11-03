@@ -19,6 +19,8 @@
     "productName": "UrSim",
     "files": [
       "main.cjs",
+      "preload.cjs",
+      "signin.cjs",
       "app/**/*"
     ],
     "directories": {

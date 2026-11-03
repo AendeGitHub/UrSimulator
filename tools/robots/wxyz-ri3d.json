@@ -1,0 +1,21 @@
+{
+  "comment": "WXYZ's Ri3D robot (team 19705, STEP export 19705 2026-27 Ri3D, assembly 复仇女神, part names in Chinese). RoboRangers built Bobik from this CAD (tools/robots/bobik.json has the same parts with Romanian names); this one has four single-stage linear slides at the back where Bobik has closed back walls. Coordinates are in the CAD frame (meters, Z up, front = -X, left = -Y). Parts are matched in order: the first rule that fits a CAD part wins. The launcher (shooter <1>) is the turret: a flywheel (飞轮) low at the front and a roller high at the back squeeze a POLLEN between them and throw it forward. The intake (所有轴, all shafts) is four roller shafts on one motor that carry balls under them from the front up the channel to the turret. The push-back arm (two side plates and the plate across their ends, Part 27/29/7) turns on the frame's front corners and is raised in the CAD: it is written lowered, 50° down, with its plate 2 cm over the tiles (over a FLOWER's bottom ring). Only the chassis belts (底盘…同步带) stay still: the launcher's belts turn with the turret.",
+  "up": "+z",
+  "forward": "-x",
+  "dropSmallerThan": 0.008,
+  "fixed": ["底盘前同步带", "底盘后同步带"],
+  "parts": [
+    { "name": "flywheel", "parent": "turret", "ancestor": "飞轮 <1>", "pivot": [-0.113, 0, 0.275], "axis": "y", "reverse": true },
+    { "name": "flywheel_top", "parent": "turret", "ancestor": "shooter <1>", "within": { "x": [-0.03, 0.025], "z": [0.315, 0.37] }, "pivot": [-0.0005, 0, 0.3405], "axis": "y" },
+    { "name": "turret", "ancestor": "shooter <1>", "pivot": [-0.055, 0, 0.22], "axis": "z" },
+    { "name": "arm", "ancestor": ["Part 27", "Part 29", "Part 7"], "within": { "x": [-0.34, -0.2] }, "pivot": [-0.2263, 0, 0.0495], "axis": "y", "turn": -0.873 },
+    { "name": "intake_front", "ancestor": "所有轴 <1>", "within": { "x": [-0.28, -0.215] }, "pivot": [-0.2465, 0, 0.088], "axis": "y" },
+    { "name": "intake_2", "ancestor": "所有轴 <1>", "within": { "x": [-0.215, -0.16] }, "pivot": [-0.189, 0, 0.105], "axis": "y" },
+    { "name": "intake_3", "ancestor": "所有轴 <1>", "within": { "z": [0.1, 0.155] }, "pivot": [-0.134, 0, 0.129], "axis": "y" },
+    { "name": "intake_4", "ancestor": "所有轴 <1>", "within": { "z": [0.155, 0.22] }, "pivot": [-0.114, 0, 0.186], "axis": "y" },
+    { "name": "wheel_fl", "ancestor": "左手麦轮装配体 <2>", "pivot": [-0.159, -0.13, 0.046], "axis": "y", "mecanum": true },
+    { "name": "wheel_fr", "ancestor": "右手麦轮装配体 <1>", "pivot": [-0.159, 0.13, 0.046], "axis": "y", "mecanum": true },
+    { "name": "wheel_bl", "ancestor": "右手麦轮装配体 <2>", "pivot": [0.08, -0.13, 0.046], "axis": "y", "mecanum": true },
+    { "name": "wheel_br", "ancestor": "左手麦轮装配体 <1>", "pivot": [0.08, 0.13, 0.046], "axis": "y", "mecanum": true }
+  ]
+}

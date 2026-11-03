@@ -10,6 +10,9 @@ services:
     buildCommand: npm ci --include=dev && npm run build && npm run build:server
     startCommand: node dist-server/index.mjs
     healthCheckPath: /health
+    # Secrets go in the dashboard (Environment), not here: UPSTASH_REDIS_REST_URL and
+    # UPSTASH_REDIS_REST_TOKEN (high scores, accounts, statistics), GOOGLE_CLIENT_ID and
+    # GOOGLE_CLIENT_SECRET (sign in with Google). README → Accounts, statistics and friends.
     envVars:
       - key: NODE_VERSION
         value: 22.11.0

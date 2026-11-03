@@ -10,9 +10,12 @@ import { Referee } from './Referee';
 import type { RobotSim } from './RobotSim';
 
 export type Period = 'practice' | 'auto' | 'transition' | 'teleop' | 'post';
+export const PERIODS: Period[] = ['practice', 'auto', 'transition', 'teleop', 'post'];
 
-/** Seconds (manual 10.4, but a 3 s break after AUTO instead of 8 s keeps solo play moving) */
-export const DURATION = { auto: 30, transition: 3, teleop: 120 };
+/** Seconds (manual 10.4): the 8 s after AUTO are 5 s for drivers to pick up their controllers, then a 3-2-1. */
+export const DURATION = { auto: 30, transition: 8, teleop: 120 };
+/** The last seconds of the transition count down 3-2-1 to TELEOP. */
+export const TELEOP_COUNTDOWN = 3;
 /** With this much TELEOP left, flowers open and all NECTAR may be entered (G410, G426). */
 export const ENDGAME = 60;
 const FINAL_WARNING = 20;
@@ -201,7 +204,10 @@ export class Match {
       const s = this.score[r.alliance];
       const corners = this.corners(r);
       if (clearOfWalls(corners, this.zones.wall)) s.leave++;
-      if (polygonOverlapsRect(corners, this.zones.loading[r.alliance])) s.autoPark++;
+      if (polygonOverlapsRect(corners, this.zones.loading[r.alliance])) {
+        s.autoPark++;
+        s.autoParked.push(r.slot);
+      }
     }
   }
 
@@ -213,9 +219,9 @@ export class Match {
     const field = scoreField(snapshot, this.zones, cells);
     for (const a of ALLIANCES) {
       this.score[a].field = field[a];
-      this.score[a].teleopPark = this.isMatch
-        ? this.robots().filter(r => r.alliance === a && polygonOverlapsRect(this.corners(r), this.zones.loading[a])).length
-        : 0;
+      const parked = this.isMatch ? this.robots().filter(r => r.alliance === a && polygonOverlapsRect(this.corners(r), this.zones.loading[a])) : [];
+      this.score[a].teleopParked = parked.map(r => r.slot);
+      this.score[a].teleopPark = parked.length;
     }
   }
 

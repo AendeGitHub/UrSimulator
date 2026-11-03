@@ -1,8 +1,8 @@
 // Controller setup: which pad is gamepad1/gamepad2, live button tester, button assignment wizard.
 
-import { modelName, type ControlId, type PadModel } from '../input/gamepad';
+import { padName, type ControlId, type PadModel } from '../input/gamepad';
 import type { InputManager, PadInfo } from '../input/InputManager';
-import { controlDescription, controlLabel } from '../input/labels';
+import { LABEL_CHOICES, LABEL_NAMES, controlDescription, controlLabel, hasTouchpad } from '../input/labels';
 import { RemapWizard } from '../input/remap';
 import { h } from './dom';
 import { ht, t } from './i18n';
@@ -52,7 +52,7 @@ export class GamepadScreen implements Screen {
 
   update(input: InputManager): void {
     if (this.wizard) return this.updateWizard();
-    const key = JSON.stringify([input.slots, input.pads.map(p => [p.index, p.model, !!p.mapping, p.customMapping])]);
+    const key = JSON.stringify([input.slots, input.pads.map(p => [p.index, p.id, p.model, p.guessed, p.customMapping])]);
     if (key !== this.layoutKey) {
       this.layoutKey = key;
       this.render();
@@ -66,39 +66,46 @@ export class GamepadScreen implements Screen {
       const info = input.slotInfo(slot);
       const name = `gamepad${slot + 1}`;
       if (!info) return h('div', { class: 'panel pad-card' }, h('h3', {}, name), h('p', { class: 'muted' }, t('pads.none')));
-      const status = t(info.mapping ? (info.customMapping ? 'pads.readyCustom' : 'pads.ready') : 'pads.needsSetup');
+      const status = t(info.customMapping ? 'pads.readyCustom' : info.guessed ? 'pads.guessed' : 'pads.ready');
       return h('div', { class: 'panel pad-card' },
-        h('h3', {}, name, h('span', { class: 'muted' }, ` · ${modelName(info.model)}`)),
-        h('p', { class: info.mapping ? 'ok' : 'warn' }, status),
+        h('h3', {}, name, h('span', { class: 'muted' }, ` · ${padName(info)}`)),
+        h('p', { class: info.guessed ? 'warn' : 'ok' }, status),
         h('div', { class: 'row' },
           h('button', { class: 'btn btn-small', onclick: () => this.startWizard(info) }, t('pads.setup')),
           info.customMapping ? h('button', { class: 'btn btn-small btn-ghost', onclick: () => { input.resetMapping(info.id); this.layoutKey = ''; } }, t('pads.reset')) : '',
         ),
+        // PlayStation names for a REV PS4 gamepad that Windows shows as an Xbox pad, and the like.
+        h('button', { class: 'btn btn-small btn-ghost', onclick: () => this.nextLabels(info) },
+          t('pads.labels', { names: info.labels ? LABEL_NAMES[info.labels]! : t('pads.labelsAuto') })),
       );
     };
-    const unsupported = input.pads.filter(p => p.model === 'unsupported');
     this.body.replaceChildren(
       h('div', { class: 'pad-cards' }, slotCard(0), slotCard(1)),
       h('div', { class: 'row' },
         h('button', { class: 'btn btn-secondary', onclick: () => { input.swapSlots(); this.layoutKey = ''; } }, t('pads.swap')),
         h('button', { class: 'btn btn-secondary', onclick: () => this.goBack() }, t('common.back')),
       ),
-      ...unsupported.map(p => h('p', { class: 'warn' }, t('pads.unsupported', { id: p.id }))),
       this.buildTester(),
     );
+  }
+
+  private nextLabels(pad: PadInfo): void {
+    const next = LABEL_CHOICES[(LABEL_CHOICES.indexOf(pad.labels) + 1) % LABEL_CHOICES.length];
+    this.input.setLabels(pad.id, next);
+    this.layoutKey = '';
   }
 
   private buildTester(): HTMLElement {
     const slot: 0 | 1 = this.input.slotInfo(0) ? 0 : 1;
     const info = this.input.slotInfo(slot);
-    if (!info?.mapping) {
+    if (!info) {
       this.tester = null;
       return h('p', { class: 'muted' }, t('pads.testerHint'));
     }
     const model: PadModel = info.model;
     const cells = new Map<ControlId, HTMLElement>();
     for (const c of TESTER_BUTTONS) {
-      if (c === 'touchpad' && model === 'f310') continue;
+      if (c === 'touchpad' && !hasTouchpad(model)) continue;
       const label = controlLabel(model, c);
       cells.set(c, h('div', { class: 'tester-btn', style: label.color ? { color: label.color } : undefined }, label.text));
     }
@@ -144,7 +151,7 @@ export class GamepadScreen implements Screen {
     const label = controlLabel(w.pad.model, control);
     this.body.replaceChildren(
       h('div', { class: 'panel wizard' },
-        h('p', { class: 'muted' }, t('pads.step', { model: modelName(w.pad.model), step: w.wizard.index + 1, count: w.wizard.order.length })),
+        h('p', { class: 'muted' }, t('pads.step', { model: padName(w.pad), step: w.wizard.index + 1, count: w.wizard.order.length })),
         h('p', { class: 'wizard-prompt' }, t(control.includes('stick_') && !control.endsWith('button') ? 'pads.move' : 'pads.press'),
           h('span', { class: 'key key-big', style: label.color ? { color: label.color } : undefined }, label.text)),
         h('p', {}, controlDescription(control)),

@@ -1,15 +1,28 @@
-// The venue around the field: carpet, sided hall walls, two arena stands with seats,
-// steel ceiling trusses with light rows and big logo banners. FTC drivers stand on the floor in
-// the alliance area, so there are no FRC-style driver station walls.
+// The venue around the field: carpet, sided hall walls with a band of windows, two blue bench
+// stands, a vaulted roof of steel ribs and glass, a lighting truss over the field (the moving
+// lights of view/FieldLights.ts hang from it) and big logo banners. FTC drivers stand on the floor
+// in the alliance area, so there are no FRC-style driver station walls.
 // Field center is the origin; red drivers stand at -X, blue at +X, the audience side is +Z.
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { t } from '../ui/i18n';
 
-const HALL = { halfX: 15, halfZ: 13, height: 10 };
+/** Walls `height` high, then a barrel-vault roof across Z that rises to `apex` in the middle, m */
+const HALL = { halfX: 15, halfZ: 13, height: 8, apex: 12.5 };
+/** The roof's circle: radius from its span and rise, centre below the floor */
+const VAULT_R = (HALL.halfZ ** 2 + (HALL.apex - HALL.height) ** 2) / (2 * (HALL.apex - HALL.height));
+const VAULT_Y = HALL.apex - VAULT_R;
+const VAULT_ANGLE = Math.asin(HALL.halfZ / VAULT_R);
+/** The lighting truss over the field: a square ring, half size and height, m */
+export const LIGHTING_TRUSS = { half: 3.2, y: 6.8 };
 /** Brightness of hall surfaces compared to their real colours (the field gets the light). */
-const HALL_DIM = 0.45;
+const HALL_DIM = 0.55;
+/**
+ * How much hall surfaces light themselves: the soft light of a hall from its roof, without a real
+ * light that would also brighten the field.
+ */
+const HALL_GLOW = 0.45;
 const BLACK = new THREE.Color(0, 0, 0);
 const FLOOR_Y = -0.016;
 
@@ -41,6 +54,24 @@ function carpetTexture(): THREE.CanvasTexture {
       g.fillRect(rand() * 256, rand() * 256, 1.5, 1.5);
     }
   }, [30, 26]);
+}
+
+/** A point on the roof `angle` rad from the top, across the hall (y, z). */
+function vaultPoint(angle: number): [number, number] {
+  return [VAULT_Y + VAULT_R * Math.cos(angle) + FLOOR_Y, VAULT_R * Math.sin(angle)];
+}
+
+/** High windows along the side walls: dark panes in light frames. */
+function windowTexture(): THREE.CanvasTexture {
+  return canvasTexture(256, 64, g => {
+    g.fillStyle = '#cfd8e6';
+    g.fillRect(0, 0, 256, 64);
+    g.fillStyle = '#16233a';
+    for (let x = 0; x < 256; x += 64) {
+      g.fillRect(x + 6, 6, 24, 52);
+      g.fillRect(x + 34, 6, 24, 52);
+    }
+  }, [12, 1]);
 }
 
 /** Metal siding: light panels with deep horizontal grooves. */
@@ -85,18 +116,20 @@ function bannerTexture(logo: HTMLImageElement | null, title: string, subtitle: s
 
 export class Arena {
   readonly root = new THREE.Group();
-  private readonly metal = new THREE.MeshStandardMaterial({ color: '#4b515c', metalness: 0.7, roughness: 0.4 });
 
   constructor(scene: THREE.Scene) {
     this.buildFloor();
     this.buildWalls();
     this.buildBleachers(5.2, 1);
     this.buildBleachers(-5.2, -1);
-    this.buildCeiling();
+    this.buildRoof();
+    this.buildLightingTruss();
     this.buildBanners();
     this.mergeStatic();
     this.dim();
     this.simplifyMaterials();
+    // Drawn once a frame: no outline or ambient occlusion pass over the hall (view/ScreenEffects.ts).
+    this.root.userData.noGBuffer = true;
     scene.add(this.root);
   }
 
@@ -111,9 +144,13 @@ export class Arena {
       const m = obj.material;
       let lambert = cheap.get(m);
       if (!lambert) {
+        const glows = m.emissiveIntensity > 0 && !m.emissive.equals(BLACK);
         lambert = new THREE.MeshLambertMaterial({
-          color: m.color, map: m.map, emissive: m.emissive, emissiveIntensity: m.emissiveIntensity,
-          transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite,
+          color: m.color, map: m.map,
+          // Surfaces without a glow of their own get the hall's soft light (through their texture).
+          emissive: glows ? m.emissive : m.color, emissiveMap: glows ? m.emissiveMap : m.map,
+          emissiveIntensity: glows ? m.emissiveIntensity : HALL_GLOW,
+          transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite, side: m.side,
         });
         cheap.set(m, lambert);
         m.dispose();
@@ -182,131 +219,188 @@ export class Arena {
   }
 
   private buildWalls(): void {
-    const mat = new THREE.MeshStandardMaterial({ map: sidingTexture(), roughness: 0.6, metalness: 0.25 });
     const { halfX, halfZ, height } = HALL;
-    for (const [w, x, z, ry] of [
-      [halfX * 2, 0, -halfZ, 0],
-      [halfX * 2, 0, halfZ, Math.PI],
-      [halfZ * 2, -halfX, 0, Math.PI / 2],
-      [halfZ * 2, halfX, 0, -Math.PI / 2],
-    ] as const) {
-      const wall = this.add(new THREE.Mesh(new THREE.PlaneGeometry(w, height), mat));
-      wall.position.set(x, height / 2 + FLOOR_Y, z);
+    const kickMat = new THREE.MeshStandardMaterial({ color: '#2b3140', roughness: 0.8 });
+    // Side walls up to the roof, with a band of windows under it.
+    const siding = new THREE.MeshStandardMaterial({ map: sidingTexture(), roughness: 0.6, metalness: 0.25 });
+    siding.map!.repeat.set(16, 3.2);
+    const windows = new THREE.MeshStandardMaterial({ map: windowTexture(), emissive: '#1a2840', emissiveIntensity: 0.6, roughness: 0.3 });
+    for (const [z, ry] of [[-halfZ, 0], [halfZ, Math.PI]] as const) {
+      const wall = this.add(new THREE.Mesh(new THREE.PlaneGeometry(halfX * 2, height), siding));
+      wall.position.set(0, height / 2 + FLOOR_Y, z);
       wall.rotation.y = ry;
-      // Dark kick plate along the bottom of each wall.
-      const kick = this.add(new THREE.Mesh(new THREE.PlaneGeometry(w, 1.1), new THREE.MeshStandardMaterial({ color: '#2b3140', roughness: 0.8 })));
-      kick.position.set(x * 0.999, 0.55 + FLOOR_Y, z * 0.999);
+      const band = this.add(new THREE.Mesh(new THREE.PlaneGeometry(halfX * 2, 1.4), windows));
+      band.position.set(0, height - 1.1 + FLOOR_Y, z * 0.999);
+      band.rotation.y = ry;
+      const kick = this.add(new THREE.Mesh(new THREE.PlaneGeometry(halfX * 2, 1.1), kickMat));
+      kick.position.set(0, 0.55 + FLOOR_Y, z * 0.998);
+      kick.rotation.y = ry;
+    }
+    // End walls follow the roof's arch.
+    const arch = new THREE.Shape();
+    arch.moveTo(-halfZ, 0);
+    arch.lineTo(halfZ, 0);
+    arch.lineTo(halfZ, height);
+    const steps = 24;
+    for (let i = 1; i <= steps; i++) {
+      const [y, z] = vaultPoint(VAULT_ANGLE - (2 * VAULT_ANGLE * i) / steps);
+      arch.lineTo(z, y - FLOOR_Y);
+    }
+    arch.lineTo(-halfZ, 0);
+    // The shape's UVs are in metres: one siding tile every 1.9 × 2.5 m, as on the side walls.
+    const endSiding = new THREE.MeshStandardMaterial({ map: sidingTexture(), roughness: 0.6, metalness: 0.25 });
+    endSiding.map!.repeat.set(1 / 1.9, 1 / 2.5);
+    for (const [x, ry] of [[-halfX, Math.PI / 2], [halfX, -Math.PI / 2]] as const) {
+      const wall = this.add(new THREE.Mesh(new THREE.ShapeGeometry(arch), endSiding));
+      wall.position.set(x, FLOOR_Y, 0);
+      wall.rotation.y = ry;
+      const kick = this.add(new THREE.Mesh(new THREE.PlaneGeometry(halfZ * 2, 1.1), kickMat));
+      kick.position.set(x * 0.999, 0.55 + FLOOR_Y, 0);
       kick.rotation.y = ry;
     }
   }
 
   /**
    * Arena stand along one long side. `side` = +1 faces the field from +Z, -1 from -Z.
-   * Concrete steps, block plastic seats, a glass front barrier with a rail and an LED strip, aisle
-   * stairs with handrails. Kept simple (it is far away and dark) and everything repeated is
-   * instanced, so a stand costs a handful of draw calls.
+   * Concrete steps with blue risers and long blue benches, a glass front barrier with a rail and
+   * an LED strip, aisle stairs with handrails. Everything repeated is instanced, so a stand costs a
+   * handful of draw calls.
    */
   private buildBleachers(z0: number, side: 1 | -1): void {
-    const rows = 8;
-    const length = 22;
-    const depth = 0.75;
+    const rows = 10;
+    const length = 24;
+    const depth = 0.8;
     const rise = 0.4;
-    const aisles = [-7.5, 0, 7.5];
+    const aisles = [-8, 0, 8];
     const aisleWidth = 1.2;
-    const seatPitch = 0.6;
     const sections = [[-length / 2, aisles[0]], [aisles[0], aisles[1]], [aisles[1], aisles[2]], [aisles[2], length / 2]]
       .map(([a, b]) => [a + (a === -length / 2 ? 0.2 : aisleWidth / 2), b - (b === length / 2 ? 0.2 : aisleWidth / 2)]);
-    // Seats face the field: -Z for the stand at +Z. Facing angle about Y for the instances.
-    const facing = side > 0 ? 0 : Math.PI;
 
     const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), facing);
+    const q = new THREE.Quaternion();
     const v = new THREE.Vector3();
     const s = new THREE.Vector3(1, 1, 1);
-
-    // Concrete steps (each a solid block from the floor so the stand looks solid from the ends)
-    // with a darker nosing on every step edge.
     const unit = new THREE.BoxGeometry(1, 1, 1);
-    const steps = new THREE.InstancedMesh(unit, new THREE.MeshStandardMaterial({ color: '#8d9099', roughness: 0.9 }), rows);
-    const nosing = new THREE.InstancedMesh(unit, new THREE.MeshStandardMaterial({ color: '#3a3d44', roughness: 0.7 }), rows);
+    // Bright stand blue that keeps its colour in the dim hall.
+    const blue = new THREE.MeshStandardMaterial({ color: '#2457e0', emissive: '#0b1d5c', emissiveIntensity: 0.7, roughness: 0.5 });
+
+    // Concrete steps (each a solid block from the floor so the stand looks solid from the ends).
+    const steps = new THREE.InstancedMesh(unit, new THREE.MeshStandardMaterial({ color: '#9a9ea8', roughness: 0.9 }), rows);
     for (let i = 0; i < rows; i++) {
       const top = rise * (i + 1);
-      const z = z0 + side * i * depth;
-      steps.setMatrixAt(i, m.compose(v.set(0, top / 2 + FLOOR_Y, z), q.identity(), s.set(length, top, depth)));
-      nosing.setMatrixAt(i, m.compose(v.set(0, top - 0.02 + FLOOR_Y, z - side * (depth / 2 - 0.02)), q, s.set(length, 0.04, 0.05)));
+      steps.setMatrixAt(i, m.compose(v.set(0, top / 2 + FLOOR_Y, z0 + side * i * depth), q, s.set(length, top, depth)));
     }
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), facing);
-
-    // One stadium seat: a block down to the step and a back.
-    const pan = new THREE.BoxGeometry(0.44, 0.44, 0.38).translate(0, 0.22, -0.02);
-    const back = new THREE.BoxGeometry(0.44, 0.4, 0.05).translate(0, 0.64, 0.19);
-    const seatGeo = mergeGeometries([pan, back])!;
-
-    const spots: THREE.Vector3[] = [];
+    // Per row and section: a blue riser on the step's front and a long blue bench on top.
+    const risers = new THREE.InstancedMesh(unit, blue, rows * sections.length);
+    const benches = new THREE.InstancedMesh(unit, blue, rows * sections.length);
+    let n = 0;
     for (let i = 0; i < rows; i++) {
       const z = z0 + side * i * depth;
-      const y = rise * (i + 1) + FLOOR_Y;
+      const top = rise * (i + 1) + FLOOR_Y;
       for (const [a, b] of sections) {
-        const n = Math.floor((b - a) / seatPitch);
-        for (let k = 0; k < n; k++) spots.push(new THREE.Vector3(a + (k + 0.5) * ((b - a) / n), y, z + side * 0.06));
+        const cx = (a + b) / 2;
+        const w = b - a;
+        risers.setMatrixAt(n, m.compose(v.set(cx, top - rise / 2, z - side * (depth / 2 + 0.005)), q, s.set(w, rise, 0.02)));
+        benches.setMatrixAt(n, m.compose(v.set(cx, top + 0.4, z + side * 0.08), q, s.set(w, 0.06, 0.36)));
+        n++;
       }
     }
-    const seatMat = new THREE.MeshStandardMaterial({ color: '#1f45d6', roughness: 0.45 });
-    const seats = new THREE.InstancedMesh(seatGeo, seatMat, spots.length);
-    spots.forEach((p, i) => seats.setMatrixAt(i, m.compose(p, q, s.set(1, 1, 1))));
-
-    for (const mesh of [steps, nosing, seats]) this.root.add(mesh);
+    for (const mesh of [steps, risers, benches]) this.root.add(mesh);
 
     // Front of the stand: dark fascia with a glowing LED strip, glass barrier and top rail.
     const front = z0 - side * (depth / 2 + 0.02);
     this.box([length, 0.5, 0.04], new THREE.MeshStandardMaterial({ color: '#16181d', roughness: 0.6 }), [0, 0.25 + FLOOR_Y, front]);
     this.box([length, 0.04, 0.02], new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#7fb2ff', emissiveIntensity: 1.6 }), [0, 0.44 + FLOOR_Y, front - side * 0.015]);
     this.box([length, 0.9, 0.015], new THREE.MeshStandardMaterial({ color: '#cfe3ff', transparent: true, opacity: 0.12, roughness: 0.05, depthWrite: false }), [0, 0.95 + FLOOR_Y, front]);
-    this.box([length, 0.05, 0.06], this.metal, [0, 1.42 + FLOOR_Y, front]);
+    const rail = new THREE.MeshStandardMaterial({ color: '#dfe5ee', emissive: '#30343c', emissiveIntensity: 0.6, metalness: 0.6, roughness: 0.35 });
+    this.box([length, 0.05, 0.06], rail, [0, 1.42 + FLOOR_Y, front]);
 
     // Aisle stairs (half steps) with handrails down the middle.
-    const stairMat = new THREE.MeshStandardMaterial({ color: '#6f737c', roughness: 0.9 });
+    const stairMat = new THREE.MeshStandardMaterial({ color: '#7d828c', roughness: 0.9 });
     for (const x of aisles) {
       for (let i = 0; i < rows; i++) {
         const z = z0 + side * i * depth;
         this.box([aisleWidth - 0.1, 0.04, depth / 2], stairMat, [x, rise * i + rise / 2 + FLOOR_Y + 0.02, z - side * depth / 4]);
       }
       const railLen = Math.hypot(rows * depth, rows * rise);
-      const rail = this.box([0.05, 0.05, railLen], this.metal, [x, (rows * rise) / 2 + 0.95 + FLOOR_Y, z0 + side * (rows - 1) * depth / 2]);
-      rail.rotation.x = side * Math.atan2(rows * rise, rows * depth);
+      const hand = this.box([0.05, 0.05, railLen], rail, [x, (rows * rise) / 2 + 0.95 + FLOOR_Y, z0 + side * (rows - 1) * depth / 2]);
+      hand.rotation.x = side * Math.atan2(rows * rise, rows * depth);
       for (let i = 0; i < rows; i += 3) {
-        this.box([0.04, 0.95, 0.04], this.metal, [x, rise * (i + 1) + 0.47 + FLOOR_Y, z0 + side * i * depth]);
+        this.box([0.04, 0.95, 0.04], rail, [x, rise * (i + 1) + 0.47 + FLOOR_Y, z0 + side * i * depth]);
       }
     }
     // Back wall and railing behind the top row.
     const backZ = z0 + side * (rows - 0.5) * depth;
     this.box([length, 1.2, 0.08], new THREE.MeshStandardMaterial({ color: '#2a2d34', roughness: 0.8 }), [0, rise * rows + 0.6 + FLOOR_Y, backZ + side * 0.04]);
-    this.box([length, 0.05, 0.05], this.metal, [0, rise * rows + 1.0 + FLOOR_Y, backZ]);
+    this.box([length, 0.05, 0.05], rail, [0, rise * rows + 1.0 + FLOOR_Y, backZ]);
   }
 
-  private buildCeiling(): void {
-    const { halfX, halfZ, height } = HALL;
-    const ceiling = this.add(new THREE.Mesh(new THREE.PlaneGeometry(halfX * 2, halfZ * 2), new THREE.MeshStandardMaterial({ color: '#2c3240', roughness: 1 })));
-    ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.y = height + FLOOR_Y;
+  /**
+   * A barrel vault across the hall: glass (the night sky behind it) on a grid of light steel ribs
+   * and purlins, with rows of lamps along every other rib.
+   */
+  private buildRoof(): void {
+    const { halfX } = HALL;
+    const glass = new THREE.Mesh(
+      new THREE.CylinderGeometry(VAULT_R, VAULT_R, halfX * 2, 32, 1, true, Math.PI / 2 - VAULT_ANGLE, 2 * VAULT_ANGLE),
+      new THREE.MeshStandardMaterial({ color: '#0d1626', emissive: '#111d33', emissiveIntensity: 1, roughness: 0.2, side: THREE.BackSide }));
+    // The cylinder's axis turned from Y to X: its arc lies across the hall.
+    glass.rotation.z = Math.PI / 2;
+    glass.position.y = VAULT_Y + FLOOR_Y;
+    this.add(glass);
 
-    // Steel trusses spanning the hall (top and bottom chords with diagonals).
-    const span = halfZ * 2;
-    const trussDepth = 0.9;
+    // Light steel, a little self-lit so the grid reads against the dark glass as in a real hall.
+    const steel = new THREE.MeshStandardMaterial({ color: '#c3ccd8', emissive: '#7a8698', emissiveIntensity: 0.9, metalness: 0.5, roughness: 0.45 });
     const lampMat = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#fff4dc', emissiveIntensity: 2.5 });
-    for (let x = -halfX + 2.5; x <= halfX - 2.5; x += 5) {
-      const top = height - 0.25 + FLOOR_Y;
-      const bottom = top - trussDepth;
-      this.box([0.18, 0.18, span], this.metal, [x, top, 0]);
-      this.box([0.18, 0.18, span], this.metal, [x, bottom, 0]);
-      const bays = 16;
-      for (let i = 0; i < bays; i++) {
-        const z = -span / 2 + (i + 0.5) * (span / bays);
-        const diag = this.box([0.07, Math.hypot(trussDepth, span / bays), 0.07], this.metal, [x, (top + bottom) / 2, z]);
-        diag.rotation.x = (i % 2 ? 1 : -1) * Math.atan2(span / bays, trussDepth);
+    const inset = 0.06;
+    const ribs = 13;
+    for (let i = 0; i < ribs; i++) {
+      const x = -halfX + 0.1 + (i * (halfX * 2 - 0.2)) / (ribs - 1);
+      const points: THREE.Vector3[] = [];
+      for (let k = 0; k <= 16; k++) {
+        const a = -VAULT_ANGLE + (2 * VAULT_ANGLE * k) / 16;
+        const [y, z] = vaultPoint(a);
+        points.push(new THREE.Vector3(x, y - inset, z * (1 - inset / VAULT_R)));
       }
-      for (let z = -halfZ + 3; z <= halfZ - 3; z += 3.5) {
-        this.box([1.4, 0.1, 0.5], lampMat, [x, bottom - 0.15, z]);
+      this.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 32, 0.09, 6), steel));
+      if (i % 2 === 1) {
+        for (const a of [-0.36, 0, 0.36]) {
+          const [y, z] = vaultPoint(a);
+          const lamp = this.box([0.6, 0.08, 0.9], lampMat, [x, y - 0.25, z]);
+          lamp.rotation.x = -a;
+        }
+      }
+    }
+    const purlins = 12;
+    for (let k = 0; k < purlins; k++) {
+      const a = -VAULT_ANGLE + (2 * VAULT_ANGLE * (k + 0.5)) / purlins;
+      const [y, z] = vaultPoint(a);
+      const purlin = this.box([halfX * 2, 0.1, 0.1], steel, [0, y - inset, z]);
+      purlin.rotation.x = -a;
+    }
+  }
+
+  /** A square truss over the field: something for the moving lights to hang from, as at events. */
+  private buildLightingTruss(): void {
+    const { half, y } = LIGHTING_TRUSS;
+    const truss = new THREE.MeshStandardMaterial({ color: '#2a2e35', metalness: 0.7, roughness: 0.4 });
+    const depth = 0.4;
+    for (const sx of [1, 0] as const) {
+      for (const sign of [-1, 1]) {
+        const len = half * 2 + 0.4;
+        const pos = (dx: number, dy: number, dz: number): [number, number, number] =>
+          sx ? [dx, y + dy, sign * half + dz] : [sign * half + dx, y + dy, dz];
+        const size: [number, number, number] = sx ? [len, 0.06, 0.06] : [0.06, 0.06, len];
+        for (const [dy, dd] of [[0, -depth / 2], [0, depth / 2], [depth, 0]] as const) {
+          this.box(size, truss, sx ? pos(0, dy, dd) : pos(dd, dy, 0));
+        }
+      }
+    }
+    // Cables up to the roof at the corners.
+    for (const x of [-half, half]) {
+      for (const z of [-half, half]) {
+        const [top] = vaultPoint(Math.asin(z / VAULT_R));
+        this.box([0.02, top - y, 0.02], truss, [x, (top + y) / 2, z]);
       }
     }
   }

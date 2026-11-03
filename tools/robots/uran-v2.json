@@ -1,8 +1,6 @@
 {
   "comment": "URAN V2 (Jedi92.step). Coordinates are in the CAD frame (meters, Y up, front = +Z). Parts are matched in order: the first rule that fits a CAD part wins. The FLOWER arm (push bek, its side bars in an unnamed node) is lowered in the CAD and turns on bearings in front of the intake. _Old holds old parts below the floor.",
   "forward": "+z",
-  "triangles": 150000,
-  "error": 0.005,
   "dropSmallerThan": 0.008,
   "drop": ["_Old:1"],
   "fixed": ["belt"],
@@ -14,9 +12,9 @@
     { "name": "intake_back", "ancestorPrefix": "SR-INTAKEWHEEL", "within": { "z": [0.07, 0.13] }, "pivot": [0, 0.1285, 0.1], "axis": "x" },
     { "name": "transfer_front", "ancestorPrefix": "3613-4008-0048", "within": { "z": [0, 0.05] }, "pivot": [0, 0.146, 0.022], "axis": "x" },
     { "name": "transfer_back", "ancestorPrefix": "3613-4008-0048", "within": { "z": [-0.12, -0.06] }, "pivot": [0, 0.146, -0.091], "axis": "x" },
-    { "name": "wheel_fl", "cylinder": { "center": [0.113, 0.051, 0.064], "radius": 0.054, "halfWidth": 0.03 }, "pivot": [0.113, 0.051, 0.064], "axis": "x" },
-    { "name": "wheel_fr", "cylinder": { "center": [-0.113, 0.051, 0.064], "radius": 0.054, "halfWidth": 0.03 }, "pivot": [-0.113, 0.051, 0.064], "axis": "x" },
-    { "name": "wheel_bl", "cylinder": { "center": [0.113, 0.051, -0.151], "radius": 0.054, "halfWidth": 0.03 }, "pivot": [0.113, 0.051, -0.151], "axis": "x" },
-    { "name": "wheel_br", "cylinder": { "center": [-0.113, 0.051, -0.151], "radius": 0.054, "halfWidth": 0.03 }, "pivot": [-0.113, 0.051, -0.151], "axis": "x" }
+    { "name": "wheel_fl", "cylinder": { "center": [0.113, 0.051, 0.064], "radius": 0.054, "halfWidth": 0.03 }, "pivot": [0.113, 0.051, 0.064], "axis": "x", "mecanum": { "match": "3625-0100-0104" } },
+    { "name": "wheel_fr", "cylinder": { "center": [-0.113, 0.051, 0.064], "radius": 0.054, "halfWidth": 0.03 }, "pivot": [-0.113, 0.051, 0.064], "axis": "x", "mecanum": { "match": "3625-0100-0104" } },
+    { "name": "wheel_bl", "cylinder": { "center": [0.113, 0.051, -0.151], "radius": 0.054, "halfWidth": 0.03 }, "pivot": [0.113, 0.051, -0.151], "axis": "x", "mecanum": { "match": "3625-0100-0104" } },
+    { "name": "wheel_br", "cylinder": { "center": [-0.113, 0.051, -0.151], "radius": 0.054, "halfWidth": 0.03 }, "pivot": [-0.113, 0.051, -0.151], "axis": "x", "mecanum": { "match": "3625-0100-0104" } }
   ]
 }

@@ -1,0 +1,23 @@
+{
+  "comment": "DHB (team MLP, STEP export iu.step, Fusion 'ueueu v33'). Coordinates are in the CAD frame (meters, Z up, front = -Y, right = -X). Parts are matched in order: the first rule that fits a CAD part wins. The turret ('tyretto v2') sits on a fixed square plate: the shooter turns on a ring gear (79 teeth) around a hole the balls come up through, driven from behind by a gear that two servos under the plate turn. The STEP fused the ring gear, the bearing's inner race and that drive gear into one unnamed body (=>[0:1:1:565]), and the shooter's motor brackets, rods and the flywheel's hub and rims into another (=>[0:1:1:563]): `split` takes them apart, and only the ring (its pieces' centers above z 0.267) turns with the turret. A 3\" flex wheel low at the front of the shooter and three 1.625\" flex wheels high at its back, each driven by its own 6000 RPM motor through bevel gears, squeeze the ball between them as it comes up through the ring. The intake: a shaft of 72 mm wheels and discs across the front, then flex wheels, 72 mm wheels with two small mecanum wheels and discs over a curved ramp of two rails that carries balls back and up into the turret's ring. The push back arm (Flower Mode), a U of two side bars and a cross plate, swings on the front intake shaft; the CAD has it lowered. Each mecanum wheel is driven by its motor through an 11:110 helical gear.",
+  "up": "+z",
+  "forward": "-y",
+  "dropSmallerThan": 0.008,
+  "split": ["=>[0:1:1:565]", "=>[0:1:1:563]"],
+  "parts": [
+    { "name": "flywheel", "parent": "turret", "ancestor": "3 OD Flex Wheel - 60A v1:1", "pivot": [-0.1015, 0.0295, 0.3115], "axis": "x", "reverse": true },
+    { "name": "flywheel_top", "parent": "turret", "ancestor": ["1.625 Flex Wheel - 30A v1:1", "1.625 Flex Wheel - 30A v1 (2):1", "1.625 Flex Wheel - 30A v1 (2):2"], "within": { "z": [0.3, 0.4] }, "pivot": [-0.103, 0.1535, 0.3445], "axis": "x" },
+    { "name": "turret", "ancestor": ["Shooter CAD chipernold v5:1", "=>[0:1:1:565]"], "within": { "z": [0.267, 0.4] }, "pivot": [-0.1, 0.0965, 0.258], "axis": "z" },
+    { "name": "arm", "ancestor": ["Component355:1", "Component358:1", "Component358:2"], "pivot": [-0.1, -0.1245, 0.165], "axis": "x" },
+    { "name": "intake_front", "ancestor": ["3615-4008-0072 assembly v1:1", "3615-4008-0072 rubber(Mirror):1", "Component364:1", "Component364:2", "Component364:3", "Component365:1", "Component366:1", "Component367:1"], "pivot": [-0.1, -0.1245, 0.165], "axis": "x" },
+    { "name": "intake_2", "ancestor": "1.625 Flex Wheel - 30A v1:1", "within": { "z": [0.1, 0.2] }, "pivot": [-0.1015, -0.0995, 0.162], "axis": "x" },
+    { "name": "intake_3", "ancestor": ["3615-4008-0072 rubber(Mirror):2", "3615-4008-0072 Core(Mirror):2", "mecanums v3 v1:1", "mecanums v3 v1(Mirror):1"], "pivot": [-0.1, -0.0705, 0.203], "axis": "x" },
+    { "name": "intake_4", "ancestor": "1.625 Flex Wheel - 30A v1:2", "pivot": [-0.0965, -0.0455, 0.1945], "axis": "x" },
+    { "name": "intake_5", "ancestor": ["Component365:2", "Component365:3", "Component365:4"], "pivot": [-0.1, -0.01, 0.21], "axis": "x" },
+    { "name": "transfer", "ancestor": ["Component365:5", "Component365:6", "Component365:7"], "pivot": [-0.1, 0.034, 0.233], "axis": "x" },
+    { "name": "wheel_fl", "ancestor": "mec (1):1", "pivot": [0.038, -0.0285, 0.122], "axis": "x", "mecanum": true },
+    { "name": "wheel_fr", "ancestor": "mec (1)(Mirror) (3):1", "pivot": [-0.238, -0.0285, 0.122], "axis": "x", "mecanum": true },
+    { "name": "wheel_bl", "ancestor": "mec (1)(Mirror) (2):1", "pivot": [0.038, 0.1675, 0.122], "axis": "x", "mecanum": true },
+    { "name": "wheel_br", "ancestor": "mec (1)(Mirror) (2)(Mirror):1", "pivot": [-0.238, 0.1675, 0.122], "axis": "x", "mecanum": true }
+  ]
+}

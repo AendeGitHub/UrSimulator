@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { URAN_V2 } from '../src/robot/robots';
-import { shotRange, shotSpread } from '../src/sim/Mechanisms';
+import { KNOCK, shotRange, shotSpread } from '../src/sim/Mechanisms';
 
 describe('shooting accuracy by distance', () => {
   const acc = URAN_V2.shooter;
@@ -21,6 +21,14 @@ describe('shooting accuracy by distance', () => {
       expect(s).toBeGreaterThanOrEqual(last);
       last = s;
     }
+  });
+
+  it('scatters more with the turret knocked by another robot', () => {
+    const normal = shotSpread(1, acc);
+    const knocked = shotSpread(1, acc, true);
+    expect(knocked.angle).toBeGreaterThan(normal.angle * 4);
+    expect(knocked.angle).toBeGreaterThanOrEqual(KNOCK.angle);
+    expect(knocked.speed).toBe(normal.speed);
   });
 
   it('names the range for the HUD', () => {

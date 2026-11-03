@@ -1,22 +1,31 @@
-// In-game overlay, kept to what an FTC driver actually sees: the field timer with the scores and
-// the robot battery from the Driver Station. Toasts are only for the app itself (controllers),
-// not for game events. On a split screen each half gets its driver's gamepad, slot and battery.
+// In-game overlay, kept to what an FTC driver actually sees: the scores, the field timer (in a
+// match only on the screens behind the field, view/TimerScreens.ts) and the robot battery from
+// the Driver Station. Toasts are only for the app itself (controllers), not for game events. On a
+// split screen each half gets its driver's gamepad, slot and battery. Settings → Interface can hide
+// the scores until the results, or show only what was earned on the field and what for.
 
+import type { ScoreRows } from '../game/scoring';
 import type { ControlId, PadModel } from '../input/gamepad';
 import { controlLabel } from '../input/labels';
 import type { Alliance } from '../robot/robotConfig';
 import { SLOT_NAMES, slotAlliance, type Slot } from '../sim/types';
 import { h } from './dom';
+import { t } from './i18n';
 
 export interface HudDriver {
   slot: Slot;
   /** The robot's battery; null when the battery rule is off */
   battery: { voltage: number; min: number } | null;
+  /** What the driver's alliance has earned by row of the results (FOULS wait for them); null: not shown */
+  points: ScoreRows | null;
 }
 
 export interface HudState {
   clock: { text: string; label: string; urgent: boolean };
-  score: Record<Alliance, number>;
+  /** A match: the field timer is on the screens behind the field instead of in the scoreboard */
+  timer: boolean;
+  /** null: the scores wait for the results */
+  score: Record<Alliance, number> | null;
   /** Worst card each alliance has this match */
   cards: Record<Alliance, 'none' | 'yellow' | 'red'>;
   /** One per screen half, left to right */
@@ -45,10 +54,16 @@ function batteryIcon(): SVGSVGElement {
 const batteryLevel = (v: number) => (v >= 12 ? 'ok' : v >= 11 ? 'low' : 'critical');
 const volts = (v: number) => `${v.toFixed(2)} V`;
 
-/** One driver's corner: which gamepad and slot it is (split screen only), and the battery. */
+/** The rows of the results display a driver sees during the match, FOUL left out. */
+const POINT_ROWS: [Exclude<keyof ScoreRows, 'foul'>, string][] = [['leavePark', 'LEAVE & PARK'], ['hive', 'HIVE'], ['flower', 'FLOWER'], ['garden', 'GARDEN']];
+
+/** One driver's corner: which gamepad and slot it is (split screen only), the points earned and the battery. */
 class DriverPanel {
   readonly el = h('div', { class: 'hud-driver' });
   private readonly tag = h('div', { class: 'hud-tag' });
+  private readonly points = h('div', { class: 'hud-points' });
+  private readonly pointsTitle = h('div', { class: 'hud-points-title' });
+  private readonly pointValues = POINT_ROWS.map(() => h('strong', {}));
   private readonly battery = h('div', { class: 'battery' });
   private readonly batteryNow = h('div', { class: 'battery-now' });
   private readonly batteryMin = h('div', { class: 'battery-min' });
@@ -56,7 +71,8 @@ class DriverPanel {
   constructor(pad: number) {
     this.tag.dataset.pad = String(pad);
     this.battery.append(batteryIcon(), h('div', { class: 'battery-text' }, this.batteryNow, this.batteryMin));
-    this.el.append(this.tag, this.battery);
+    this.points.append(this.pointsTitle, ...POINT_ROWS.map(([, label], i) => h('div', { class: 'hud-points-row' }, h('span', {}, label), this.pointValues[i])));
+    this.el.append(this.tag, this.points, this.battery);
   }
 
   update(d: HudDriver | undefined, split: boolean, pad: number): void {
@@ -65,6 +81,12 @@ class DriverPanel {
     this.tag.hidden = !split;
     this.tag.dataset.alliance = slotAlliance(d.slot);
     this.tag.textContent = `gamepad${pad} · ${SLOT_NAMES[d.slot]}`;
+    this.points.hidden = !d.points;
+    if (d.points) {
+      this.points.dataset.alliance = slotAlliance(d.slot);
+      this.pointsTitle.textContent = t('hud.points');
+      POINT_ROWS.forEach(([row], i) => (this.pointValues[i].textContent = String(d.points![row])));
+    }
     this.battery.hidden = !d.battery;
     if (d.battery) {
       this.battery.dataset.level = batteryLevel(d.battery.voltage);
@@ -76,6 +98,7 @@ class DriverPanel {
 
 export class Hud {
   readonly el = h('div', { class: 'hud' });
+  private readonly board = h('div', { class: 'scoreboard' });
   private readonly scoreRed = h('div', { class: 'score score-red' });
   private readonly scoreBlue = h('div', { class: 'score score-blue' });
   private readonly clock = h('div', { class: 'clock-time' });
@@ -83,21 +106,31 @@ export class Hud {
   private readonly drivers = [new DriverPanel(1), new DriverPanel(2)];
   private readonly toasts = h('div', { class: 'toasts' });
   private readonly fps = h('div', { class: 'hud-fps' });
+  private readonly rec = h('div', { class: 'hud-rec' });
+  private readonly countdown = h('div', { class: 'countdown' });
+  private countdownText: string | null = null;
 
   constructor() {
+    this.board.append(this.scoreRed, h('div', { class: 'clock' }, this.clock, this.clockLabel), this.scoreBlue);
+    this.rec.hidden = true;
     this.el.append(
-      h('div', { class: 'hud-top' },
-        h('div', { class: 'scoreboard' }, this.scoreRed, h('div', { class: 'clock' }, this.clock, this.clockLabel), this.scoreBlue)),
+      h('div', { class: 'hud-top' }, this.board),
       this.fps,
+      this.rec,
       h('div', { class: 'hud-bottom' }, ...this.drivers.map(d => d.el)),
+      this.countdown,
       this.toasts,
     );
   }
 
   update(s: HudState): void {
     const mine = new Set(s.drivers.map(d => slotAlliance(d.slot)));
-    this.scoreRed.textContent = String(s.score.red);
-    this.scoreBlue.textContent = String(s.score.blue);
+    this.el.classList.toggle('hud-match', s.timer);
+    // In a match the timer is behind the field, so with the scores hidden there is no scoreboard at all.
+    this.board.hidden = !s.score && s.timer;
+    this.scoreRed.hidden = this.scoreBlue.hidden = !s.score;
+    this.scoreRed.textContent = String(s.score?.red ?? '');
+    this.scoreBlue.textContent = String(s.score?.blue ?? '');
     this.scoreRed.dataset.card = s.cards.red;
     this.scoreBlue.dataset.card = s.cards.blue;
     this.scoreRed.classList.toggle('mine', mine.has('red'));
@@ -118,6 +151,21 @@ export class Hud {
 
   setFps(fps: number): void {
     this.fps.textContent = `${Math.round(fps)} FPS`;
+  }
+
+  /** The recording the player started from the pause menu, s so far; null: none. */
+  setRecording(seconds: number | null): void {
+    this.rec.hidden = seconds === null;
+    if (seconds === null) return;
+    const text = `REC ${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+    if (this.rec.textContent !== text) this.rec.textContent = text;
+  }
+
+  /** The 3-2-1 before a game starts (each number pops in anew), or null to hide it. */
+  setCountdown(text: string | null): void {
+    if (text === this.countdownText) return;
+    this.countdownText = text;
+    this.countdown.replaceChildren(...(text ? [h('span', {}, text)] : []));
   }
 
   toast(text: string): void {

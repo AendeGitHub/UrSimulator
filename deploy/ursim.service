@@ -14,7 +14,8 @@ ExecStart=/usr/bin/node dist-server/index.mjs
 Environment=HOST=127.0.0.1
 Environment=PORT=8787
 Environment=RECORDS_FILE=/var/lib/ursim/records.json
-# Optional settings and secrets (UPSTASH_REDIS_REST_URL, …), one NAME=value per line
+Environment=DB_FILE=/var/lib/ursim/db.json
+# Optional settings and secrets (UPSTASH_REDIS_REST_URL, GALLERY_ADMINS=your_username, …), one NAME=value per line
 EnvironmentFile=-/etc/ursim.env
 Restart=always
 RestartSec=2

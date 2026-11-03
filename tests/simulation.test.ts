@@ -3,11 +3,14 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { FieldLayout } from '../src/field/layout';
 import { parseColliders } from '../src/sim/colliders';
 import { PHYSICS_DT, Simulation, initPhysics } from '../src/sim/Simulation';
+import { DURATION } from '../src/sim/Match';
+import { DEFAULT_RULES } from '../src/sim/Referee';
 import { idleInput } from '../src/sim/types';
 import { cellFrame } from '../src/field/hiveGeometry';
-import { total } from '../src/game/scoring';
+import { POINTS, total } from '../src/game/scoring';
 import type { Ball } from '../src/sim/BallSim';
-import { ROBOTS, URAN_V2, robotById } from '../src/robot/robots';
+import { BOBIK, DHB, MECHATRONICS, ROBOTS, SIRIUS_SHADOW, URAN_V2, WXYZ_RI3D, robotById, turretsOf, wheelSpeed } from '../src/robot/robots';
+import { SHOOTER, intakeInterval } from '../src/sim/Mechanisms';
 
 const layout: FieldLayout = JSON.parse(fs.readFileSync('public/assets/field-layout.json', 'utf8'));
 const bin = fs.readFileSync('public/assets/field-colliders.bin');
@@ -47,7 +50,7 @@ describe('headless simulation', () => {
     p.robot.setPose({ x: -0.45, z: 1.35, yaw: Math.PI / 2 });
     sim.setInput('red1', { ...idleInput(), shooterOn: true });
     run(sim, 1);
-    // All 4 balls in 0.4 s (URAN V2's rapid fire)
+    // All 4 balls in 0.2 s (URAN V2's rapid fire)
     sim.setInput('red1', { ...idleInput(), transfer: true });
     run(sim, 2.2);
     sim.setInput('red1', idleInput());
@@ -66,6 +69,41 @@ describe('headless simulation', () => {
     expect(state.robots[0].stored).toHaveLength(4);
     expect(state.period).toBe('auto');
     expect(state.robots.map(r => r.arm)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('PARK: a robot in its LOADING ZONE at the end of AUTO and of the match scores 5 + 5, and which robot it was', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test');
+    sim.addRobot('red2', 'test');
+    sim.start('match');
+    const zone = sim.zones.loading.red;
+    const [cx, cz] = [(zone.minX + zone.maxX) / 2, (zone.minZ + zone.maxZ) / 2];
+    run(sim, 1);
+    p.robot.setPose({ x: cx, z: cz, yaw: 0 });
+    run(sim, 29.5);
+    expect(sim.match.score.red).toMatchObject({ autoPark: 1, autoParked: ['red1'] });
+    sim.match.next('teleop');
+    sim.match.time = DURATION.teleop - 0.5;
+    p.robot.setPose({ x: cx, z: cz, yaw: 0 });
+    run(sim, 4);
+    expect(sim.match.score.red).toMatchObject({ teleopPark: 1, teleopParked: ['red1'] });
+    expect(total(sim.match.score.red) - total(sim.match.score.blue)).toBeGreaterThanOrEqual(POINTS.autoPark + POINTS.teleopPark);
+  });
+
+  it('runs AUTO 30 s, an 8 s transition with robots stopped, then TELEOP 2:00', () => {
+    const { sim } = makeSim();
+    sim.addRobot('red1', 'test');
+    sim.start('match');
+    run(sim, 29.9);
+    expect(sim.match.period).toBe('auto');
+    run(sim, 0.2);
+    expect(sim.match.period).toBe('transition');
+    expect(sim.match.robotEnabled).toBe(false);
+    run(sim, 7.8);
+    expect(sim.match.period).toBe('transition');
+    run(sim, 0.2);
+    expect(sim.match.period).toBe('teleop');
+    expect(sim.match.teleopLeft).toBeGreaterThan(119.8);
   });
 });
 
@@ -143,15 +181,15 @@ describe('hive tipping delay', () => {
     });
   }
 
-  it('starts with 3 NECTAR in the cell (24 of 40): 4 POLLEN tip it 3 s later', () => {
+  it('starts with 3 NECTAR in the cell (6 of 8): 2 POLLEN tip it, in 2 s', () => {
     const { sim } = makeSim();
     sim.start('practice');
-    fillRedCell(sim, 4);
-    run(sim, 2.4);
+    fillRedCell(sim, 2);
+    run(sim, 0.4);
     expect(sim.hives.red.tips).toBe(0);
-    expect(sim.hives.red.tipPending).toBeGreaterThan(0.5);
-    // The rest of the 3 s, then 1.8 s to turn over
-    run(sim, 2.6);
+    expect(sim.hives.red.tipPending > 0 || sim.hives.red.isTipping).toBe(true);
+    // The balls land, the dampers give way, and it turns over: done 2 s after the cell filled.
+    run(sim, 1.8);
     expect(sim.hives.red.tips).toBe(1);
   });
 
@@ -161,23 +199,38 @@ describe('hive tipping delay', () => {
       sim.start('practice');
       emptyRedCell(sim);
       dropIntoRedCell(sim, 'pollen', n);
-      run(sim, 2);
+      run(sim, 0.3);
       // All of them landed in the cell and count; NECTAR would count double.
       expect(sim.hives.red.ballsInUpCell(sim.balls)).toHaveLength(n);
+      run(sim, 2.5);
+      expect(sim.hives.red.tips).toBe(tips);
+    }
+  });
+
+  it('4 NECTAR tip it like 8 POLLEN, 3 do not', () => {
+    for (const [n, tips] of [[3, 0], [4, 1]] as const) {
+      const { sim } = makeSim();
+      sim.start('practice');
+      emptyRedCell(sim);
+      dropIntoRedCell(sim, 'nectar', n);
       run(sim, 3);
       expect(sim.hives.red.tips).toBe(tips);
     }
   });
 
-  it('5 NECTAR tip it like 8 POLLEN, 4 do not', () => {
-    for (const [n, tips] of [[1, 0], [2, 1]] as const) {
-      const { sim } = makeSim();
-      sim.start('practice');
-      // 3 NECTAR are already in the cell; 1 more makes 4, 2 more make 5.
-      dropIntoRedCell(sim, 'nectar', n);
-      run(sim, 6);
-      expect(sim.hives.red.tips).toBe(tips);
-    }
+  it('scores 20 for the tip; balls that spill out of the cell no longer count (manual 10.5.1)', () => {
+    const { sim } = makeSim();
+    sim.start('practice');
+    emptyRedCell(sim);
+    dropIntoRedCell(sim, 'pollen', 11);
+    run(sim, 0.3);
+    // In the upward cell: 2 points each, as long as they stay there.
+    expect(sim.match.score.red.field.cellElements).toBe(11);
+    run(sim, 3);
+    expect(sim.hives.red.tips).toBe(1);
+    expect(sim.hives.red.ballsInUpCell(sim.balls)).toHaveLength(0);
+    expect(sim.match.score.red.field.cellElements).toBe(0);
+    expect(sim.match.score.red.teleopTips).toBe(1);
   });
 });
 
@@ -230,9 +283,11 @@ describe('referee (manual 11.4)', () => {
     const bottom = inFlower().sort((a, b) => sim.balls.position(a)[1] - sim.balls.position(b)[1])[0];
     const atFlower = (arm: 'armUp' | 'armDown') => {
       press(arm);
+      // Nose in until the arm's front bar is in the FLOWER's retrieval opening.
       p.robot.setPose({ x: fx, z: fz + p.robot.cfg.length / 2 + 0.1, yaw: Math.PI / 2 });
-      sim.setInput('red1', { ...idleInput(), intake: true });
-      run(sim, 0.3);
+      run(sim, 0.5);
+      sim.setInput('red1', { ...idleInput(), intake: true, fieldCentric: false, ly: -0.25 });
+      run(sim, 1);
       sim.setInput('red1', idleInput());
     };
     atFlower('armUp');
@@ -244,30 +299,119 @@ describe('referee (manual 11.4)', () => {
     expect(p.mech.stored.every(b => b.kind === 'pollen')).toBe(true);
   });
 
-  it("Bumble V's lowered arm pulls POLLEN out of a FLOWER without the intake button", () => {
-    const { sim } = makeSim();
-    const p = sim.addRobot('red1', 'test', 'bumble-v');
-    sim.start('practice');
-    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
-    const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
-    const park = () => {
-      p.robot.setPose({ x: fx, z: fz + p.robot.cfg.length / 2 + 0.1, yaw: Math.PI / 2 });
-      run(sim, 0.8);
-    };
-    // Raised, the arm leaves the FLOWER alone and the rollers stay still.
-    park();
-    expect(p.mech.stored).toHaveLength(0);
-    expect(p.mech.intakeDir).toBe(0);
-    sim.setInput('red1', { ...idleInput(), armDown: true });
-    run(sim, 0.5);
-    park();
-    expect(p.mech.stored.length).toBeGreaterThanOrEqual(2);
-    expect(p.mech.stored.every(b => b.kind === 'pollen')).toBe(true);
-    expect(p.mech.intakeDir).toBe(1);
+  it('push back: the lowered arm pulls one POLLEN out of a FLOWER, and it waits in front of the intake until the intake runs', () => {
+    for (const robot of ['uran-v2', 'bumble-v', 'silver-bullet-blaster', 'bobik', 'dhb']) {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', robot);
+      sim.start('practice');
+      p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+      const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
+      // Nose in until the arm's front bar is in the FLOWER's retrieval opening, then stop.
+      const park = () => {
+        p.robot.setPose({ x: fx, z: fz + p.robot.cfg.length / 2 + 0.1, yaw: Math.PI / 2 });
+        run(sim, 0.5);
+        sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.25 });
+        run(sim, 0.6);
+        sim.setInput('red1', idleInput());
+        run(sim, 0.3);
+      };
+      // Raised, the arm leaves the FLOWER alone and the rollers stay still.
+      park();
+      expect(p.mech.pocket, robot).toBeNull();
+      sim.setInput('red1', { ...idleInput(), armDown: true });
+      run(sim, 0.7);
+      park();
+      // One POLLEN in the push back, none in the robot, the rollers still: it waits.
+      const first = p.mech.pocket;
+      expect(first?.kind, robot).toBe('pollen');
+      expect(first?.state, robot).toBe('held');
+      expect(p.mech.stored, robot).toHaveLength(0);
+      expect(p.mech.intakeDir, robot).toBe(0);
+      expect(sim.state().robots[0].pocket, robot).toBe(first!.id);
+      // The intake takes it, and the next ones follow out of the FLOWER while it runs.
+      sim.setInput('red1', { ...idleInput(), intake: true });
+      run(sim, 1.5);
+      expect(p.mech.stored, robot).toContain(first);
+      expect(p.mech.stored.length + (p.mech.pocket ? 1 : 0), robot).toBeGreaterThanOrEqual(3);
+      expect(p.mech.stored.every(b => b.kind === 'pollen'), robot).toBe(true);
+      // Arm up with a ball in the push back: it stays on the floor in front of the robot.
+      sim.setInput('red1', idleInput());
+      run(sim, 0.5);
+      const waiting = p.mech.pocket;
+      if (p.mech.stored.length < 4) expect(waiting, robot).not.toBeNull();
+      sim.setInput('red1', { ...idleInput(), armUp: true });
+      run(sim, 0.3);
+      expect(p.mech.pocket, robot).toBeNull();
+      if (waiting) {
+        expect(waiting.state, robot).toBe('field');
+        expect(sim.balls.position(waiting)[1], robot).toBeLessThan(0.06);
+      }
+    }
   });
 
-  it('rapid fire: URAN V2 empties its 4 balls in 0.4 s, Bumble V in 0.7 s (first to last ball)', () => {
-    for (const [robot, seconds] of [['uran-v2', 0.4], ['bumble-v', 0.7]] as const) {
+  it("every robot's lowered arm slides under a FLOWER's middle ring into the retrieval opening", () => {
+    for (const robot of ['uran-v2', 'bumble-v', 'silver-bullet-blaster', 'bobik', 'dhb']) {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', robot);
+      sim.start('practice');
+      const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
+      p.robot.setPose({ x: fx, z: fz + 0.6, yaw: Math.PI / 2 });
+      sim.setInput('red1', { ...idleInput(), armDown: true });
+      run(sim, 0.7);
+      sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.3 });
+      run(sim, 1.5);
+      // The front bar ends up past the bottom ring's outer edge (7.7 cm), close to the tube's center.
+      const tip = p.robot.position[2] - fz - p.robot.cfg.length / 2;
+      expect(tip, robot).toBeLessThan(0.04);
+      expect(p.mech.arm, robot).toBe(1);
+    }
+  });
+
+  it('a FLOWER empties as fast as its stack falls, for every robot, and ramming it makes the stack hop', () => {
+    for (const robot of ['uran-v2', 'bumble-v', 'silver-bullet-blaster', 'bobik', 'dhb']) {
+      for (const ram of [0.3, 1]) {
+        const { sim } = makeSim();
+        const p = sim.addRobot('red1', 'test', robot);
+        sim.start('practice');
+        p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+        const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
+        const stackTop = () => Math.max(0, ...sim.balls.all.filter(b => b.state === 'field').map(b => sim.balls.position(b)).filter(a => Math.hypot(a[0] - fx, a[2] - fz) < 0.09).map(a => a[1]));
+        const top0 = stackTop();
+        p.robot.setPose({ x: fx, z: fz + 0.8, yaw: Math.PI / 2 });
+        sim.setInput('red1', { ...idleInput(), armDown: true });
+        run(sim, 0.7);
+        let top = top0;
+        let first = -1;
+        let full = -1;
+        // Gently at about 0.78 m/s, 30% of the stick (less for DHB, 3.3 m/s at full); rammed at full speed.
+        const stick = ram < 0.5 ? Math.min(ram, 0.78 / wheelSpeed(robotById(robot).drive)) : ram;
+        for (let i = 0; i < 480 && full < 0; i++) {
+          sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -stick, intake: true });
+          sim.step();
+          top = Math.max(top, stackTop());
+          if (first < 0 && (p.mech.pocket || p.mech.stored.length)) first = i;
+          if (p.mech.stored.length === 4) full = i;
+        }
+        const label = `${robot} ${ram}`;
+        expect(full, label).toBeGreaterThan(0);
+        const seconds = (full - first) * PHYSICS_DT;
+        if (ram < 0.5) {
+          // Nosed in gently: the stack stays put and the 4 come out one after another as they land.
+          expect(top - top0, label).toBeLessThan(0.01);
+          expect(seconds, label).toBeGreaterThan(0.3);
+          expect(seconds, label).toBeLessThan(0.55);
+        } else {
+          // Rammed: the balls jump up the tube and the next one comes out only once they are down.
+          // (A tall lowered arm also wedges the falling stack up; Bobik's low one only jolts it.)
+          expect(top - top0, label).toBeGreaterThan(0.03);
+          expect(seconds, label).toBeLessThan(0.9);
+        }
+      }
+    }
+  });
+
+  it('rapid fire: URAN V2 empties its 4 balls in 0.2 s, Bumble V in 0.7 s (first to last ball)', () => {
+    for (const [robot, seconds] of [['uran-v2', 0.2], ['bumble-v', 0.7]] as const) {
       const { sim } = makeSim();
       const p = sim.addRobot('red1', 'test', robot);
       sim.start('practice');
@@ -283,6 +427,30 @@ describe('referee (manual 11.4)', () => {
       expect(shots, robot).toHaveLength(4);
       expect(shots[3] - shots[0], robot).toBeCloseTo(seconds, 1);
       expect(Math.abs(shots[3] - shots[0] - seconds), robot).toBeLessThan(PHYSICS_DT * 1.5);
+    }
+  });
+
+  it('intake pace: URAN V2 takes a ball every 0.175 s, Bumble V every 0.35 s', () => {
+    for (const [robot, interval] of [['uran-v2', 0.175], ['bumble-v', 0.35]] as const) {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', robot);
+      sim.start('practice');
+      p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+      p.robot.setPose({ x: -1.0, z: 0.2, yaw: 0 });
+      // 4 POLLEN side by side across the intake's mouth
+      const mouth = robotById(robot).intakeFront ?? p.robot.cfg.length / 2;
+      const balls = sim.balls.all.filter(b => b.kind === 'pollen' && b.state === 'field' && sim.balls.position(b)[1] < 0.06).slice(0, 4);
+      balls.forEach((b, i) => sim.balls.release(b, [-1.0 + mouth + 0.04, b.radius, 0.2 + (i - 1.5) * 0.08], [0, 0, 0]));
+      sim.setInput('red1', { ...idleInput(), intake: true });
+      const pickups: number[] = [];
+      for (let i = 0; i < 240 && p.mech.stored.length < 4; i++) {
+        const before = p.mech.stored.length;
+        sim.step();
+        if (p.mech.stored.length > before) pickups.push(sim.time);
+      }
+      expect(pickups, robot).toHaveLength(4);
+      // The timer runs in whole physics steps.
+      expect(Math.abs((pickups[3] - pickups[0]) / 3 - interval), robot).toBeLessThanOrEqual(PHYSICS_DT * 1.01);
     }
   });
 
@@ -334,7 +502,7 @@ describe('referee (manual 11.4)', () => {
       // It stays put; the arm swings down only until it touches.
       expect(moved, target).toBeLessThan(0.005);
       expect(p.mech.arm, target).toBeGreaterThan(0);
-      expect(p.mech.arm, target).toBeLessThan(0.3);
+      expect(p.mech.arm, target).toBeLessThan(0.7);
       expect(p.robot.armCollider!.isEnabled(), target).toBe(false);
       // Backing away a little lets it all the way down, and the robot drives off freely.
       sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: 0.3 });
@@ -368,6 +536,14 @@ describe('referee (manual 11.4)', () => {
     sim.setInput('red1', idleInput());
     run(sim, 1.5);
     expect(p.mech.arm).toBe(1);
+    // Nosed in, the front bar goes into the retrieval opening.
+    sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.25 });
+    run(sim, 0.6);
+    sim.setInput('red1', idleInput());
+    run(sim, 0.3);
+    expect(p.mech.pocket?.kind).toBe('pollen');
+    sim.setInput('red1', { ...idleInput(), intake: true });
+    run(sim, 1.5);
     expect(p.mech.stored.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -388,7 +564,7 @@ describe('referee (manual 11.4)', () => {
     p.robot.setPose({ x: fx, z: fz + 0.6, yaw: Math.PI / 2 });
     sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.3 });
     run(sim, 1.5);
-    sim.setInput('red1', idleInput());
+    sim.setInput('red1', { ...idleInput(), intake: true });
     run(sim, 1.5);
     expect(p.mech.stored.length).toBeGreaterThanOrEqual(2);
     expect(p.mech.stored.every(b => b.kind === 'pollen')).toBe(true);
@@ -513,10 +689,40 @@ describe('referee (manual 11.4)', () => {
     expect(sim.match.score.blue.foulPoints).toBe(40);
   });
 
+  it('defence: ramming a robot knocks both turrets off their aim for 2 s, a slow push does not', () => {
+    const ram = (stick: number, seconds: number) => {
+      const { sim } = makeSim();
+      const red = sim.addRobot('red1', 'red');
+      const blue = sim.addRobot('blue1', 'blue');
+      sim.start('practice');
+      // Front to front on open floor between the red HIVE and the FLOWERs, 30 cm apart.
+      const z = 1.15;
+      red.robot.setPose({ x: -1.3, z, yaw: 0 });
+      blue.robot.setPose({ x: -1.3 + (red.robot.cfg.length + blue.robot.cfg.length) / 2 + 0.3, z, yaw: Math.PI });
+      const bx = blue.robot.position[0];
+      for (let i = 0; i < Math.round(seconds / PHYSICS_DT); i++) {
+        sim.setInput('red1', { ...idleInput(), ly: -stick, fieldCentric: false });
+        sim.step();
+      }
+      return { sim, red, blue, pushed: blue.robot.position[0] - bx };
+    };
+    const hard = ram(1, 0.8);
+    expect(hard.red.mech.knocked).toBeGreaterThan(1.3);
+    expect(hard.blue.mech.knocked).toBeGreaterThan(1.3);
+    run(hard.sim, 2.1);
+    expect(hard.red.mech.knocked).toBe(0);
+    expect(hard.blue.mech.knocked).toBe(0);
+
+    const soft = ram(0.175, 2);
+    expect(soft.pushed).toBeGreaterThan(0.02);
+    expect(soft.red.mech.knocked).toBe(0);
+    expect(soft.blue.mech.knocked).toBe(0);
+  });
+
   it('house rules: with fouls off no points change hands, with cards off no cards', () => {
     const { sim } = makeSim();
     sim.addRobot('red1', 'test');
-    sim.setRules({ fouls: false, cards: false, battery: true });
+    sim.setRules({ fouls: false, cards: false, battery: true, movingShots: true });
     sim.start('match');
     const ref = sim.match.referee;
     ref.earlyFlowerNectar('red1');
@@ -589,6 +795,73 @@ describe('balls hit by a robot', () => {
       // It ends up just ahead of the robot, not at the far wall.
       expect(Math.hypot(x - rx, z - rz), robot).toBeLessThan(0.7);
     }
+  });
+});
+
+describe('NECTAR pushed by a robot', () => {
+  beforeAll(() => initPhysics());
+
+  it('rolls ahead of every robot driving into it, arm up (it rolls under Bobik\'s raised arm to the frame)', () => {
+    for (const def of ROBOTS.filter(r => r.id !== NECTAR_ROBOT)) {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', def.id);
+      sim.start('practice');
+      p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+      p.robot.setPose({ x: -1.4, z: -1.2, yaw: 0 });
+      run(sim, 0.3);
+      // A NECTAR its intake won't take (an opponent's for the robots that take NECTAR), 9 cm ahead.
+      const b = sim.balls.all.find(x => x.kind === 'nectar' && x.color === 'blue' && x.state === 'staged')!;
+      const at: [number, number, number] = [-1.4 + p.robot.cfg.length / 2 + 0.09 + b.radius, b.radius, -1.2];
+      sim.balls.release(b, at, [0, 0, 0]);
+      run(sim, 0.2);
+      // Into it at about 0.9 m/s: 40% of the stick, more for a slow robot.
+      sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -Math.max(0.4, 0.9 / wheelSpeed(def.drive)) });
+      run(sim, 1.2);
+      expect(sim.balls.position(b)[0] - at[0], def.id).toBeGreaterThan(0.5);
+    }
+  });
+});
+
+describe('shooting on the move (house rule)', () => {
+  beforeAll(() => initPhysics());
+
+  /** URAN V2 with its flywheel up to speed, strafing 0.6 s past the red HIVE at full speed. */
+  const strafe = (movingShots: boolean) => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test');
+    sim.setRules({ ...DEFAULT_RULES, movingShots });
+    sim.start('practice');
+    p.robot.setPose({ x: -1.3, z: 1.2, yaw: 0 });
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    run(sim, 1);
+    const yaw0 = p.mech.turretYaw;
+    let turned = 0;
+    let ready = false;
+    for (let i = 0; i < Math.round(0.6 / PHYSICS_DT); i++) {
+      sim.setInput('red1', { ...idleInput(), fieldCentric: false, lx: -1 });
+      sim.step();
+      if (p.robot.speed > 0.5) {
+        turned = Math.max(turned, Math.abs(p.mech.turretYaw - yaw0));
+        ready ||= p.mech.status === 'ready';
+      }
+    }
+    return { sim, p, turned, ready };
+  };
+
+  it('on (the default): the turret tracks the HIVE and is ready to shoot while the robot drives', () => {
+    expect(DEFAULT_RULES.movingShots).toBe(true);
+    const { turned, ready } = strafe(true);
+    expect(turned).toBeGreaterThan(0.1);
+    expect(ready).toBe(true);
+  });
+
+  it('off: the turret holds still while the robot drives, and aims once it has stopped', () => {
+    const { sim, p, turned, ready } = strafe(false);
+    expect(turned).toBe(0);
+    expect(ready).toBe(false);
+    sim.setInput('red1', idleInput());
+    run(sim, 1.2);
+    expect(p.mech.status).toBe('ready');
   });
 });
 
@@ -682,10 +955,478 @@ describe('Silver Bullet Blaster', () => {
     p.robot.setPose({ x: fx, z: fz + 0.6, yaw: Math.PI / 2 });
     sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.3 });
     run(sim, 1.5);
-    sim.setInput('red1', idleInput());
+    sim.setInput('red1', { ...idleInput(), intake: true });
     run(sim, 1.5);
     expect(p.mech.stored.length).toBeGreaterThanOrEqual(2);
     expect(p.mech.stored.every(b => b.kind === 'pollen')).toBe(true);
+  });
+});
+
+describe('Sirius Shadow', () => {
+  beforeAll(() => initPhysics());
+  const SS = 'sirius-shadow';
+
+  it('takes POLLEN and NECTAR across its whole front, up to the corner gecko wheels, but not from beside it', () => {
+    for (const [right, taken] of [[0, true], [0.13, true], [-0.13, true], [0.165, false]] as const) {
+      for (const kind of ['pollen', 'nectar'] as const) {
+        const { sim } = makeSim();
+        const p = sim.addRobot('red1', 'test', SS);
+        sim.start('practice');
+        p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+        p.robot.setPose({ x: -1.0, z: 0.2, yaw: 0 });
+        const b = sim.balls.all.find(x => x.kind === kind && x.color !== 'blue' && x.state === 'field')!;
+        sim.balls.release(b, [-1.0 + p.robot.cfg.length / 2 + 0.04, b.radius, 0.2 + right], [0, 0, 0]);
+        sim.setInput('red1', { ...idleInput(), intake: true });
+        run(sim, 0.3);
+        expect(p.mech.stored.includes(b), `${kind} ${right}`).toBe(taken);
+      }
+    }
+  });
+
+  it('drives flat out at 2.4–2.5 m/s, though its wheels would make 2.82 m/s in theory', () => {
+    expect(wheelSpeed(SIRIUS_SHADOW.drive)).toBeCloseTo(2.82, 2);
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', SS);
+    sim.start('practice');
+    p.robot.setPose({ x: -1.5, z: -1.25, yaw: 0 });
+    sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -1 });
+    run(sim, 0.9);
+    expect(p.robot.speed).toBeGreaterThan(2.4);
+    expect(p.robot.speed).toBeLessThan(2.5);
+  });
+
+  it('turns each turret half a turn either way, all 360°', () => {
+    expect(SIRIUS_SHADOW.shooter.turretLimit).toBeCloseTo(Math.PI);
+    expect(SIRIUS_SHADOW.extraTurrets?.[0].shooter.turretLimit).toBeCloseTo(Math.PI);
+  });
+
+  it('shoots POLLEN from its back turret and NECTAR from its front one, 4 balls in 0.4 s', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', SS);
+    sim.start('practice');
+    p.robot.setPose({ x: -0.6, z: 1.2, yaw: 0 });
+    const nectar = sim.balls.all.filter(b => b.kind === 'nectar' && b.color === 'red').slice(0, 2);
+    p.mech.stored.splice(2, 2).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    for (const b of nectar) {
+      sim.balls.hold(b);
+      p.mech.stored.push(b);
+    }
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    run(sim, 1);
+    sim.setInput('red1', { ...idleInput(), transfer: true });
+    const forward = new Map<number, number>();
+    for (let i = 0; i < 60 && p.mech.stored.length; i++) {
+      const before = new Set(p.mech.stored);
+      sim.step();
+      for (const b of before) if (!p.mech.stored.includes(b)) forward.set(b.id, sim.balls.position(b)[0] - p.robot.position[0]);
+    }
+    expect(p.mech.stored).toHaveLength(0);
+    const pollen = [...forward.keys()].filter(id => !nectar.some(b => b.id === id));
+    // The turrets stand 19 cm apart along the center line.
+    for (const b of nectar) for (const id of pollen) expect(forward.get(b.id)! - forward.get(id)!).toBeGreaterThan(0.1);
+
+    const full = makeSim().sim;
+    const q = full.addRobot('red1', 'test', SS);
+    full.start('practice');
+    full.setInput('red1', { ...idleInput(), shooterOn: true });
+    run(full, 1);
+    full.setInput('red1', { ...idleInput(), transfer: true });
+    const shots: number[] = [];
+    for (let i = 0; i < 240 && q.mech.stored.length; i++) {
+      const before = q.mech.stored.length;
+      full.step();
+      if (q.mech.stored.length < before) shots.push(full.time);
+    }
+    expect(shots).toHaveLength(4);
+    expect(Math.abs(shots[3] - shots[0] - 0.4)).toBeLessThan(PHYSICS_DT * 1.5);
+  });
+});
+
+describe("WXYZ's Ri3D and RoboRangers' Bobik", () => {
+  beforeAll(() => initPhysics());
+  const BB = 'bobik';
+
+  it("are one CAD built by two teams: WXYZ's figures for both, a model each, one card", () => {
+    expect(BOBIK.basedOn).toBe(WXYZ_RI3D.id);
+    for (const key of ['drive', 'shooter', 'intakes', 'arm', 'storage', 'intakeFront', 'intakeHalfWidth', 'intakeRpm'] as const) {
+      expect(BOBIK[key], key).toEqual(WXYZ_RI3D[key]);
+    }
+    expect(BOBIK.config.mass).toBe(WXYZ_RI3D.config.mass);
+    expect(BOBIK.model).not.toBe(WXYZ_RI3D.model);
+    // WXYZ's slides stand 8 cm over Bobik's closed back.
+    expect(WXYZ_RI3D.config.height - BOBIK.config.height).toBeGreaterThan(0.07);
+  });
+
+  /** Whether the robot, frame 1 cm short of a ball on the floor in front of it, takes it in 0.3 s. */
+  const takes = (kind: 'pollen' | 'nectar') => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', BB);
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    p.robot.setPose({ x: -1.0, z: 0.2, yaw: 0 });
+    const b = sim.balls.all.find(x => x.kind === kind && x.color !== 'blue' && x.state !== 'held')!;
+    const front = BOBIK.config.frame!.offset + BOBIK.config.frame!.length / 2;
+    sim.balls.release(b, [-1.0 + front + b.radius + 0.01, b.radius, 0.2], [0, 0, 0]);
+    sim.setInput('red1', { ...idleInput(), intake: true });
+    run(sim, 0.3);
+    return p.mech.stored.includes(b);
+  };
+
+  it('takes POLLEN, rolling under its raised arm, and leaves NECTAR, too big for its channel', () => {
+    expect(takes('pollen')).toBe(true);
+    expect(takes('nectar')).toBe(false);
+  });
+
+  it('drives on 104 mm mecanum wheels at 435 RPM: 2.37 m/s, carrying 9 kg', () => {
+    expect(wheelSpeed(BOBIK.drive)).toBeCloseTo(2.369, 3);
+    expect(BOBIK.config.mass).toBe(9);
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', BB);
+    sim.start('practice');
+    p.robot.setPose({ x: -1.5, z: -1.25, yaw: 0 });
+    sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -1 });
+    run(sim, 0.9);
+    expect(p.robot.speed).toBeGreaterThan(2.18);
+    expect(p.robot.speed).toBeLessThan(2.4);
+  });
+
+  it('turns its turret 135° each way, 270° in all, before it unwinds', () => {
+    expect(BOBIK.shooter.turretLimit).toBeCloseTo((135 * Math.PI) / 180);
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', BB);
+    sim.start('practice');
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    let max = 0;
+    for (let i = 0; i < Math.round(10 / PHYSICS_DT); i++) {
+      sim.setInput('red1', { ...idleInput(), rx: 0.5 });
+      sim.step();
+      max = Math.max(max, Math.abs(p.mech.turretYaw));
+    }
+    expect(max).toBeLessThanOrEqual(BOBIK.shooter.turretLimit + 1e-6);
+    expect(max).toBeGreaterThan(BOBIK.shooter.turretLimit - 0.05);
+  });
+
+  it('rapid fire: 4 POLLEN in 0.3 s', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', BB);
+    sim.start('practice');
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    run(sim, 1);
+    sim.setInput('red1', { ...idleInput(), transfer: true });
+    const shots: number[] = [];
+    for (let i = 0; i < 120 && p.mech.stored.length; i++) {
+      const before = p.mech.stored.length;
+      sim.step();
+      if (p.mech.stored.length < before) shots.push(sim.time);
+    }
+    expect(shots).toHaveLength(4);
+    expect(Math.abs(shots[3] - shots[0] - 0.3)).toBeLessThan(PHYSICS_DT * 1.5);
+  });
+
+  it('its intake on a 2000 RPM motor takes a ball every 0.2 s, faster than the usual 0.35 s', () => {
+    expect(intakeInterval(BOBIK)).toBeCloseTo(0.2, 2);
+    expect(intakeInterval(robotById('bumble-v'))).toBe(0.35);
+    expect(intakeInterval(URAN_V2)).toBe(0.175);
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', BB);
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    p.robot.setPose({ x: -1.0, z: 0.2, yaw: 0 });
+    // Two POLLEN side by side at the intake's mouth.
+    const front = BOBIK.config.frame!.offset + BOBIK.config.frame!.length / 2;
+    const pair = sim.balls.all.filter(x => x.kind === 'pollen' && x.state === 'field').slice(0, 2);
+    pair.forEach((b, i) => sim.balls.release(b, [-1.0 + front + b.radius + 0.01, b.radius, 0.2 + (i ? 0.05 : -0.05)], [0, 0, 0]));
+    sim.setInput('red1', { ...idleInput(), intake: true });
+    const taken: number[] = [];
+    for (let i = 0; i < 60 && taken.length < 2; i++) {
+      const before = p.mech.stored.length;
+      sim.step();
+      if (p.mech.stored.length > before) taken.push(sim.time);
+    }
+    expect(taken).toHaveLength(2);
+    expect(Math.abs(taken[1] - taken[0] - intakeInterval(BOBIK))).toBeLessThan(PHYSICS_DT * 1.5);
+  });
+
+  it('its raised arm stands out in front: the wall stops it there, and it is solid only while up', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', BB);
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    // Nose first into the audience wall.
+    p.robot.setPose({ x: 0.6, z: sim.zones.wall - 0.6, yaw: -Math.PI / 2 });
+    sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.4 });
+    run(sim, 2);
+    expect(sim.zones.wall - p.robot.position[2]).toBeGreaterThan(BOBIK.arm!.raisedBox!.x[1] - 0.01);
+    expect(p.robot.raisedArmCollider!.isEnabled()).toBe(true);
+    expect(p.robot.armCollider!.isEnabled()).toBe(false);
+    // Backed off and lowered, the raised box is gone and the lowered one solid.
+    sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: 0.4 });
+    run(sim, 0.5);
+    sim.setInput('red1', { ...idleInput(), armDown: true });
+    run(sim, 0.6);
+    expect(p.mech.arm).toBe(1);
+    expect(p.robot.raisedArmCollider!.isEnabled()).toBe(false);
+    expect(p.robot.armCollider!.isEnabled()).toBe(true);
+  });
+
+  it("lifting its arm out of a FLOWER doesn't throw the robot: under the middle ring it stops short until the robot backs out", () => {
+    for (const robot of [BB, WXYZ_RI3D.id]) {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', robot);
+      sim.start('practice');
+      p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+      // The FLOWER near the red wall, emptied: nosed in with the arm down, the frame comes up against it.
+      const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
+      for (const b of sim.balls.all) if (b.state === 'field' && Math.hypot(sim.balls.position(b)[0] - fx, sim.balls.position(b)[2] - fz) < 0.09) sim.balls.hold(b);
+      p.robot.setPose({ x: fx, z: fz + 0.6, yaw: Math.PI / 2 });
+      sim.setInput('red1', { ...idleInput(), armDown: true });
+      run(sim, 0.7);
+      sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.3 });
+      run(sim, 1.5);
+      sim.setInput('red1', idleInput());
+      run(sim, 0.3);
+      expect(p.mech.arm, robot).toBe(1);
+      // Raised there, its box would be inside the middle ring: the robot used to fly off at up to 5 m/s.
+      const [x0, y0, z0] = p.robot.position;
+      sim.setInput('red1', { ...idleInput(), armUp: true });
+      let fastest = 0;
+      let highest = y0;
+      for (let i = 0; i < Math.round(1.5 / PHYSICS_DT); i++) {
+        sim.step();
+        fastest = Math.max(fastest, p.robot.speed);
+        highest = Math.max(highest, p.robot.position[1]);
+      }
+      expect(fastest, robot).toBeLessThan(0.05);
+      expect(highest - y0, robot).toBeLessThan(0.002);
+      expect(Math.hypot(p.robot.position[0] - x0, p.robot.position[2] - z0), robot).toBeLessThan(0.005);
+      expect(p.mech.arm, robot).toBeGreaterThan(0);
+      expect(p.robot.raisedArmCollider!.isEnabled(), robot).toBe(false);
+      // Backed out, it comes all the way up, solid again.
+      sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: 0.3 });
+      run(sim, 0.4);
+      sim.setInput('red1', idleInput());
+      run(sim, 0.2);
+      expect(p.mech.arm, robot).toBe(0);
+      expect(p.robot.raisedArmCollider!.isEnabled(), robot).toBe(true);
+    }
+  });
+
+  it('its raised arm resting against a FLOWER comes back up after the arm was lowered there', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', BB);
+    sim.start('practice');
+    const [fx, fz] = sim.zones.flowers.find(([, z]) => z < -1)!;
+    // Nose first into the FLOWER: the raised arm's box stops the robot against the middle ring.
+    p.robot.setPose({ x: fx, z: fz + 0.6, yaw: Math.PI / 2 });
+    sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -0.4 });
+    run(sim, 2);
+    sim.setInput('red1', { ...idleInput(), armDown: true });
+    run(sim, 0.6);
+    expect(p.mech.arm).toBe(1);
+    // Back up the arm goes, right where it rested: only touching, it fits there.
+    sim.setInput('red1', { ...idleInput(), armUp: true });
+    run(sim, 0.6);
+    expect(p.mech.arm).toBe(0);
+    expect(p.robot.raisedArmCollider!.isEnabled()).toBe(true);
+    expect(p.robot.speed).toBeLessThan(0.01);
+  });
+});
+
+describe('Mechatronics', () => {
+  beforeAll(() => initPhysics());
+  const MT = 'mechatronics';
+
+  it("drives at ~500 RPM on 104 mm mecanum wheels (2.72 m/s) and turns its turret 135° each way (the team's figures)", () => {
+    expect(wheelSpeed(MECHATRONICS.drive)).toBeCloseTo(2.723, 3);
+    expect(MECHATRONICS.shooter.turretLimit).toBeCloseTo((135 * Math.PI) / 180);
+    expect(MECHATRONICS.shooter.flywheelMass).toBe(0.8);
+  });
+
+  it('takes POLLEN and leaves NECTAR, too big for its hood', () => {
+    const takes = (kind: 'pollen' | 'nectar') => {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', MT);
+      sim.start('practice');
+      p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+      p.robot.setPose({ x: -1.0, z: 0.2, yaw: 0 });
+      const b = sim.balls.all.find(x => x.kind === kind && x.color !== 'blue' && x.state !== 'held')!;
+      sim.balls.release(b, [-1.0 + MECHATRONICS.config.length / 2 + b.radius + 0.01, b.radius, 0.2], [0, 0, 0]);
+      sim.setInput('red1', { ...idleInput(), intake: true });
+      run(sim, 0.3);
+      return p.mech.stored.includes(b);
+    };
+    expect(takes('pollen')).toBe(true);
+    expect(takes('nectar')).toBe(false);
+  });
+
+  it('its 800 g flywheel spins up 2.7 times slower than the usual one, but each shot takes 2.7 times less of its speed', () => {
+    const flywheel = (id: string) => {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', id);
+      sim.start('practice');
+      p.robot.setPose({ x: -1.2, z: 1.2, yaw: 0 });
+      sim.setInput('red1', { ...idleInput(), shooterOn: true });
+      run(sim, 0.2);
+      const early = p.mech.turret.flywheel;
+      run(sim, 2.8);
+      const ready = p.mech.turret.flywheel;
+      sim.setInput('red1', { ...idleInput(), transfer: true });
+      for (let i = 0; i < 60; i++) {
+        const before = p.mech.stored.length;
+        sim.step();
+        if (p.mech.stored.length < before) break;
+      }
+      return { early, ready, drop: 1 - p.mech.turret.flywheel / ready };
+    };
+    const heavy = flywheel(MT);
+    const usual = flywheel('wxyz-ri3d');
+    const k = 0.8 / SHOOTER.flywheelMass;
+    // Both still on their way up after 0.2 s, at the speed a shot from there needs after 3 s.
+    expect(usual.early).toBeLessThan(usual.ready);
+    expect(usual.early / heavy.early).toBeCloseTo(k, 1);
+    expect(Math.abs(heavy.ready - usual.ready)).toBeLessThan(0.05);
+    expect(usual.drop).toBeCloseTo(1 - SHOOTER.shotDrop, 2);
+    expect(usual.drop / heavy.drop).toBeCloseTo(k, 1);
+  });
+
+  it('rapid fire: 4 POLLEN in 0.5 s', () => {
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', MT);
+    sim.start('practice');
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    run(sim, 2);
+    sim.setInput('red1', { ...idleInput(), transfer: true });
+    const shots: number[] = [];
+    for (let i = 0; i < 120 && p.mech.stored.length; i++) {
+      const before = p.mech.stored.length;
+      sim.step();
+      if (p.mech.stored.length < before) shots.push(sim.time);
+    }
+    expect(shots).toHaveLength(4);
+    expect(Math.abs(shots[3] - shots[0] - 0.5)).toBeLessThan(PHYSICS_DT * 1.5);
+  });
+});
+
+describe('DHB', () => {
+  beforeAll(() => initPhysics());
+
+  it("drives at 611 RPM on 104 mm mecanum wheels, 3.33 m/s in theory and over 3 m/s flat out: the fastest robot (the team's figures)", () => {
+    expect(wheelSpeed(DHB.drive)).toBeCloseTo(3.327, 3);
+    expect(DHB.config.mass).toBe(11.5);
+    for (const other of ROBOTS.filter(r => r.id !== DHB.id)) expect(wheelSpeed(other.drive), other.id).toBeLessThan(wheelSpeed(DHB.drive));
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', DHB.id);
+    sim.start('practice');
+    p.robot.setPose({ x: -1.5, z: -1.25, yaw: 0 });
+    sim.setInput('red1', { ...idleInput(), fieldCentric: false, ly: -1 });
+    run(sim, 0.9);
+    expect(p.robot.speed).toBeGreaterThan(3);
+    expect(p.robot.speed).toBeLessThan(wheelSpeed(DHB.drive));
+  });
+
+  it("turns its turret 135° each way, 270° in all, and fires 4 POLLEN in 0.5 s (the team's figures)", () => {
+    expect(DHB.shooter.turretLimit).toBeCloseTo((135 * Math.PI) / 180);
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', DHB.id);
+    sim.start('practice');
+    sim.setInput('red1', { ...idleInput(), shooterOn: true });
+    run(sim, 2);
+    sim.setInput('red1', { ...idleInput(), transfer: true });
+    const shots: number[] = [];
+    for (let i = 0; i < 120 && p.mech.stored.length; i++) {
+      const before = p.mech.stored.length;
+      sim.step();
+      if (p.mech.stored.length < before) shots.push(sim.time);
+    }
+    expect(shots).toHaveLength(4);
+    expect(Math.abs(shots[3] - shots[0] - 0.5)).toBeLessThan(PHYSICS_DT * 1.5);
+  });
+
+  it('takes POLLEN off the floor with its 1800 RPM intake, a ball every 0.22 s, and leaves NECTAR, too big for its channel', () => {
+    expect(DHB.intakeRpm).toBe(1800);
+    expect(intakeInterval(DHB)).toBeCloseTo(0.2236, 3);
+    const takes = (kind: 'pollen' | 'nectar') => {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', DHB.id);
+      sim.start('practice');
+      p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+      p.robot.setPose({ x: -1.0, z: 0.2, yaw: 0 });
+      const b = sim.balls.all.find(x => x.kind === kind && x.color !== 'blue' && x.state !== 'held')!;
+      sim.balls.release(b, [-1.0 + DHB.intakeFront! + b.radius + 0.01, b.radius, 0.2], [0, 0, 0]);
+      sim.setInput('red1', { ...idleInput(), intake: true });
+      run(sim, 0.3);
+      return p.mech.stored.includes(b);
+    };
+    expect(takes('pollen')).toBe(true);
+    expect(takes('nectar')).toBe(false);
+    // 4 POLLEN side by side across the intake's mouth come in one every 0.22 s.
+    const { sim } = makeSim();
+    const p = sim.addRobot('red1', 'test', DHB.id);
+    sim.start('practice');
+    p.mech.stored.splice(0).forEach(b => sim.balls.release(b, [0, 0.05, -1.5], [0, 0, 0]));
+    p.robot.setPose({ x: -1.0, z: 0.2, yaw: 0 });
+    const balls = sim.balls.all.filter(b => b.kind === 'pollen' && b.state === 'field' && sim.balls.position(b)[1] < 0.06).slice(0, 4);
+    balls.forEach((b, i) => sim.balls.release(b, [-1.0 + DHB.intakeFront! + 0.04, b.radius, 0.2 + (i - 1.5) * 0.08], [0, 0, 0]));
+    sim.setInput('red1', { ...idleInput(), intake: true });
+    const pickups: number[] = [];
+    for (let i = 0; i < 240 && p.mech.stored.length < 4; i++) {
+      const before = p.mech.stored.length;
+      sim.step();
+      if (p.mech.stored.length > before) pickups.push(sim.time);
+    }
+    expect(pickups).toHaveLength(4);
+    expect(Math.abs((pickups[3] - pickups[0]) / 3 - intakeInterval(DHB))).toBeLessThanOrEqual(PHYSICS_DT * 1.01);
+  });
+});
+
+describe('shot spin', () => {
+  beforeAll(() => initPhysics());
+
+  it("each team's shooter: frontspin for URAN V2 and Sirius Shadow, a little for Silver Bullet Blaster, none for Bumble V, the Ri3D and DHB, backspin for Mechatronics", () => {
+    const spins = (id: string) => turretsOf(robotById(id)).map(t => t.shooter.spin);
+    expect(spins('uran-v2')).toEqual([1]);
+    expect(spins('sirius-shadow')).toEqual([1, 1]);
+    for (const s of spins('silver-bullet-blaster')) {
+      expect(s).toBeGreaterThan(0);
+      expect(s).toBeLessThan(0.5);
+    }
+    expect(spins('bumble-v')).toEqual([0]);
+    expect(spins('bobik')).toEqual([0]);
+    expect(spins('wxyz-ri3d')).toEqual([0]);
+    expect(spins('dhb')).toEqual([0]);
+    expect(spins('mechatronics')).toEqual([-1]);
+  });
+
+  it('a frontspin ball turns its top forward and curves down; a ball without spin flies the plain arc', () => {
+    const { sim } = makeSim();
+    sim.start('practice');
+    const [a, b] = sim.balls.all.filter(x => x.kind === 'pollen' && x.state === 'field').slice(0, 2);
+    // Thrown the same way high over the field (+X, 4.9 m/s), one turning as if it rolled through the air.
+    const v: [number, number, number] = [3, 3.9, 0];
+    sim.balls.release(a, [-1, 1.5, -0.4], v, [0, 0, -Math.hypot(...v) / a.radius]);
+    sim.balls.release(b, [-1, 1.5, 0.4], v);
+    run(sim, 0.6);
+    expect(a.body.angvel().z).toBeLessThan(0);
+    expect(sim.balls.position(b)[1] - sim.balls.position(a)[1]).toBeGreaterThan(0.03);
+    expect(Math.abs(sim.balls.position(b)[2] - 0.4)).toBeLessThan(0.001);
+  });
+
+  it("every robot's shots still drop into the cell, spinning or not: its 4 pre-loads tip the red HIVE", () => {
+    for (const def of ROBOTS.filter(r => r.id !== NECTAR_ROBOT)) {
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', def.id);
+      sim.start('practice');
+      // Facing the cell, so a static turret (Bobik's) points at it too.
+      const target = sim.hives.red.target();
+      p.robot.setPose({ x: -0.45, z: 1.35, yaw: Math.atan2(-(target[2] - 1.35), target[0] + 0.45) });
+      sim.setInput('red1', { ...idleInput(), shooterOn: true });
+      run(sim, 1);
+      sim.setInput('red1', { ...idleInput(), transfer: true });
+      run(sim, 2.2);
+      sim.setInput('red1', idleInput());
+      run(sim, 6.5);
+      expect(sim.hives.red.tips, def.id).toBe(1);
+    }
   });
 });
 
@@ -799,19 +1540,22 @@ describe('turret wiring and battery', () => {
     expect(swings).toBeGreaterThan(0);
   });
 
-  it("Bumble V's turret turns a full turn each way, past the back, before it unwinds", () => {
-    const { sim } = makeSim();
-    const p = sim.addRobot('red1', 'test', 'bumble-v');
-    sim.start('practice');
-    sim.setInput('red1', { ...idleInput(), shooterOn: true });
-    let max = 0;
-    for (let i = 0; i < Math.round(12 / PHYSICS_DT); i++) {
-      sim.setInput('red1', { ...idleInput(), rx: 0.5 });
-      sim.step();
-      max = Math.max(max, Math.abs(p.mech.turretYaw));
+  it("SWB's turrets (Bumble V's, Silver Bullet Blaster's) turn half a turn each way, round to the back, before they unwind", () => {
+    for (const robot of ['bumble-v', 'silver-bullet-blaster']) {
+      expect(turretsOf(robotById(robot)).map(t => t.shooter.turretLimit), robot).toEqual(turretsOf(robotById(robot)).map(() => Math.PI));
+      const { sim } = makeSim();
+      const p = sim.addRobot('red1', 'test', robot);
+      sim.start('practice');
+      sim.setInput('red1', { ...idleInput(), shooterOn: true });
+      let max = 0;
+      for (let i = 0; i < Math.round(12 / PHYSICS_DT); i++) {
+        sim.setInput('red1', { ...idleInput(), rx: 0.5 });
+        sim.step();
+        max = Math.max(max, Math.abs(p.mech.turretYaw));
+      }
+      expect(max, robot).toBeGreaterThan(Math.PI - 0.05);
+      expect(max, robot).toBeLessThanOrEqual(Math.PI + 1e-6);
     }
-    expect(max).toBeGreaterThan(Math.PI + 0.5);
-    expect(max).toBeLessThanOrEqual(2 * Math.PI + 1e-6);
   });
 
   it('starts at 14 V; a flywheel left running drains it and the robot gets slower', () => {
@@ -847,7 +1591,7 @@ describe('battery off (house rule)', () => {
   it('stays at 14 V with the flywheel running, so the robot keeps full speed', () => {
     const { sim } = makeSim();
     const p = sim.addRobot('red1', 'test');
-    sim.setRules({ fouls: true, cards: true, battery: false });
+    sim.setRules({ fouls: true, cards: true, battery: false, movingShots: true });
     sim.start('practice');
     sim.setInput('red1', { ...idleInput(), shooterOn: true });
     run(sim, 60);

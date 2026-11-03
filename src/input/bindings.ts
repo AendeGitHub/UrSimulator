@@ -4,14 +4,14 @@
 import { t } from '../ui/i18n';
 import type { ControlId } from './gamepad';
 
-export type ActionId = 'intake' | 'eject' | 'transfer' | 'shooterOn' | 'shooterOff' | 'armUp' | 'armDown' | 'slow' | 'fieldCentric' | 'imuReset' | 'camera' | 'pause';
+export type ActionId = 'intake' | 'eject' | 'transfer' | 'shooterOn' | 'shooterOff' | 'armUp' | 'armDown' | 'lift' | 'boxRollers' | 'fieldCentric' | 'imuReset' | 'camera' | 'pause';
 /** Keyboard stand-ins for the sticks */
 export type MoveId = 'forward' | 'backward' | 'left' | 'right' | 'turnLeft' | 'turnRight';
 
-export const ACTIONS: ActionId[] = ['intake', 'eject', 'transfer', 'shooterOn', 'shooterOff', 'armUp', 'armDown', 'slow', 'fieldCentric', 'imuReset', 'camera', 'pause'];
+export const ACTIONS: ActionId[] = ['intake', 'eject', 'transfer', 'shooterOn', 'shooterOff', 'armUp', 'armDown', 'lift', 'boxRollers', 'fieldCentric', 'imuReset', 'camera', 'pause'];
 export const MOVES: MoveId[] = ['forward', 'backward', 'left', 'right', 'turnLeft', 'turnRight'];
 /** Mechanisms listen to gamepad1 and gamepad2, as in FTC; the rest is the driver's (gamepad1). */
-export const MECHANISM_ACTIONS = new Set<ActionId>(['intake', 'eject', 'transfer', 'shooterOn', 'shooterOff', 'armUp', 'armDown']);
+export const MECHANISM_ACTIONS = new Set<ActionId>(['intake', 'eject', 'transfer', 'shooterOn', 'shooterOff', 'armUp', 'armDown', 'lift', 'boxRollers']);
 
 /** What an action is called in Settings → Controls, in the interface language (ui/i18n.ts). */
 export const actionName = (id: ActionId | MoveId): string => t(`action.${id}`);
@@ -33,7 +33,9 @@ export const DEFAULT_BINDINGS: Bindings = {
     // Triangle / cross on PlayStation pads
     armUp: 'y',
     armDown: 'a',
-    slow: 'left_stick_button',
+    // Square / circle: a lift's flower scoring box
+    lift: 'x',
+    boxRollers: 'b',
     fieldCentric: 'back',
     imuReset: 'start',
     camera: 'right_stick_button',
@@ -53,7 +55,8 @@ export const DEFAULT_BINDINGS: Bindings = {
     shooterOff: 'KeyV',
     armUp: 'KeyY',
     armDown: 'KeyX',
-    slow: 'ShiftLeft',
+    lift: 'KeyT',
+    boxRollers: 'KeyG',
     fieldCentric: 'Tab',
     imuReset: 'Enter',
     camera: 'KeyC',
@@ -61,12 +64,14 @@ export const DEFAULT_BINDINGS: Bindings = {
   },
 };
 
-/** Saved bindings with anything missing (e.g. an action added later) taken from the defaults. */
+/**
+ * Saved bindings with anything missing (e.g. an action added later) taken from the defaults; an
+ * action since removed (slow mode) is left out, so it can't hold on to a button.
+ */
 export function withDefaults(saved: Partial<Bindings> | undefined): Bindings {
-  return {
-    pad: { ...DEFAULT_BINDINGS.pad, ...saved?.pad },
-    keys: { ...DEFAULT_BINDINGS.keys, ...saved?.keys },
-  };
+  const known = <T extends Record<string, string>>(defaults: T, own: Partial<T> | undefined): T =>
+    Object.fromEntries(Object.entries(defaults).map(([id, value]) => [id, own?.[id] ?? value])) as T;
+  return { pad: known(DEFAULT_BINDINGS.pad, saved?.pad), keys: known(DEFAULT_BINDINGS.keys, saved?.keys) };
 }
 
 /**

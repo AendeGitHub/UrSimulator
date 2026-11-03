@@ -1,4 +1,5 @@
-// Mecanum drive math, written the same way as typical FTC TeleOp code (see gm0.org).
+// Mecanum drive math, written the same way as typical FTC TeleOp code (see gm0.org), and the
+// swerve and tank drives of robots players make in the Workshop.
 //
 // World frame: X/Z plane, Y up. Yaw 0 faces +X; positive yaw turns counter-clockwise seen from above.
 // Robot frame: forward = +X, right = +Z.
@@ -12,6 +13,11 @@ export interface DriveConfig {
   trackWidth: number;
   /** Distance between front and back wheels, m */
   wheelBase: number;
+  /**
+   * Not mecanum wheels: swerve modules that steer each wheel (full speed whichever way), or a tank
+   * drive of plain wheels that can't strafe
+   */
+  type?: 'swerve' | 'tank';
 }
 
 export interface WheelPowers {
@@ -49,6 +55,22 @@ export function chassisSpeeds(p: WheelPowers, cfg: DriveConfig): ChassisSpeeds {
     forward: ((p.fl + p.fr + p.bl + p.br) / 4) * v,
     right: ((p.fl - p.fr - p.bl + p.br) / 4) * v * cfg.strafeEfficiency,
     turnCw: ((p.fl - p.fr + p.bl - p.br) / 4) * (v / k),
+  };
+}
+
+/**
+ * Swerve: every wheel steers the way the robot goes, so it drives at full speed whichever way;
+ * turning takes its share of the wheels' speed. Wheel powers as a tank's, for the battery and the
+ * model's wheels (steered).
+ */
+export function swerveDrive(forward: number, strafe: number, turn: number, cfg: DriveConfig): { powers: WheelPowers; speeds: ChassisSpeeds } {
+  const scale = 1 / Math.max(Math.hypot(forward, strafe) + Math.abs(turn), 1);
+  const move = Math.hypot(forward, strafe) * scale;
+  const t = turn * scale;
+  const v = cfg.maxWheelSpeed;
+  return {
+    powers: { fl: move + t, bl: move + t, fr: move - t, br: move - t },
+    speeds: { forward: forward * scale * v, right: strafe * scale * v, turnCw: t * (v / ((cfg.trackWidth + cfg.wheelBase) / 2)) },
   };
 }
 

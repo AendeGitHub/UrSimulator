@@ -1,8 +1,8 @@
 // High score tables on the game server (server/Records.ts): top 100 solo match scores per robot.
 
 export const DEFAULT_PORT = 8787;
-/** The public server; the desktop app (loaded from app://) keeps its high scores there. */
-export const PUBLIC_SERVER_URL = 'https://ursim.onrender.com';
+/** The public server (the VPS, deploy/); the desktop app (loaded from app://) plays online and keeps its high scores there. */
+export const PUBLIC_SERVER_URL = 'https://2-135-146-200.sslip.io';
 
 export interface RecordEntry {
   name: string;
@@ -33,7 +33,7 @@ export function recordsUrl(serverUrl: string, action = ''): string {
   return url.toString();
 }
 
-export function cleanName(name: string, fallback = 'Игрок'): string {
+export function cleanName(name: string, fallback = 'Player'): string {
   return name.replace(/\s+/g, ' ').trim().slice(0, 16) || fallback;
 }
 

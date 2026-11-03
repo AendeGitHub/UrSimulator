@@ -1,0 +1,25 @@
+{
+  "comment": "Sirius Shadow (Mooneye, Fusion 360 STEP export 67.step). Coordinates are in the CAD frame (meters, Z up, front = +X, left = +Y). Parts are matched in order: the first rule that fits a CAD part wins. Two turrets one behind the other on the center line: the back one (lazy suzan pollen) shoots POLLEN and is the main one, the front one (lazy suzan nectar) NECTAR. Each flywheel sits behind its turret's axis and throws balls out of the back of the turret in the CAD pose; the turrets stand turned 5.8° (back) and 9.0° (front) in the CAD, so the flywheels' axles (measured from the wheels' vertices: flywheel and both Rhino wheels in line) are given as axisVector, and the pivots are the flywheels' centers. The blue number plates (assembly <1>, <2>) are left out: the game puts its alliance signs there. The front intake is a shaft of Moosetake wheels with a vertical GripForce gecko wheel at each front corner (aligners) driven from it by miter gears.",
+  "up": "+z",
+  "forward": "+x",
+  "dropSmallerThan": 0.008,
+  "drop": ["assembly <1>", "assembly <2>"],
+  "parts": [
+    { "name": "flywheel", "parent": "turret", "ancestor": ["Steel Flywheel (82mm Diameter, 152g, 1651 g·cm²) 3628-0032-0082", "3612 Series Thin Rhino Wheel (14mm Bore, 96mm Diameter) 3612-0014-0096"], "within": { "x": [-0.21, -0.05] }, "pivot": [-0.1459, -0.0131, 0.1477], "axis": "y", "axisVector": [0.1015, 0.9948, 0], "reverse": true },
+    { "name": "flywheel2", "parent": "turret2", "ancestor": ["Steel Flywheel (82mm Diameter, 152g, 1651 g·cm²) 3628-0032-0082", "3612 Series Thin Rhino Wheel (14mm Bore, 96mm Diameter) 3612-0014-0096"], "within": { "x": [-0.05, 0.21] }, "pivot": [0.0359, -0.0083, 0.1541], "axis": "y", "axisVector": [0.1571, 0.9876, 0], "reverse": true },
+    { "name": "turret", "ancestor": "shooter <1>", "within": { "x": [-0.21, -0.02], "z": [0.095, 0.25] }, "pivot": [-0.0835, -0.0385, 0.086], "axis": "z" },
+    { "name": "turret2", "ancestor": "shooter <1>", "within": { "x": [-0.02, 0.21], "z": [0.095, 0.25] }, "pivot": [0.104, -0.0385, 0.086], "axis": "z" },
+    { "name": "intake_front", "ancestor": "Moosetake Wheel", "pivot": [0.1645, -0.04, 0.0135], "axis": "y" },
+    { "name": "intake_left", "ancestor": "GripForce Gecko™ Wheel (8mm REX® Bore, 48mm Diameter) 3613-4008-0048", "within": { "x": [0.14, 0.19], "y": [0.05, 0.12] }, "pivot": [0.165, 0.085, -0.045], "axis": "z" },
+    { "name": "intake_right", "ancestor": "GripForce Gecko™ Wheel (8mm REX® Bore, 48mm Diameter) 3613-4008-0048", "within": { "x": [0.14, 0.19], "y": [-0.19, -0.12] }, "pivot": [0.165, -0.161, -0.045], "axis": "z", "reverse": true },
+    { "name": "transfer_a", "ancestor": "48mm Gecko Wheel - 15A Gripforce(GB)", "within": { "x": [0.01, 0.07] }, "pivot": [0.036, -0.038, 0.032], "axis": "y" },
+    { "name": "transfer_b", "ancestor": "48mm Gecko Wheel - 15A Gripforce(GB)", "within": { "x": [-0.05, 0.01] }, "pivot": [-0.019, -0.038, 0.050], "axis": "y" },
+    { "name": "transfer_c", "ancestor": "GripForce Gecko™ Wheel (8mm REX® Bore, 48mm Diameter) 3613-4008-0048", "within": { "x": [-0.16, -0.125], "y": [-0.05, -0.03] }, "pivot": [-0.137, -0.038, 0.055], "axis": "y", "reverse": true },
+    { "name": "transfer_d", "ancestor": "GripForce Gecko™ Wheel (8mm REX® Bore, 48mm Diameter) 3613-4008-0048", "within": { "x": [-0.125, -0.108], "y": [-0.05, -0.03] }, "pivot": [-0.120, -0.038, 0.007], "axis": "y", "reverse": true },
+    { "name": "transfer_e", "ancestor": "GripForce Gecko™ Wheel (8mm REX® Bore, 48mm Diameter) 3613-4008-0048", "within": { "x": [-0.108, -0.08], "y": [-0.05, -0.03] }, "pivot": [-0.094, -0.038, -0.037], "axis": "y", "reverse": true },
+    { "name": "wheel_fl", "ancestorPrefix": "104mm Mecanum Wheel", "within": { "x": [0.03, 0.15], "y": [0.06, 0.11] }, "pivot": [0.088, 0.0875, -0.036], "axis": "y", "mecanum": true },
+    { "name": "wheel_fr", "ancestorPrefix": "104mm Mecanum Wheel", "within": { "x": [0.03, 0.15], "y": [-0.19, -0.14] }, "pivot": [0.088, -0.1645, -0.036], "axis": "y", "mecanum": true },
+    { "name": "wheel_bl", "ancestorPrefix": "104mm Mecanum Wheel", "within": { "x": [-0.19, -0.08], "y": [0.06, 0.11] }, "pivot": [-0.136, 0.0875, -0.036], "axis": "y", "mecanum": true },
+    { "name": "wheel_br", "ancestorPrefix": "104mm Mecanum Wheel", "within": { "x": [-0.19, -0.08], "y": [-0.19, -0.14] }, "pivot": [-0.136, -0.1645, -0.036], "axis": "y", "mecanum": true }
+  ]
+}

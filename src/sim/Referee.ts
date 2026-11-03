@@ -36,15 +36,20 @@ export interface RuleOptions {
   battery: boolean;
   /** VERBAL WARNINGS, YELLOW and RED CARDS */
   cards: boolean;
+  /**
+   * Shooting on the move: turrets aim while their robot drives and shots allow for its motion. Off,
+   * like a team without that code, a turret aims only with its robot standing still.
+   */
+  movingShots: boolean;
 }
 
-export const DEFAULT_RULES: RuleOptions = { fouls: true, cards: true, battery: true };
+export const DEFAULT_RULES: RuleOptions = { fouls: true, cards: true, battery: true, movingShots: true };
 
 /** Rule options from an untrusted source (a network message), with defaults for anything odd. */
 export function cleanRules(value: unknown): RuleOptions {
   const v = (value ?? {}) as Partial<RuleOptions>;
   const flag = (key: keyof RuleOptions) => (typeof v[key] === 'boolean' ? v[key] : DEFAULT_RULES[key]);
-  return { fouls: flag('fouls'), cards: flag('cards'), battery: flag('battery') };
+  return { fouls: flag('fouls'), cards: flag('cards'), battery: flag('battery'), movingShots: flag('movingShots') };
 }
 
 /** Two moderate hits on the HIVE frame within this time count as ramming it on purpose, s */

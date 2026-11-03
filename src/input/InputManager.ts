@@ -1,7 +1,7 @@
 // Tracks connected controllers and exposes them as FTC `gamepad1` / `gamepad2`.
 
 import {
-  STANDARD_MAPPING, detectModel, emptyGamepad, mergeGamepads, readGamepad,
+  STANDARD_MAPPING, detectModel, emptyGamepad, guessMapping, looksLikeDs4, mergeGamepads, readGamepad,
   type ButtonId, type ControlId, type FtcGamepad, type Mapping, type PadModel,
 } from './gamepad';
 import { DEFAULT_BINDINGS, MECHANISM_ACTIONS, type ActionId, type Bindings } from './bindings';
@@ -11,27 +11,32 @@ export interface PadInfo {
   /** Index in navigator.getGamepads() */
   index: number;
   id: string;
+  /** Whose button names it shows: the player's pick, or the pad's own family */
   model: PadModel;
-  /** null when the browser layout is non-standard and the player has not set up buttons yet */
-  mapping: Mapping | null;
+  /** Button names the player picked for it in Settings → Gamepads; null: the pad's own */
+  labels: PadModel | null;
+  mapping: Mapping;
+  /** The browser has no standard layout for it and the player hasn't set up its buttons: a guess */
+  guessed: boolean;
   customMapping: boolean;
 }
 
-const STORAGE_KEY = 'ursim.padMappings';
+const MAPPINGS_KEY = 'ursim.padMappings';
+const LABELS_KEY = 'ursim.padLabels';
 
-function loadMappings(): Record<string, Mapping> {
+function load<T>(key: string): Record<string, T> {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
+    return JSON.parse(localStorage.getItem(key) ?? '{}');
   } catch {
     return {};
   }
 }
 
-function storeMappings(all: Record<string, Mapping>): void {
+function store(key: string, all: Record<string, unknown>): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    localStorage.setItem(key, JSON.stringify(all));
   } catch {
-    // Storage may be unavailable (private mode); mappings then last for this session only.
+    // Storage may be unavailable (private mode); a pad's setup then lasts for this session only.
   }
 }
 
@@ -41,7 +46,7 @@ export class InputManager {
   bindings: Bindings = DEFAULT_BINDINGS;
   readonly gamepad1 = emptyGamepad();
   readonly gamepad2 = emptyGamepad();
-  /** Every connected controller, supported or not. */
+  /** Every connected controller. */
   pads: PadInfo[] = [];
   /** Browser gamepad indices driving gamepad1 / gamepad2. */
   slots: [number | null, number | null] = [null, null];
@@ -50,7 +55,19 @@ export class InputManager {
   private readonly prev2 = emptyGamepad();
   private readonly prevMenu = emptyGamepad();
   private readonly menu = emptyGamepad();
-  private mappings = loadMappings();
+  private mappings = load<Mapping>(MAPPINGS_KEY);
+  private labels = load<PadModel>(LABELS_KEY);
+  /**
+   * Layouts guessed for non-standard pads from their first state, by `index|id`, while connected;
+   * `playstation`: a DualShock 4 copy (by its name or its layout), which shows PlayStation names.
+   */
+  private readonly guesses = new Map<string, { mapping: Mapping; playstation: boolean }>();
+  /**
+   * Pads that may take gamepad1 / gamepad2 (`index|id`): a known or standard-layout controller at
+   * once, any other pad once a button is pressed on it, so a device that only calls itself a
+   * gamepad takes no slot.
+   */
+  private readonly active = new Set<string>();
 
   update(): void {
     this.keyboard.update();
@@ -60,24 +77,40 @@ export class InputManager {
 
     const raw = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
     const seen: PadInfo[] = [];
+    const connected = new Set<string>();
     for (const gp of raw) {
       if (!gp || !gp.connected) continue;
-      const model = detectModel(gp.id);
+      const key = `${gp.index}|${gp.id}`;
+      connected.add(key);
+      const family = detectModel(gp.id);
       const custom = this.mappings[gp.id];
+      const standard = gp.mapping === 'standard';
+      if (family !== 'generic' || standard || gp.buttons.some(b => b.pressed || b.value > 0.5)) this.active.add(key);
+      if (!custom && !standard && !this.guesses.has(key)) {
+        const playstation = family === 'ps4' || family === 'ps5' || looksLikeDs4(gp);
+        this.guesses.set(key, { mapping: guessMapping(gp, playstation), playstation });
+      }
+      const guess = this.guesses.get(key);
+      const labels = this.labels[gp.id] ?? null;
       seen.push({
         index: gp.index,
         id: gp.id,
-        model,
-        mapping: custom ?? (gp.mapping === 'standard' ? STANDARD_MAPPING : null),
+        model: labels ?? (family === 'generic' && guess?.playstation ? 'ps4' : family),
+        labels,
+        mapping: custom ?? (standard ? STANDARD_MAPPING : guess!.mapping),
+        guessed: !custom && !standard,
         customMapping: !!custom,
       });
     }
     this.pads = seen;
+    // A pad plugged in again is guessed afresh and takes a slot like a new one.
+    for (const key of this.guesses.keys()) if (!connected.has(key)) this.guesses.delete(key);
+    for (const key of this.active) if (!connected.has(key)) this.active.delete(key);
 
-    // Drop slots whose controller went away, then fill empty slots with new supported controllers.
-    this.slots = this.slots.map(i => (seen.some(p => p.index === i && p.model !== 'unsupported') ? i : null)) as [number | null, number | null];
+    // Drop slots whose controller went away, then fill empty slots with new controllers.
+    this.slots = this.slots.map(i => (seen.some(p => p.index === i) ? i : null)) as [number | null, number | null];
     for (const p of seen) {
-      if (p.model === 'unsupported' || this.slots.includes(p.index)) continue;
+      if (this.slots.includes(p.index) || !this.active.has(`${p.index}|${p.id}`)) continue;
       const free = this.slots.indexOf(null);
       if (free >= 0) this.slots[free] = p.index;
     }
@@ -158,7 +191,7 @@ export class InputManager {
     if (index === null) return;
     const info = this.pads.find(p => p.index === index);
     const gp = raw[index];
-    if (info?.mapping && gp) readGamepad(gp, info.mapping, out);
+    if (info && gp) readGamepad(gp, info.mapping, out);
   }
 
   /** Rising edge of a button on gamepad1 or gamepad2. */
@@ -212,11 +245,18 @@ export class InputManager {
 
   saveMapping(id: string, mapping: Mapping): void {
     this.mappings[id] = mapping;
-    storeMappings(this.mappings);
+    store(MAPPINGS_KEY, this.mappings);
   }
 
   resetMapping(id: string): void {
     delete this.mappings[id];
-    storeMappings(this.mappings);
+    store(MAPPINGS_KEY, this.mappings);
+  }
+
+  /** Button names for a controller: a family's (a REV PS4 gamepad that Windows shows as an Xbox pad), or null for its own. */
+  setLabels(id: string, labels: PadModel | null): void {
+    if (labels) this.labels[id] = labels;
+    else delete this.labels[id];
+    store(LABELS_KEY, this.labels);
   }
 }

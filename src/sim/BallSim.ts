@@ -4,6 +4,7 @@
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import { NECTAR_RADIUS, POLLEN_RADIUS, type FieldLayout, type Vec3 } from '../field/layout';
+import { magnusAccel } from '../game/ballistics';
 import type { Alliance } from '../robot/robotConfig';
 import { SLOTS, type Slot } from './types';
 
@@ -38,7 +39,7 @@ export interface Ball extends BallSpec {
 export const PRELOAD = 4;
 
 /** Hollow polyethylene balls (Gopher ResisDent); NECTAR weighs as much as 2 POLLEN. */
-const MASS = { pollen: 0.045, nectar: 0.09 };
+export const BALL_MASS = { pollen: 0.045, nectar: 0.09 };
 /**
  * Plastic balls barely bounce: combined with the foam tiles (same value) a 1 m drop bounces
  * about 5 cm, off walls and other balls a little more.
@@ -46,8 +47,10 @@ const MASS = { pollen: 0.045, nectar: 0.09 };
 export const BALL_RESTITUTION = 0.22;
 const BALL_FRICTION = 0.55;
 /** Balls fly almost freely but roll to a stop on the foam tiles. */
-const AIR_DAMPING = 0.02;
+export const AIR_DAMPING = 0.02;
 const FLOOR_DAMPING = 0.6;
+/** How fast a ball's spin dies away, in the air as on the tiles, 1/s */
+export const SPIN_DAMPING = 0.9;
 /**
  * Continuous collision detection costs CPU on every moving ball, and only a fast ball can
  * jump through a thin HIVE cell wall in one step (a shot covers 7 cm per step). Slower balls go
@@ -90,9 +93,9 @@ export class BallSim {
   constructor(world: RAPIER.World, layout: FieldLayout) {
     this.all = ballSpecs(layout).map((spec, id) => {
       const body = world.createRigidBody(
-        RAPIER.RigidBodyDesc.dynamic().setTranslation(...spec.pos).setLinearDamping(AIR_DAMPING).setAngularDamping(0.9),
+        RAPIER.RigidBodyDesc.dynamic().setTranslation(...spec.pos).setLinearDamping(AIR_DAMPING).setAngularDamping(SPIN_DAMPING),
       );
-      const collider = world.createCollider(RAPIER.ColliderDesc.ball(spec.radius).setMass(MASS[spec.kind]).setRestitution(BALL_RESTITUTION).setFriction(BALL_FRICTION), body);
+      const collider = world.createCollider(RAPIER.ColliderDesc.ball(spec.radius).setMass(BALL_MASS[spec.kind]).setRestitution(BALL_RESTITUTION).setFriction(BALL_FRICTION), body);
       return { ...spec, id, body, collider, state: spec.homeState, returned: false, launch: null };
     });
     this.transforms = new Float32Array(this.all.length * 7);
@@ -155,14 +158,14 @@ export class BallSim {
     }
   }
 
-  /** Puts a ball into play at `pos` with velocity `vel`. */
-  release(b: Ball, pos: Vec3, vel: Vec3): void {
+  /** Puts a ball into play at `pos` with velocity `vel`, spinning at `spin` (rad/s about each axis). */
+  release(b: Ball, pos: Vec3, vel: Vec3, spin: Vec3 = [0, 0, 0]): void {
     b.state = 'field';
     b.returned = false;
     b.launch = null;
     b.body.setTranslation({ x: pos[0], y: pos[1], z: pos[2] }, true);
     b.body.setLinvel({ x: vel[0], y: vel[1], z: vel[2] }, true);
-    b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    b.body.setAngvel({ x: spin[0], y: spin[1], z: spin[2] }, true);
     b.body.enableCcd(Math.hypot(...vel) > CCD_SPEED);
     b.body.setEnabled(true);
     b.body.wakeUp();
@@ -182,7 +185,10 @@ export class BallSim {
     this.store(b);
   }
 
-  /** Rolling resistance on the floor only, so it does not slow shots in the air; CCD only when fast. */
+  /**
+   * Rolling resistance on the floor only, so it does not slow shots in the air; CCD only when fast.
+   * A spinning ball in the air curves (Magnus): frontspin down, backspin up.
+   */
   step(dt: number): void {
     for (const b of this.all) {
       if (b.launch) b.launch.age += dt;
@@ -191,8 +197,22 @@ export class BallSim {
       const damping = onFloor ? FLOOR_DAMPING : AIR_DAMPING;
       if (b.body.linearDamping() !== damping) b.body.setLinearDamping(damping);
       const v = b.body.linvel();
-      const fast = v.x * v.x + v.y * v.y + v.z * v.z > CCD_SPEED * CCD_SPEED;
+      const speed2 = v.x * v.x + v.y * v.y + v.z * v.z;
+      const fast = speed2 > CCD_SPEED * CCD_SPEED;
       if (b.body.isCcdEnabled() !== fast) b.body.enableCcd(fast);
+      if (!onFloor) this.magnus(b, v, Math.sqrt(speed2), dt);
     }
+  }
+
+  /** The Magnus force for one step: across the ball's path, along ω × v. */
+  private magnus(b: Ball, v: RAPIER.Vector, speed: number, dt: number): void {
+    const w = b.body.angvel();
+    const [cx, cy, cz] = [w.y * v.z - w.z * v.y, w.z * v.x - w.x * v.z, w.x * v.y - w.y * v.x];
+    // |ω × v| = (spin across the path) · speed
+    const across = Math.hypot(cx, cy, cz);
+    if (across < 1e-6) return;
+    const mass = BALL_MASS[b.kind];
+    const k = (mass * magnusAccel(speed, across / speed, b.radius, mass) * dt) / across;
+    b.body.applyImpulse({ x: cx * k, y: cy * k, z: cz * k }, false);
   }
 }

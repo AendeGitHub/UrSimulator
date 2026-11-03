@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UrSim · Privacy Policy</title>
+    <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0c1016;
+        --text: #e8edf2;
+        --muted: rgba(232, 237, 242, 0.62);
+        --accent: #19b877;
+        --line: rgba(255, 255, 255, 0.1);
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 40px 16px 64px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--line);
+      }
+      header img {
+        height: 56px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 28px;
+      }
+      h2 {
+        margin: 32px 0 8px;
+        font-size: 19px;
+        color: var(--accent);
+      }
+      p,
+      li {
+        margin: 8px 0;
+      }
+      ul {
+        padding-left: 22px;
+      }
+      a {
+        color: var(--accent);
+      }
+      .muted {
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="assets/logo.svg" alt="UrSim" />
+        <div>
+          <h1>Privacy Policy</h1>
+          <div class="muted">Last updated: 2 November 2026</div>
+        </div>
+      </header>
+
+      <p>
+        UrSim is a free, unofficial fan-made driving simulator for the FIRST Tech Challenge season BIOBUZZ,
+        made by team URAN92. You can play without an account. This page explains what the game keeps
+        about you and why.
+      </p>
+
+      <h2>Playing without an account</h2>
+      <ul>
+        <li>Your settings (controls, graphics, language, gamepad setup), your personal bests and the robots you build stay in your browser on your device.</li>
+        <li>The game makes a random device ID in your browser. It goes with your match results (so we can count players and games), with the online counter, into online rooms, and with robots you add from the gallery. It says nothing about who you are.</li>
+        <li>When you set a high score, the name you typed, your robot and your score appear in the public high score tables.</li>
+      </ul>
+
+      <h2>Accounts (optional)</h2>
+      <ul>
+        <li><b>Sign in with Google:</b> the game asks Google only for your basic profile (<code>openid profile</code>). We receive your Google account ID and your name, and nothing else: not your e-mail address, contacts or files. The name is only a suggestion; you choose the name others see and your @username.</li>
+        <li><b>Sign in with an e-mail and a password:</b> we keep your e-mail address, only to sign you in and never shown to anyone, and a salted scrypt hash of your password, so we cannot read the password itself.</li>
+        <li>With an account the game keeps your name and @username, when you made the account, statistics of your games (the last 200: type, robot, scores, time), replays of your last 30 matches, your Workshop robots, your friends and friend requests, and robots you publish to the gallery.</li>
+        <li>Other players can see your name, @username, career statistics and published robots. Your friends see when you are online and which room you are in.</li>
+        <li>A session token in your browser keeps you signed in for up to 180 days. Signing out removes it.</li>
+      </ul>
+
+      <h2>Online play</h2>
+      <p>
+        In online rooms the players' games connect to each other directly (WebRTC), as in many online games,
+        so players in the same room can see each other's IP addresses. To set up the connection the game uses
+        Google's public STUN servers; when a direct connection is not possible, the game goes through our server.
+        Other players in the room see your name.
+      </p>
+
+      <h2>Where it is kept, and what we don't do</h2>
+      <p>
+        Everything above is kept on the game's own server, a VPS in Kazakhstan, reached over HTTPS. We don't sell
+        or share data, show ads, or use analytics or tracking cookies. The server's technical logs can contain
+        IP addresses; we use them only to keep the game running.
+      </p>
+
+      <h2>Deleting your data</h2>
+      <p>
+        You can delete replays from your match archive and your robots in the game. To delete your account and
+        everything kept with it, message us on Instagram or GitHub (below) with your @username, and we will
+        delete it.
+      </p>
+
+      <h2>Changes</h2>
+      <p>If the game starts keeping something new, this page will say so; the date at the top shows the last change.</p>
+
+      <h2>Contact</h2>
+      <p>
+        Instagram <a href="https://www.instagram.com/ursim_ftc/">@ursim_ftc</a> ·
+        GitHub <a href="https://github.com/AendeGitHub/UrSimulator">AendeGitHub/UrSimulator</a>
+      </p>
+
+      <p class="muted">Not affiliated with FIRST®. BIOBUZZ™ is a trademark of FIRST.</p>
+    </main>
+  </body>
+</html>

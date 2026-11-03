@@ -1,0 +1,19 @@
+{
+  "comment": "Mechatronics (team 13368, STEP export ROBOT 13368). Coordinates are in the CAD frame (meters, Z up, front = -X, left = -Y). Parts are matched in order: the first rule that fits a CAD part wins. The turret (Assembly 1 <2>) turns on a 4\" X-contact bearing, driven by two servos through its 127-tooth ring gear. A 72 mm Rhino wheel at the turret's front, turned by a motor on each side, throws the ball up along the hood behind it (set by a servo through the 247-tooth sector, about the flywheel's axle) and forward over its top. The intake is a shaft of three flexible stars with a vectored intake wheel at each end; 2\" compliant wheels then carry balls back up the curved ramp under them, and the last pair (transfer) pushes them up through the turret's ring. The CAD has a left-slant wheel at the front right too, so its rollers are set to lean like the back left one's. The number plates (Part 13, 19, 23) are left out: the game puts its alliance signs in their holders.",
+  "up": "+z",
+  "forward": "-x",
+  "dropSmallerThan": 0.008,
+  "drop": ["Part 13", "Part 19", "Part 23"],
+  "parts": [
+    { "name": "flywheel", "parent": "turret", "ancestor": "3601 Series Rhino Wheel (14mm Bore, 72mm Diameter) 3601-0014-0072", "pivot": [-0.0795, -0.0825, 0.184], "axis": "y", "reverse": true },
+    { "name": "turret", "ancestor": ["Assembly 1 <2>", "Helical 1M 127T"], "pivot": [-0.0065, -0.088, 0.141], "axis": "z" },
+    { "name": "intake_front", "ancestor": ["spintake Copy 1 Copy 1 <1>", "spintake Copy 1 Copy 1 <2>", "spintake Copy 1 Copy 1 <3>", "2\" Vectored Intake Wheel (Left-Hand, 1/2\" Hex Bore, White)", "2\" Vectored Intake Wheel (Right-Hand, 1/2\" Hex Bore, White)"], "pivot": [-0.193, -0.088, 0.0225], "axis": "y" },
+    { "name": "intake_2", "ancestor": "2\" Compliant Wheel (50A, 3/4\" Wide, 3/8\" Hex Stretch Bore)", "within": { "x": [-0.14, -0.08], "z": [-0.01, 0.04] }, "pivot": [-0.1095, -0.088, 0.025], "axis": "y" },
+    { "name": "intake_3", "ancestor": "2\" Compliant Wheel (50A, 3/4\" Wide, 3/8\" Hex Stretch Bore)", "within": { "x": [-0.09, -0.03], "z": [0.04, 0.1] }, "pivot": [-0.0635, -0.088, 0.0695], "axis": "y" },
+    { "name": "transfer", "ancestor": "2\" Compliant Wheel (50A, 3/4\" Wide, 3/8\" Hex Stretch Bore)", "within": { "x": [0.02, 0.08] }, "pivot": [0.0495, -0.088, 0.0795], "axis": "y", "reverse": true },
+    { "name": "wheel_fl", "ancestor": "104mm Mecanum Wheel (Left Slant, 40A Durometer Rollers) 3625-0202-0104 <2>", "pivot": [-0.056, -0.209, -0.027], "axis": "y", "mecanum": true },
+    { "name": "wheel_fr", "ancestor": "104mm Mecanum Wheel (Left Slant, 40A Durometer Rollers) 3625-0202-0104 <3>", "pivot": [-0.056, 0.033, -0.027], "axis": "y", "mecanum": { "slant": -1 } },
+    { "name": "wheel_bl", "ancestor": "104mm Mecanum Wheel (Right Slant, 40A Durometer Rollers) 3625-0202-0104 <1>", "pivot": [0.1, -0.2085, -0.027], "axis": "y", "mecanum": true },
+    { "name": "wheel_br", "ancestor": "104mm Mecanum Wheel (Left Slant, 40A Durometer Rollers) 3625-0202-0104 <1>", "pivot": [0.101, 0.033, -0.027], "axis": "y", "mecanum": true }
+  ]
+}

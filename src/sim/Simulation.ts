@@ -4,6 +4,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { FieldLayout } from '../field/layout';
 import { buildZones, footprint, type Zones } from '../field/zones';
+import { defaultStart, forAlliance, resolveStarts, slotStation, startField, type StartField, type StartPose } from '../field/startPose';
 import { fieldCentric } from '../robot/mecanum';
 import type { Alliance } from '../robot/robotConfig';
 import { DEFAULT_ROBOT_ID, robotById } from '../robot/robots';
@@ -17,10 +18,9 @@ import type { WorldState } from './state';
 import type { Vec3 } from '../field/layout';
 import type { Ball } from './BallSim';
 import { DEFAULT_RULES, type RuleOptions } from './Referee';
-import { SLOTS, idleInput, mergeInput, type GameMode, type RobotInput, type Slot } from './types';
+import { SLOTS, idleInput, mergeInput, slotAlliance, type GameMode, type RobotInput, type Slot } from './types';
 
 export const PHYSICS_DT = 1 / 120;
-const SLOW_MODE_SCALE = 0.35;
 const WALL_HEIGHT = 0.32;
 const WALL_THICKNESS = 0.06;
 
@@ -36,12 +36,17 @@ const PIN = { trying: 0.3, stuck: 0.15, against: 0.03, foulEvery: 3, apart: 0.61
  * shot less than `shotClear` s ago is left alone.
  */
 const ROBOT_HIT = { keep: 0.35, shotClear: 0.3 };
+/** Robots that run into each other faster than this (closing speed) knock both turrets off aim, m/s */
+const KNOCK_SPEED = 0.7;
+/**
+ * A robot running into a FLOWER faster than `speed` (m/s) jolts its stack: the balls in the tube
+ * jump up by `lift` times the robot's speed (at most `max`, m/s) and fall back, the way the blocks
+ * of a VEX loader tube hop when a robot rams it. A ball in the tube is closer than `tube` m to its center.
+ */
+const FLOWER_JOLT = { speed: 0.4, lift: 1.1, max: 1.5, tube: 0.09, height: 0.62 };
 
 /** During AUTO each alliance owns its half of the field: red is -X (columns A–C), blue +X. */
 const onOpponentSide = (alliance: Alliance, x: number) => (alliance === 'red' ? x > 0 : x < 0);
-
-/** Robots start touching their alliance wall, facing away from their drivers. */
-const START_Z: Record<Slot, number> = { red1: -0.25, red2: 1.15, blue1: 0.25, blue2: -1.15 };
 
 export interface PlayerRobot {
   /** Which robot (robots.ts) this player drives */
@@ -66,6 +71,9 @@ export class Simulation {
   readonly hives: Record<Alliance, HiveSim>;
   readonly match: Match;
   readonly robots = new Map<Slot, PlayerRobot>();
+  /** The red side's limits for a start (G304) */
+  readonly startField: StartField;
+  private starts = new Map<Slot, Pose>();
   /** Simulated seconds since creation */
   time = 0;
   private rules: RuleOptions = { ...DEFAULT_RULES };
@@ -75,6 +83,13 @@ export class Simulation {
   private hiveFrameBox: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
   private readonly obstacles: { minX: number; maxX: number; minZ: number; maxZ: number }[] = [];
   private readonly frameContact = new Map<Slot, boolean>();
+  /** Each FLOWER's collider and footprint, with its tube center (x, z) */
+  private readonly flowerParts: { collider: RAPIER.Collider; box: { minX: number; maxX: number; minZ: number; maxZ: number }; center: [number, number] }[] = [];
+  /** Robot and FLOWER ("red1|2") touching at the last step, and each robot's speed going into this one */
+  private readonly flowerContact = new Set<string>();
+  private readonly flowerSpeed = new Map<Slot, number>();
+  /** Robot pairs ("red1|blue1") touching at the last step */
+  private readonly robotContact = new Set<string>();
   private readonly lastSpeed = new Map<Slot, number>();
   /** PIN counts keyed "pinner|pinned" */
   private readonly pins = new Map<string, { time: number; fouls: number; apart: number }>();
@@ -83,11 +98,17 @@ export class Simulation {
   /** 1 for each ball (by id) a robot presses against the wall or a field element */
   private readonly pressed: Uint8Array;
 
+  /** The HIVE frame's footprint on the floor (the AI drives around it) */
+  get frameBox(): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+    return this.hiveFrameBox;
+  }
+
   /** Call initPhysics() first. */
   constructor(readonly layout: FieldLayout, colliders: ColliderPart[], events: MatchEvents) {
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     this.world.timestep = PHYSICS_DT;
     this.zones = buildZones(layout);
+    this.startField = startField(layout, this.zones);
     this.buildField(colliders);
     this.balls = new BallSim(this.world, layout);
     this.onRobot = new Uint8Array(this.balls.all.length);
@@ -118,6 +139,11 @@ export class Simulation {
       }
       this.obstacles.push(box);
       if (part.name === 'frame') this.hiveFrameBox = box;
+      if (part.name.startsWith('flower')) {
+        const mid: [number, number] = [(box.minX + box.maxX) / 2, (box.minZ + box.maxZ) / 2];
+        const center = [...this.zones.flowers].sort((a, b) => Math.hypot(a[0] - mid[0], a[1] - mid[1]) - Math.hypot(b[0] - mid[0], b[1] - mid[1]))[0];
+        this.flowerParts.push({ collider, box, center });
+      }
     }
     // Floor (soft foam tiles) and perimeter walls (polycarbonate) as simple boxes.
     const half = this.zones.wall;
@@ -136,19 +162,29 @@ export class Simulation {
     }
   }
 
+  /** Where a robot starts: picked by its driver (setStarts), or touching its alliance wall at its driver station, facing the field. */
   startPose(slot: Slot, robotLength: number): Pose {
-    const x = this.zones.wall - robotLength / 2 - 0.004;
-    return slot.startsWith('red') ? { x: -x, z: START_Z[slot], yaw: 0 } : { x, z: START_Z[slot], yaw: Math.PI };
+    return this.starts.get(slot) ?? forAlliance(defaultStart(slotStation(slot), robotLength, this.zones.wall), slotAlliance(slot));
+  }
+
+  /**
+   * Drivers' own starts (red side, manual G304) for the robots on the field; a robot without one,
+   * or with one that G304 doesn't allow there, starts in a free default spot.
+   */
+  setStarts(picked: Partial<Record<Slot, StartPose | null>>): void {
+    this.starts = resolveStarts([...this.robots].map(([slot, p]) => ({ slot, cfg: p.robot.cfg, start: picked[slot] })), this.startField);
+    for (const [slot, p] of this.robots) p.robot.setPose(this.startPose(slot, p.robot.cfg.length));
   }
 
   addRobot(slot: Slot, name: string, robotId: string = DEFAULT_ROBOT_ID): PlayerRobot {
     this.removeRobot(slot);
     const def = robotById(robotId);
-    const robot = new RobotSim(this.world, slot, def.config, this.startPose(slot, def.config.length), def.arm);
-    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def.shooter, def.intakes, def.arm, def.intakeFront ?? def.config.length / 2, def.second && { spec: def.second.shooter, kinds: def.second.kinds });
+    const robot = new RobotSim(this.world, slot, def.config, this.startPose(slot, def.config.length), def.arm, def.lift);
+    const mech = new Mechanisms(robot, this.balls, () => this.hives[robot.alliance].target(), this.zones.flowers, def);
     mech.reset(this.balls.preloads(slot));
     mech.onPickup = (b, at) => this.judgePickup(robot, b, at);
     robot.battery.enabled = this.rules.battery;
+    mech.movingShots = this.rules.movingShots;
     const player = { robotId: def.id, robot, mech, input: idleInput(), name };
     this.robots.set(slot, player);
     return player;
@@ -167,6 +203,7 @@ export class Simulation {
     this.balls.reset();
     this.hives.red.reset();
     this.hives.blue.reset();
+    this.robotContact.clear();
     for (const [slot, p] of this.robots) {
       p.robot.setPose(this.startPose(slot, p.robot.cfg.length));
       p.robot.battery.reset();
@@ -175,11 +212,19 @@ export class Simulation {
     }
   }
 
-  /** House rules for the referee (fouls and cards on or off). */
+  /** House rules: the referee's fouls and cards, the battery, shooting on the move. */
   setRules(rules: RuleOptions): void {
     this.rules = { ...rules };
     this.match.referee.options = { ...rules };
-    for (const p of this.robots.values()) p.robot.battery.enabled = rules.battery;
+    for (const p of this.robots.values()) {
+      p.robot.battery.enabled = rules.battery;
+      p.mech.movingShots = rules.movingShots;
+    }
+  }
+
+  /** The house rules in play (the AI drives by them too). */
+  get ruleOptions(): Readonly<RuleOptions> {
+    return this.rules;
   }
 
   start(mode: GameMode): void {
@@ -200,29 +245,61 @@ export class Simulation {
       const { robot, mech, input } = p;
       if (enabled) {
         if (input.imuReset) robot.resetImu();
-        const scale = input.slow ? SLOW_MODE_SCALE : 1;
         let forward = -input.ly;
         let strafe = input.lx;
         if (input.fieldCentric) ({ forward, strafe } = fieldCentric(forward, strafe, robot.heading));
-        robot.drive(forward * scale, strafe * scale, input.rx * scale, dt);
+        robot.drive(forward, strafe, input.rx, dt);
       } else {
         robot.drive(0, 0, 0, dt);
       }
       mech.step(dt, input, enabled);
-      robot.setArmDown(mech.arm >= 1);
+      robot.setArm(mech.arm);
+      robot.setLift(mech.lift);
       const { fl, fr, bl, br } = robot.powers;
       robot.battery.step(dt, mech.flywheel, (Math.abs(fl) + Math.abs(fr) + Math.abs(bl) + Math.abs(br)) / 4);
-      input.shooterOn = input.shooterOff = input.imuReset = input.armUp = input.armDown = false;
+      input.shooterOn = input.shooterOff = input.imuReset = input.armUp = input.armDown = input.lift = false;
     }
     this.hives.red.step(dt, this.balls);
     this.hives.blue.step(dt, this.balls);
     this.balls.step(dt);
     this.match.step(dt);
+    // How fast the robots were going into the step is how hard they hit each other in it.
+    const before = this.robots.size > 1 ? new Map([...this.robots].map(([slot, p]) => [slot, p.robot.velocity])) : null;
     this.world.step();
     this.balls.sync();
+    if (before) this.knockTurrets(before);
+    this.shakeFlowers();
     this.softenRobotHits();
     this.judgeContacts(dt);
     this.time += dt;
+  }
+
+  /** A robot (or its lowered arm) that just ran into a FLOWER hard enough jolts the balls in its tube. */
+  private shakeFlowers(): void {
+    for (const { robot } of this.robots.values()) {
+      const speed = this.flowerSpeed.get(robot.slot) ?? 0;
+      this.flowerSpeed.set(robot.slot, robot.speed);
+      this.flowerParts.forEach((f, i) => {
+        const key = `${robot.slot}|${i}`;
+        const arm = robot.solidArm;
+        const touching = this.near(robot, f.box) && (this.touching(robot.collider, f.collider) || (!!arm && this.touching(arm, f.collider)));
+        if (touching && !this.flowerContact.has(key) && speed > FLOWER_JOLT.speed) this.jolt(f.center, speed);
+        if (touching) this.flowerContact.add(key);
+        else this.flowerContact.delete(key);
+      });
+    }
+  }
+
+  /** The balls in the FLOWER tube at (cx, cz) jump up together. */
+  private jolt([cx, cz]: [number, number], speed: number): void {
+    const up = Math.min(FLOWER_JOLT.max, speed * FLOWER_JOLT.lift);
+    for (const b of this.balls.all) {
+      if (b.state !== 'field') continue;
+      const [x, y, z] = this.balls.position(b);
+      if (y > FLOWER_JOLT.height || Math.hypot(x - cx, z - cz) > FLOWER_JOLT.tube) continue;
+      const v = b.body.linvel();
+      b.body.setLinvel({ x: v.x, y: v.y + up, z: v.z }, true);
+    }
   }
 
   private hasOpponent(alliance: Alliance): boolean {
@@ -260,6 +337,7 @@ export class Simulation {
    * A robot pressing a ball against the wall, a FLOWER or the HIVE: the light ball would give way to
    * the heavy robot and squeeze through the wall. Squeezed like that a real ball stops the robot, so
    * the ball becomes something robots can't push (a higher dominance group) until no robot touches it.
+   * Pressed down onto the tiles (by an arm over it) it isn't pinned: it rolls on as it is pushed.
    */
   private pressedAgainstField(b: Ball, push: RAPIER.Vector): boolean {
     let pressed = false;
@@ -267,7 +345,7 @@ export class Simulation {
       const body = other.parent();
       if (pressed || !body || !(body.isFixed() || body.isKinematic())) return;
       const n = this.contactNormal(b.collider, other);
-      if (n && n.x * push.x + n.y * push.y + n.z * push.z > 0.5) pressed = true;
+      if (n && Math.abs(n.y) < 0.7 && n.x * push.x + n.y * push.y + n.z * push.z > 0.5) pressed = true;
     });
     return pressed;
   }
@@ -288,7 +366,8 @@ export class Simulation {
         const [x, , z] = this.balls.position(b);
         for (const { robot, x: rx, z: rz, reach } of robots) {
           if (Math.hypot(x - rx, z - rz) > reach + b.radius + 0.02) continue;
-          const push = this.contactNormal(robot.collider, b.collider) ?? (robot.armCollider?.isEnabled() ? this.contactNormal(robot.armCollider, b.collider) : null);
+          const arm = robot.solidArm;
+          const push = this.contactNormal(robot.collider, b.collider) ?? (arm ? this.contactNormal(arm, b.collider) : null);
           if (!push) continue;
           touching = true;
           if (!this.pressed[b.id] && this.pressedAgainstField(b, push)) {
@@ -328,6 +407,31 @@ export class Simulation {
       return Math.hypot(x - ox, z - oz) < reach + Math.hypot(other.cfg.length, other.cfg.width) / 2;
     }
     return x > other.minX - reach && x < other.maxX + reach && z > other.minZ - reach && z < other.maxZ + reach;
+  }
+
+  /** Defence: two robots that run into each other hard knock each other's turrets off their aim. */
+  private knockTurrets(before: Map<Slot, [number, number]>): void {
+    const players = [...this.robots.values()];
+    players.forEach((a, i) => {
+      for (const b of players.slice(i + 1)) {
+        const key = `${a.robot.slot}|${b.robot.slot}`;
+        const contact = this.near(a.robot, b.robot) && this.touching(a.robot.collider, b.robot.collider);
+        if (contact && !this.robotContact.has(key)) {
+          const [ax, , az] = a.robot.position;
+          const [bx, , bz] = b.robot.position;
+          const [avx, avz] = before.get(a.robot.slot)!;
+          const [bvx, bvz] = before.get(b.robot.slot)!;
+          // Speed along the line between them: a glancing scrape doesn't count.
+          const closing = ((avx - bvx) * (bx - ax) + (avz - bvz) * (bz - az)) / Math.max(1e-6, Math.hypot(bx - ax, bz - az));
+          if (closing > KNOCK_SPEED) {
+            a.mech.knock();
+            b.mech.knock();
+          }
+        }
+        if (contact) this.robotContact.add(key);
+        else this.robotContact.delete(key);
+      }
+    });
   }
 
   /** Rules about contact: G417 (HIVE frame), G402 (opponent robot during AUTO), G421 (PINS). */
@@ -433,9 +537,7 @@ export class Simulation {
           turretYaw: mech.turretYaw,
           pitch: mech.shot?.pitch ?? 0.9,
           flywheel: mech.turret.flywheel,
-          turretYaw2: mech.turrets[1]?.yaw ?? 0,
-          pitch2: mech.turrets[1]?.shot?.pitch ?? 0.9,
-          flywheel2: mech.turrets[1]?.flywheel ?? 0,
+          extraTurrets: mech.turrets.slice(1).map(t => ({ yaw: t.yaw, pitch: t.shot?.pitch ?? 0.9, flywheel: t.flywheel })),
           intakeDir: mech.intakeDir,
           transfer: input.transfer && this.match.robotEnabled,
           status: mech.status,
@@ -443,9 +545,15 @@ export class Simulation {
           shotDistance: mech.shot?.distance ?? 0,
           powers: { ...robot.powers },
           stored: mech.stored.map(b => b.id),
+          pocket: mech.pocket?.id ?? null,
           voltage: robot.battery.voltage,
           minVoltage: robot.battery.minVoltage,
           arm: mech.arm,
+          lift: mech.lift,
+          boxRollers: mech.boxRollers,
+          box: mech.box.map(b => b.id),
+          boxTop: mech.boxTop,
+          boxExit: mech.boxExit && { id: mech.boxExit.ball.id, t: mech.boxExit.t, to: mech.boxExit.to && [...mech.boxExit.to] },
         };
       }),
       balls: { states, transforms },

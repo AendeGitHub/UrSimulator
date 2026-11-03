@@ -17,6 +17,13 @@ describe('control bindings', () => {
     expect(b.keys.pause).toBe('Escape');
   });
 
+  it('drops saved bindings of actions the game no longer has (slow mode)', () => {
+    const b = withDefaults({ pad: { ...DEFAULT_BINDINGS.pad, slow: 'left_stick_button' }, keys: { ...DEFAULT_BINDINGS.keys, slow: 'ShiftLeft' } } as never);
+    expect('slow' in b.pad).toBe(false);
+    expect('slow' in b.keys).toBe(false);
+    expect(b.pad.camera).toBe('right_stick_button');
+  });
+
   it('names keys the way players know them', () => {
     expect(keyLabel('KeyF')).toBe('F');
     expect(keyLabel('Digit1')).toBe('1');
